@@ -1,4 +1,3 @@
-import os
 import re
 import warnings
 from pathlib import Path
@@ -50,7 +49,14 @@ def response_to_local_filelist(
     form a relative location of the files represented in the Globus response. We then
     prepend the given data route to make the path absolute and check for existence.
 
+    If we had something beyond https logs to track file access, at this point we could
+    iterate some counter that the dataset had been accessed. If a problem, we could use
+    the https link and start to download a chunk of data and then break it just so there
+    is evidence of use.
+
     """
+    if data_root is None:
+        return []
     if isinstance(data_root, str):
         data_root = Path(data_root)
     if not data_root.is_dir():
@@ -92,13 +98,14 @@ def response_to_https_download(response: GlobusHTTPResponse) -> List[Path]:
         url = [u for u in entry["url"] if u.endswith("|HTTPServer")]
         if len(url) != 1:
             continue
-        url = Path(url[0].replace("|HTTPServer", ""))
-        local_file = Path(url.name)
+        url = url[0].replace("|HTTPServer", "")
+        local_file = Path(Path(url).name)
         if not local_file.is_file():
             resp = requests.get(url, stream=True)
             with open(local_file, "wb") as fdl:
                 for chunk in resp.iter_content(chunk_size=1024):
-                    fdl.write(chunk)
+                    if chunk:
+                        fdl.write(chunk)
         paths.append(local_file)
     return paths
 
@@ -211,7 +218,7 @@ class ESGFCatalog:
         ds = {}
         for _, row in tqdm(self.df.iterrows(), total=len(self.df)):
             response = SearchClient().search(
-                cat.index_id, f'dataset_id: "{row.globus_subject}"', advanced=True
+                self.index_id, f'dataset_id: "{row.globus_subject}"', advanced=True
             )
             file_list = []
             # 1) Look for direct access to files
@@ -227,11 +234,11 @@ class ESGFCatalog:
             #    current location as an endpoint.
 
             # 4) Use the https links to download data locally.
-            try:
-                if not file_list:
+            if not file_list:
+                try:
                     file_list = response_to_https_download(response)
-            except OSError:
-                pass
+                except OSError:
+                    pass
 
             # Now open datasets and add to the return dictionary
             key = row.globus_subject.split("|")[0]
