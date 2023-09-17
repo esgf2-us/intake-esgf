@@ -1,7 +1,8 @@
+import logging
 import re
 import warnings
 from pathlib import Path
-from typing import Dict, List, Union
+from typing import Any, Dict, List, Union
 
 import pandas as pd
 import requests
@@ -18,6 +19,40 @@ warnings.simplefilter("ignore", category=xr.SerializationWarning)
 GLOBUS_INDEX_IDS = {
     "anl-dev": "d927e2d9-ccdb-48e4-b05d-adbc3d97bbc5",
 }
+
+# setup logging
+local_cache = Path.home() / ".esgf"
+logging.basicConfig(
+    filename=local_cache / "search_history.log",
+    format="%(asctime)s %(message)s",
+    datefmt="%Y-%m-%d %H:%M:%S",
+    level=logging.INFO,
+)
+logger = logging.getLogger(__name__)
+logger.setLevel("INFO")
+
+
+def get_relative_esgf_path(entry: Dict[str, Any]) -> Path:
+    """Return the relative ESGF path from the Globus entry."""
+    if "content" not in entry:
+        raise ValueError("'content' not part of the entry.")
+    content = entry["content"]
+    if set(content.keys()).difference(
+        ["version", "dataset_id", "directory_format_template_"]
+    ):
+        raise ValueError("Entry content does not contain expected keys.")
+    # For some reason, the `version` in the globus response is just an integer and not
+    # what is used in the file path so I have to parse it out of the `dataset_id`
+    content["version"] = [content["dataset_id"].split("|")[0].split(".")[-1]]
+    # Format the file path using the template in the response
+    file_path = content["directory_format_template_"][0]
+    file_path = Path(
+        file_path.replace("%(root)s/", "")
+        .replace("%(", "{")
+        .replace(")s", "[0]}")
+        .format(**content)
+    )
+    return file_path
 
 
 def response_to_dataframe(response: GlobusHTTPResponse, pattern: str) -> pd.DataFrame:
@@ -67,18 +102,7 @@ def response_to_local_filelist(
         entry = g["entries"][0]
         if entry["entry_id"] != "file":
             continue
-        entry = entry["content"]
-        # For some reason, the `version` in the response isn't what is used in the file
-        # path so I have to parse it out of the `dataset_id`
-        entry["version"] = [entry["dataset_id"].split("|")[0].split(".")[-1]]
-        # Format the file path using the template in the response
-        file_path = entry["directory_format_template_"][0]
-        file_path = data_root / Path(
-            file_path.replace("%(root)s/", "")
-            .replace("%(", "{")
-            .replace(")s", "[0]}")
-            .format(**entry)
-        )
+        file_path = data_root / get_relative_esgf_path(entry)
         if not file_path.is_dir():
             raise FileNotFoundError(f"Directory {file_path} does not exist.")
         for file_name in file_path.glob("*.nc"):
@@ -148,7 +172,8 @@ class ESGFCatalog:
             repr = f"Displaying summary info for {len(self.df)} out of {self.total_results} results:\n"  # noqa: E501
         return repr + self.unique().__repr__()
 
-    def unique(self):
+    def unique(self) -> pd.Series:
+        """Return the the unique values in each facet of the search."""
         out = {}
         for col in self.df.columns:
             if col in ["globus_subject", "version", "data_node"]:
@@ -156,13 +181,86 @@ class ESGFCatalog:
             out[col] = self.df[col].unique()
         return pd.Series(out)
 
-    def search(self, **search):
+    def search(
+        self, strict: bool = False, limit: int = 1000, **search: Union[str, list[str]]
+    ):
         """Populate the catalog by specifying search facets and values.
 
         Keyword values may be strings or lists of strings. Keyword arguments can be the
-        familiar facets (`experiment_id`, `source_id`, ...) but are not limited to this.
-        You may specify anything included in the dataset metadata including
-        `cf_standard_name`, `variable_units`, and `variable_long_name`.
+        familiar facets (`experiment_id`, `source_id`, etc.) but are not limited to
+        this. You may specify anything included in the dataset metadata including
+        `cf_standard_name`, `variable_units`, and `variable_long_name`. Multiple calls
+        to this function are not cumulative. Each call will overwrite the dataframe.
+
+        Parameters
+        ----------
+        strict
+            Enable to match search values exactly.
+        limit
+            The number of results to parse from the response.
+        search
+            Further keyword arguments which specify
+
+        Examples
+        --------
+        >>> cat = ESGFCatalog()
+        >>> cat.search(
+                experiment_id=["historical","ssp585"],
+                source_id="CESM2",
+                variable_id="tas",
+                table_id="Amon",
+            )
+        mip_era                                                     [CMIP6]
+        activity_id                      [ScenarioMIP, C4MIP, ISMIP6, CMIP]
+        institution_id                                               [NCAR]
+        source_id          [CESM2, CESM2-WACCM, CESM2-FV2, CESM2-WACCM-FV2]
+        experiment_id     [ssp585, esm-ssp585, ssp585-withism, historica...
+        member_id         [r11i1p1f1, r10i1p1f1, r4i1p1f1, r5i1p1f1, r3i...
+        table_id                                                     [Amon]
+        variable_id                                                   [tas]
+        grid_label                                                     [gn]
+        dtype: object
+
+        Notice that the result contains variants of `CESM2` and `ssp585`. This is
+        because by default the search is permissive to allow for flexible queries in
+        case the user is not sure for what they are searching. Repeating the search with
+        `strict=True` will remove the variants.
+
+        >>> cat.search(
+                strict=True,
+                experiment_id=["historical","ssp585"],
+                source_id="CESM2",
+                variable_id="tas",
+                table_id="Amon",
+            )
+        mip_era                                                     [CMIP6]
+        activity_id                                     [CMIP, ScenarioMIP]
+        institution_id                                               [NCAR]
+        source_id                                                   [CESM2]
+        experiment_id                                  [historical, ssp585]
+        member_id         [r9i1p1f1, r1i1p1f1, r5i1p1f1, r8i1p1f1, r11i1...
+        table_id                                                     [Amon]
+        variable_id                                                   [tas]
+        grid_label
+        dtype: object
+
+        This can be useful if you are not sure what variable you need, but have an idea
+        of what it is called. The follow search reveals that there are several choices
+        for `variable_id` (ta, ts, ta500, ta850, ta700) that have 'temperature' in the
+        long name.
+
+        >>> cat.search(variable_long_name='temperature')
+        Displaying summary info for 1000 out of 480459 results:
+        mip_era                                                     [CMIP6]
+        activity_id       [ScenarioMIP, RFMIP, DCPP, DAMIP, CMIP, HighRe...
+        institution_id    [MPI-M, DKRZ, MOHC, CSIRO, CMCC, CCCma, CNRM-C...
+        source_id         [MPI-ESM1-2-LR, UKESM1-0-LL, ACCESS-ESM1-5, Ha...
+        experiment_id     [ssp370, ssp119, ssp245, ssp126, ssp585, ssp43...
+        member_id         [r10i1p1f1, r3i1p1f1, r9i1p1f1, r8i1p1f1, r2i1...
+        table_id          [CFmon, Emon, AERmonZ, Eday, Amon, 6hrPlevPt, ...
+        variable_id                           [ta, ts, ta500, ta850, ta700]
+        grid_label                             [gn, gnz, gr, gr1, grz, gr2]
+        dtype: object
 
         """
         search["type"] = "Dataset"  # only search for datasets, not files
@@ -172,16 +270,33 @@ class ESGFCatalog:
         for key, val in search.items():
             if isinstance(val, bool):
                 search[key] = str(val)
-        query = " AND ".join(
-            [
-                f'({key}: "{val}")'
-                if isinstance(val, str)
-                else "(" + " OR ".join([f'({key}: "{v}")' for v in val]) + ")"
-                for key, val in search.items()
-            ]
-        )
-        client = SearchClient()
-        result = client.search(self.index_id, query, limit=1000, advanced=True)
+        if strict:
+            query_data = {
+                "q": "",
+                "filters": [
+                    {
+                        "type": "match_any",
+                        "field_name": key,
+                        "values": [val] if isinstance(val, str) else val,
+                    }
+                    for key, val in search.items()
+                ],
+                "facets": [],
+                "sort": [],
+            }
+            result = SearchClient().post_search(self.index_id, query_data, limit=1000)
+        else:
+            query = " AND ".join(
+                [
+                    f'({key}: "{val}")'
+                    if isinstance(val, str)
+                    else "(" + " OR ".join([f'({key}: "{v}")' for v in val]) + ")"
+                    for key, val in search.items()
+                ]
+            )
+            result = SearchClient().search(
+                self.index_id, query, limit=1000, advanced=True
+            )
         self.total_results = result["total"]
         if not self.total_results:
             raise ValueError("Search returned no results.")
@@ -263,16 +378,7 @@ if __name__ == "__main__":
 
     # Printing the catalog will list the unique values in each column of the dataframe,
     # can also call unique() to get this information.
-    print(cat, end="\n\n")
-
-    # You can access the underlying dataframe and adjust it using pandas capability. You
-    # just have to be careful to not remove things that `to_dataset_dict()` will use. At
-    # the moment, I just need the Globus subject. Here we do a silly manipulation to
-    # make the datasets small if they need downloaded.
-    df = cat.df
-    df = df[(df["source_id"] == "CESM2") & (df["variable_id"] != "gpp")]
-    cat.df = df
-    print(cat, end="\n\n")
+    print(cat)
 
     # Our version of `to_dataset_dict()` should try to do the best thing for the user
     # automatically. If you are running on a resource that has direct access to data,
