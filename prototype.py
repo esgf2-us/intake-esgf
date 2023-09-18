@@ -1,3 +1,4 @@
+import hashlib
 import logging
 import re
 import warnings
@@ -30,11 +31,58 @@ if not log_file.is_file():
 file_handler = logging.FileHandler(log_file)
 file_handler.setFormatter(
     logging.Formatter(
-        "%(asctime)s %(funcName)s %(message)s", datefmt="%Y-%m-%d %H:%M:%S"
+        "\x1b[36;20m%(asctime)s \x1b[36;32m%(funcName)s()\033[0m %(message)s",
+        datefmt="%Y-%m-%d %H:%M:%S",
     )
 )
 logger.addHandler(file_handler)
 logger.setLevel(logging.INFO)
+
+
+def get_file_hash(filepath: Union[str, Path], algorithm: str) -> str:
+    """Get the file has using the given algorithm."""
+    assert algorithm in hashlib.algorithms_available
+    sha = hashlib.__dict__[algorithm]()
+    with open(filepath, "rb") as fp:
+        while True:
+            data = fp.read(64 * 1024)
+            if not data:
+                break
+            sha.update(data)
+    return sha.hexdigest()
+
+
+def download_and_verify(
+    url: str,
+    local_file: Union[str, Path],
+    hash: str,
+    hash_algorithm: str,
+    content_length: Union[None, int] = None,
+):
+    """Download the url to a local file and check for validity, removing if not."""
+    if not isinstance(local_file, Path):
+        local_file = Path(local_file)
+    local_file.parent.mkdir(parents=True, exist_ok=True)
+    resp = requests.get(url, stream=True)
+    resp.raise_for_status()
+    if content_length is None and "content-length" in resp.headers:
+        content_length = int(resp.headers.get("content-length"))
+    logger.info(f"Downloading {url} to {local_file} with {hash_algorithm}={hash}")
+    with open(local_file, "wb") as fdl:
+        with tqdm(
+            total=content_length,
+            unit="B",
+            unit_scale=True,
+            desc=local_file.name,
+            ascii=True,
+        ) as pbar:
+            for chunk in resp.iter_content(chunk_size=1024):
+                if chunk:
+                    fdl.write(chunk)
+                    pbar.update(len(chunk))
+    if get_file_hash(local_file, hash_algorithm) != hash:
+        logger.info(f"{local_file} failed validation, removing")
+        local_file.unlink()
 
 
 def get_relative_esgf_path(entry: Dict[str, Any]) -> Path:
@@ -108,16 +156,17 @@ def response_to_local_filelist(
         file_path = data_root / get_relative_esgf_path(entry)
         if not file_path.is_dir():
             raise FileNotFoundError(f"Directory {file_path} does not exist.")
-        logger.info(f"Using files from {file_path}")
         for file_name in file_path.glob("*.nc"):
             paths.append(file_name)
+        if paths:
+            logger.info(f"Using files from {file_path}")
     return paths
 
 
 def response_to_https_download(
     response: GlobusHTTPResponse, local_root: Union[str, Path]
 ) -> List[Path]:
-    """"""
+    """Download the file using the links found in the globus response."""
     if isinstance(local_root, str):
         local_root = Path(local_root)
     if not local_root.is_dir():
@@ -128,21 +177,24 @@ def response_to_https_download(
         entry = g["entries"][0]
         if entry["entry_id"] != "file":
             continue
-        url = [u for u in entry["content"]["url"] if u.endswith("|HTTPServer")]
+        content = entry["content"]
+        url = [u for u in content["url"] if u.endswith("|HTTPServer")]
         if len(url) != 1:
             continue
-
         url = url[0].replace("|HTTPServer", "")
         local_file = local_cache / get_relative_esgf_path(entry) / Path(Path(url).name)
         local_file.parent.mkdir(parents=True, exist_ok=True)
-        if not local_file.is_file():
-            resp = requests.get(url, stream=True)
-            logger.info(f"Downloading to {local_file}")
-            with open(local_file, "wb") as fdl:
-                for chunk in resp.iter_content(chunk_size=1024):
-                    if chunk:
-                        fdl.write(chunk)
-        paths.append(local_file)
+        try:
+            download_and_verify(
+                url,
+                local_file,
+                content["checksum"],
+                content["checksum_type"],
+                int(content["size"]),
+            )
+            paths.append(local_file)
+        except requests.exceptions.HTTPError:
+            logger.info(f"HTTP error {url}")
     return paths
 
 
@@ -356,10 +408,7 @@ class ESGFCatalog:
 
             # 4) Use the https links to download data locally.
             if not file_list:
-                try:
-                    file_list = response_to_https_download(response, self.local_cache)
-                except OSError:
-                    pass
+                file_list = response_to_https_download(response, self.local_cache)
 
             # Now open datasets and add to the return dictionary
             key = row.globus_subject.split("|")[0]
@@ -367,6 +416,8 @@ class ESGFCatalog:
                 ds[key] = xr.open_dataset(file_list[0])
             elif len(file_list) > 1:
                 ds[key] = xr.open_mfdataset(file_list)
+            else:
+                ds[key] = "Could not obtain this file."
         return ds
 
 
