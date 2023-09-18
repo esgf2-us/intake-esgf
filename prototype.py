@@ -22,12 +22,19 @@ GLOBUS_INDEX_IDS = {
 
 # setup logging
 local_cache = Path.home() / ".esgf"
-logging.basicConfig(
-    filename=local_cache / "search_history.log",
-    format="%(asctime)s %(message)s",
-    datefmt="%Y-%m-%d %H:%M:%S",
-    level=logging.INFO,
+local_cache.mkdir(parents=True, exist_ok=True)
+logger = logging.getLogger(__name__)
+log_file = local_cache / "esgf.log"
+if not log_file.is_file():
+    log_file.touch()
+file_handler = logging.FileHandler(log_file)
+file_handler.setFormatter(
+    logging.Formatter(
+        "%(asctime)s %(funcName)s %(message)s", datefmt="%Y-%m-%d %H:%M:%S"
+    )
 )
+logger.addHandler(file_handler)
+logger.setLevel(logging.INFO)
 
 
 def get_relative_esgf_path(entry: Dict[str, Any]) -> Path:
@@ -99,9 +106,9 @@ def response_to_local_filelist(
         if entry["entry_id"] != "file":
             continue
         file_path = data_root / get_relative_esgf_path(entry)
-        logging.info(f"Checking f{file_path} for files")
         if not file_path.is_dir():
             raise FileNotFoundError(f"Directory {file_path} does not exist.")
+        logger.info(f"Using files from {file_path}")
         for file_name in file_path.glob("*.nc"):
             paths.append(file_name)
     return paths
@@ -124,12 +131,13 @@ def response_to_https_download(
         url = [u for u in entry["content"]["url"] if u.endswith("|HTTPServer")]
         if len(url) != 1:
             continue
+
         url = url[0].replace("|HTTPServer", "")
         local_file = local_cache / get_relative_esgf_path(entry) / Path(Path(url).name)
         local_file.parent.mkdir(parents=True, exist_ok=True)
         if not local_file.is_file():
             resp = requests.get(url, stream=True)
-            logging.info(f"Downloading to {local_file}")
+            logger.info(f"Downloading to {local_file}")
             with open(local_file, "wb") as fdl:
                 for chunk in resp.iter_content(chunk_size=1024):
                     if chunk:
@@ -274,7 +282,7 @@ class ESGFCatalog:
         for key, val in search.items():
             if isinstance(val, bool):
                 search[key] = str(val)
-        logging.info(str(search))
+        logger.info(f"{strict=}, {limit=}, {str(search)}")
         if strict:
             query_data = {
                 "q": "",
