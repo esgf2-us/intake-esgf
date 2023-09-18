@@ -28,8 +28,6 @@ logging.basicConfig(
     datefmt="%Y-%m-%d %H:%M:%S",
     level=logging.INFO,
 )
-logger = logging.getLogger(__name__)
-logger.setLevel("INFO")
 
 
 def get_relative_esgf_path(entry: Dict[str, Any]) -> Path:
@@ -56,7 +54,7 @@ def get_relative_esgf_path(entry: Dict[str, Any]) -> Path:
 
 
 def response_to_dataframe(response: GlobusHTTPResponse, pattern: str) -> pd.DataFrame:
-    """Return the dataset entries from the response of a Globus search."""
+    """Return a pandas dataframe from the response of a Globus search."""
     df = []
     for g in response["gmeta"]:
         assert len(g["entries"]) == 1  # A check on the assumption of a single entry
@@ -78,20 +76,18 @@ def response_to_dataframe(response: GlobusHTTPResponse, pattern: str) -> pd.Data
 def response_to_local_filelist(
     response: GlobusHTTPResponse, data_root: Union[str, Path]
 ) -> List[Path]:
-    """Return a list of full paths to netCDF files from the Globus response.
+    """Return a list of local paths to netCDF files described in the Globus response.
 
-    This function uses the `directory_format_template_` and values in the response to
-    form a relative location of the files represented in the Globus response. We then
-    prepend the given data route to make the path absolute and check for existence.
-
-    If we had something beyond https logs to track file access, at this point we could
-    iterate some counter that the dataset had been accessed. If a problem, we could use
-    the https link and start to download a chunk of data and then break it just so there
-    is evidence of use.
+    This function is used to check if the files for which we searched are already
+    available locally. This could be because we have previously downloaded them and they
+    are in the local cache. It could also be because we are on a resource that has
+    direct access to the ESGF data and we have called `set_esgf_data_root()`. This
+    function uses the `directory_format_template_` and values in the response to form a
+    relative location of the files represented in the Globus response. We then prepend
+    the given `data_root` to make the path absolute and check for existence.
 
     """
-    if data_root is None:
-        return []
+    assert data_root is not None
     if isinstance(data_root, str):
         data_root = Path(data_root)
     if not data_root.is_dir():
@@ -103,6 +99,7 @@ def response_to_local_filelist(
         if entry["entry_id"] != "file":
             continue
         file_path = data_root / get_relative_esgf_path(entry)
+        logging.info(f"Checking f{file_path} for files")
         if not file_path.is_dir():
             raise FileNotFoundError(f"Directory {file_path} does not exist.")
         for file_name in file_path.glob("*.nc"):
@@ -110,22 +107,29 @@ def response_to_local_filelist(
     return paths
 
 
-def response_to_https_download(response: GlobusHTTPResponse) -> List[Path]:
+def response_to_https_download(
+    response: GlobusHTTPResponse, local_root: Union[str, Path]
+) -> List[Path]:
     """"""
+    if isinstance(local_root, str):
+        local_root = Path(local_root)
+    if not local_root.is_dir():
+        raise FileNotFoundError(f"Directory {local_root} does not exist.")
     paths = []
     for g in response["gmeta"]:
         assert len(g["entries"]) == 1
         entry = g["entries"][0]
         if entry["entry_id"] != "file":
             continue
-        entry = entry["content"]
-        url = [u for u in entry["url"] if u.endswith("|HTTPServer")]
+        url = [u for u in entry["content"]["url"] if u.endswith("|HTTPServer")]
         if len(url) != 1:
             continue
         url = url[0].replace("|HTTPServer", "")
-        local_file = Path(Path(url).name)
+        local_file = local_cache / get_relative_esgf_path(entry) / Path(Path(url).name)
+        local_file.parent.mkdir(parents=True, exist_ok=True)
         if not local_file.is_file():
             resp = requests.get(url, stream=True)
+            logging.info(f"Downloading to {local_file}")
             with open(local_file, "wb") as fdl:
                 for chunk in resp.iter_content(chunk_size=1024):
                     if chunk:
@@ -158,9 +162,10 @@ class ESGFCatalog:
     def __init__(self, index_id="anl-dev"):
         assert index_id in GLOBUS_INDEX_IDS
         self.index_id = GLOBUS_INDEX_IDS[index_id]
-        self.df = None
-        self.total_results = 0
-        self.data_root = None
+        self.df = None  # dataframe which stores the results of the last call to search
+        self.total_results = 0  # the total number of results from the last search
+        self.esgf_data_root = None  # the path where the esgf data already exists
+        self.local_cache = Path.home() / ".esgf"  # the path to the local cache
 
     def __repr__(self):
         if self.df is None:
@@ -244,10 +249,9 @@ class ESGFCatalog:
         grid_label
         dtype: object
 
-        This can be useful if you are not sure what variable you need, but have an idea
-        of what it is called. The follow search reveals that there are several choices
-        for `variable_id` (ta, ts, ta500, ta850, ta700) that have 'temperature' in the
-        long name.
+        Leaving `strict=False` can be useful if you are not sure what variable you need,
+        but have an idea of what it is called. The follow search reveals that there are
+        several choices for `variable_id` that have 'temperature' in the long name.
 
         >>> cat.search(variable_long_name='temperature')
         Displaying summary info for 1000 out of 480459 results:
@@ -270,6 +274,7 @@ class ESGFCatalog:
         for key, val in search.items():
             if isinstance(val, bool):
                 search[key] = str(val)
+        logging.info(str(search))
         if strict:
             query_data = {
                 "q": "",
@@ -301,15 +306,9 @@ class ESGFCatalog:
         if not self.total_results:
             raise ValueError("Search returned no results.")
         self.df = response_to_dataframe(result, get_dataset_pattern())
-        # Ultimately here I think we want to remove the notion of where the data is
-        # located and just present the user with what data is available. When it comes
-        # time to download then we can implement some logic about where/how the data is
-        # downloaded/accessed that is best for the user. This could be based on ping or
-        # some other latency measure, but also could involve a system check to see if
-        # the user has direct access or some globus endpoint specified.
         return self
 
-    def set_data_root(self, root: Union[str, Path]) -> None:
+    def set_esgf_data_root(self, root: Union[str, Path]) -> None:
         """Set the root directory of the ESGF data local to your system.
 
         It may be that you are working on a resource that has direct access to a copy of
@@ -317,19 +316,18 @@ class ESGFCatalog:
         will check if the requested dataset is available through direct access.
 
         """
-        # This function could also require you to specify the node to which you are
-        # locally connected. This is because if you query the index and find a dataset,
-        # it does not mean that this dataset exists on your local copy. For now, we will
-        # just check if the file exists and revert to other transfer means if it does
-        # not.
         if isinstance(root, str):
             root = Path(root)
         assert root.is_dir()
-        self.data_root = root
+        self.esgf_data_root = root
 
     def to_dataset_dict(self) -> Dict[str, xr.Dataset]:
         if self.df is None or len(self.df) == 0:
             raise ValueError("No entries to retrieve.")
+        # Prefer the esgf data root if set, otherwise check the local cache
+        data_root = (
+            self.esgf_data_root if self.esgf_data_root is not None else self.local_cache
+        )
         ds = {}
         for _, row in tqdm(self.df.iterrows(), total=len(self.df)):
             response = SearchClient().search(
@@ -338,7 +336,7 @@ class ESGFCatalog:
             file_list = []
             # 1) Look for direct access to files
             try:
-                file_list = response_to_local_filelist(response, self.data_root)
+                file_list = response_to_local_filelist(response, data_root)
             except FileNotFoundError:
                 pass
             # 2) Use THREDDS links, but there are none in this index and so we will put
@@ -351,7 +349,7 @@ class ESGFCatalog:
             # 4) Use the https links to download data locally.
             if not file_list:
                 try:
-                    file_list = response_to_https_download(response)
+                    file_list = response_to_https_download(response, self.local_cache)
                 except OSError:
                     pass
 
@@ -369,6 +367,7 @@ if __name__ == "__main__":
     # search. This uses the globus sdk to query their index and the response is parsed
     # into a pandas dataframe for viewing.
     cat = ESGFCatalog().search(
+        strict=True,
         activity_id="CMIP",
         experiment_id="historical",
         source_id="CESM2",
@@ -381,8 +380,5 @@ if __name__ == "__main__":
     print(cat)
 
     # Our version of `to_dataset_dict()` should try to do the best thing for the user
-    # automatically. If you are running on a resource that has direct access to data,
-    # then you can set the root with this function and then internally we will prefer
-    # this direct access.
-    cat.set_data_root("/home/nate/data/ILAMB/MODELS")  # I put sftlf in here for a test
+    # automatically.
     ds = cat.to_dataset_dict()
