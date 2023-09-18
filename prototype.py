@@ -37,8 +37,8 @@ def get_relative_esgf_path(entry: Dict[str, Any]) -> Path:
     if "content" not in entry:
         raise ValueError("'content' not part of the entry.")
     content = entry["content"]
-    if set(content.keys()).difference(
-        ["version", "dataset_id", "directory_format_template_"]
+    if set(["version", "dataset_id", "directory_format_template_"]).difference(
+        content.keys()
     ):
         raise ValueError("Entry content does not contain expected keys.")
     # For some reason, the `version` in the globus response is just an integer and not
