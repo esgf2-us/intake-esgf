@@ -1,0 +1,24 @@
+# https://snarky.ca/what-the-heck-is-pyproject-toml/
+
+[build-system]
+requires = ["setuptools"]
+build-backend = "setuptools.build_meta"
+
+[tool.coverage.run]
+omit = ["*/intake_esgf/tests/*"]
+
+[tool.ruff]
+target-version = "py39"
+ignore = [
+    "E501", # line too long - let black worry about that
+]
+select = [
+    "F",  # Pyflakes
+    "E",
+    "W",  # Pycodestyle
+    "I",  # isort
+    "UP", # Pyupgrade
+]
+
+[tool.ruff.isort]
+known-first-party = ["intake-esgf"]
