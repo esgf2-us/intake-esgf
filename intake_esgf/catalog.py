@@ -1,7 +1,7 @@
 import logging
 import warnings
 from pathlib import Path
-from typing import Dict, Union
+from typing import Union
 
 import pandas as pd
 import xarray as xr
@@ -17,8 +17,7 @@ from intake_esgf.core import (
 
 warnings.simplefilter("ignore", category=xr.SerializationWarning)
 
-# create an alias for the different indices we want to support. Could easily extend to
-# obs4mips or whatever else we wish to support.
+# create an alias for the different indices we want to support.
 GLOBUS_INDEX_IDS = {
     "anl-dev": "d927e2d9-ccdb-48e4-b05d-adbc3d97bbc5",
 }
@@ -205,7 +204,7 @@ class ESGFCatalog:
         assert root.is_dir()
         self.esgf_data_root = root
 
-    def to_dataset_dict(self) -> Dict[str, xr.Dataset]:
+    def to_dataset_dict(self) -> dict[str, xr.Dataset]:
         if self.df is None or len(self.df) == 0:
             raise ValueError("No entries to retrieve.")
         # Prefer the esgf data root if set, otherwise check the local cache

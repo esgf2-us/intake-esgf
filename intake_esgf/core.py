@@ -3,7 +3,7 @@ import logging
 import re
 import time
 from pathlib import Path
-from typing import Any, Dict, List, Union
+from typing import Any, Union
 
 import pandas as pd
 import requests
@@ -62,11 +62,11 @@ def download_and_verify(
         local_file.unlink()
         return
     logger.info(
-        f"Downloaded {url} to {local_file} in {transfer_time:.2f} [s] at {rate:.2f} [Mb s-1] with {hash_algorithm}={hash}"  # noqa: E501
+        f"Downloaded {url} to {local_file} in {transfer_time:.2f} [s] at {rate:.2f} [Mb s-1] with {hash_algorithm.lower()}={hash}"  # noqa: E501
     )
 
 
-def get_relative_esgf_path(entry: Dict[str, Any]) -> Path:
+def get_relative_esgf_path(entry: dict[str, Any]) -> Path:
     """Return the relative ESGF path from the Globus entry."""
     if "content" not in entry:
         raise ValueError("'content' not part of the entry.")
@@ -111,7 +111,7 @@ def response_to_dataframe(response: GlobusHTTPResponse, pattern: str) -> pd.Data
 
 def response_to_local_filelist(
     response: GlobusHTTPResponse, data_root: Union[str, Path]
-) -> List[Path]:
+) -> list[Path]:
     """Return a list of local paths to netCDF files described in the Globus response.
 
     This function is used to check if the files for which we searched are already
@@ -146,7 +146,7 @@ def response_to_local_filelist(
 
 def response_to_https_download(
     response: GlobusHTTPResponse, local_root: Union[str, Path]
-) -> List[Path]:
+) -> list[Path]:
     """Download the file using the links found in the globus response."""
     if isinstance(local_root, str):
         local_root = Path(local_root)

@@ -21,4 +21,4 @@ select = [
 ]
 
 [tool.ruff.isort]
-known-first-party = ["intake-esgf"]
+known-first-party = ["intake_esgf"]
