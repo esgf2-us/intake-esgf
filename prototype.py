@@ -1,6 +1,7 @@
 import hashlib
 import logging
 import re
+import time
 import warnings
 from pathlib import Path
 from typing import Any, Dict, List, Union
@@ -41,6 +42,7 @@ logger.setLevel(logging.INFO)
 
 def get_file_hash(filepath: Union[str, Path], algorithm: str) -> str:
     """Get the file has using the given algorithm."""
+    algorithm = algorithm.lower()
     assert algorithm in hashlib.algorithms_available
     sha = hashlib.__dict__[algorithm]()
     with open(filepath, "rb") as fp:
@@ -58,7 +60,7 @@ def download_and_verify(
     hash: str,
     hash_algorithm: str,
     content_length: Union[None, int] = None,
-):
+) -> None:
     """Download the url to a local file and check for validity, removing if not."""
     if not isinstance(local_file, Path):
         local_file = Path(local_file)
@@ -67,7 +69,7 @@ def download_and_verify(
     resp.raise_for_status()
     if content_length is None and "content-length" in resp.headers:
         content_length = int(resp.headers.get("content-length"))
-    logger.info(f"Downloading {url} to {local_file} with {hash_algorithm}={hash}")
+    transfer_time = time.process_time()
     with open(local_file, "wb") as fdl:
         with tqdm(
             total=content_length,
@@ -80,9 +82,15 @@ def download_and_verify(
                 if chunk:
                     fdl.write(chunk)
                     pbar.update(len(chunk))
+    transfer_time = time.process_time() - transfer_time
+    rate = content_length * 1e-6 / transfer_time
     if get_file_hash(local_file, hash_algorithm) != hash:
         logger.info(f"{local_file} failed validation, removing")
         local_file.unlink()
+        return
+    logger.info(
+        f"Downloaded {url} to {local_file} in {transfer_time:.2f} [s] at {rate:.2f} [Mb s-1] with {hash_algorithm}={hash}"  # noqa: E501
+    )
 
 
 def get_relative_esgf_path(entry: Dict[str, Any]) -> Path:
@@ -188,8 +196,8 @@ def response_to_https_download(
             download_and_verify(
                 url,
                 local_file,
-                content["checksum"],
-                content["checksum_type"],
+                content["checksum"][0],
+                content["checksum_type"][0],
                 int(content["size"]),
             )
             paths.append(local_file)
