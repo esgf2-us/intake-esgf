@@ -1,4 +1,5 @@
 import logging
+import time
 import warnings
 from pathlib import Path
 from typing import Union
@@ -150,6 +151,7 @@ class ESGFCatalog:
         dtype: object
 
         """
+        search_time = time.time()
         search["type"] = "Dataset"  # only search for datasets, not files
         if "latest" not in search:  # by default only find the latest
             search["latest"] = True
@@ -157,7 +159,6 @@ class ESGFCatalog:
         for key, val in search.items():
             if isinstance(val, bool):
                 search[key] = str(val)
-        logger.info(f"{strict=}, {limit=}, {str(search)}")
         if strict:
             query_data = {
                 "q": "",
@@ -172,7 +173,7 @@ class ESGFCatalog:
                 "facets": [],
                 "sort": [],
             }
-            result = SearchClient().post_search(self.index_id, query_data, limit=1000)
+            result = SearchClient().post_search(self.index_id, query_data, limit=limit)
         else:
             query = " AND ".join(
                 [
@@ -183,12 +184,18 @@ class ESGFCatalog:
                 ]
             )
             result = SearchClient().search(
-                self.index_id, query, limit=1000, advanced=True
+                self.index_id, query, limit=limit, advanced=True
             )
+        search_time = time.time() - search_time
         self.total_results = result["total"]
         if not self.total_results:
             raise ValueError("Search returned no results.")
+        process_time = time.time()
         self.df = response_to_dataframe(result, get_dataset_pattern())
+        process_time = time.time() - process_time
+        logger.info(
+            f"{strict=}, {limit=}, {search_time=:.3f}, {process_time=:.3f}, {str(search)}"
+        )
         return self
 
     def set_esgf_data_root(self, root: Union[str, Path]) -> None:
