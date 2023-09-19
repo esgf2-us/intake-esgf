@@ -18,6 +18,7 @@ search. Under the hood, we use the globus sdk to query the index and the respons
 is parsed into a pandas dataframe for viewing.
 
 ```bash
+>>> from intake_esgf import ESGFCatalog
 >>> cat = ESGFCatalog()
 >>> cat.search(
         experiment_id=["historical","ssp585"],
