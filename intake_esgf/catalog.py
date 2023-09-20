@@ -219,7 +219,14 @@ class ESGFCatalog:
             self.esgf_data_root if self.esgf_data_root is not None else self.local_cache
         )
         ds = {}
-        for _, row in tqdm(self.df.iterrows(), total=len(self.df)):
+        for _, row in tqdm(
+            self.df.iterrows(),
+            unit="dataset",
+            unit_scale=False,
+            desc="Loading datasets",
+            ascii=True,
+            total=len(self.df),
+        ):
             response = SearchClient().search(
                 self.index_id, f'dataset_id: "{row.globus_subject}"', advanced=True
             )
