@@ -42,7 +42,7 @@ def download_and_verify(
     resp.raise_for_status()
     if content_length is None and "content-length" in resp.headers:
         content_length = int(resp.headers.get("content-length"))
-    transfer_time = time.process_time()
+    transfer_time = time.time()
     with open(local_file, "wb") as fdl:
         with tqdm(
             total=content_length,
@@ -55,7 +55,7 @@ def download_and_verify(
                 if chunk:
                     fdl.write(chunk)
                     pbar.update(len(chunk))
-    transfer_time = time.process_time() - transfer_time
+    transfer_time = time.time() - transfer_time
     rate = content_length * 1e-6 / transfer_time
     if get_file_hash(local_file, hash_algorithm) != hash:
         logger.info(f"{local_file} failed validation, removing")
