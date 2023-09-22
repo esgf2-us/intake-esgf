@@ -1,0 +1,10 @@
+name: intake-esgf-dev
+channels:
+  - conda-forge
+  - nodefaults
+dependencies:
+  - xarray
+  - xarray-datatree
+  - jupyterlab
+  - netcdf4
+  - matplotlib
