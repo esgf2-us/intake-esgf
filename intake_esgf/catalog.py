@@ -6,6 +6,7 @@ from typing import Union
 
 import pandas as pd
 import xarray as xr
+from datatree import DataTree
 from globus_sdk import SearchClient
 from tqdm import tqdm
 
@@ -211,13 +212,53 @@ class ESGFCatalog:
         assert root.is_dir()
         self.esgf_data_root = root
 
-    def to_dataset_dict(self) -> dict[str, xr.Dataset]:
+    def to_dataset_dict(
+        self,
+        minimal_keys: bool = True,
+        ignore_facets: Union[None, str, list[str]] = None,
+        separator: str = ".",
+    ) -> dict[str, xr.Dataset]:
+        """Return the current search as a dictionary of datasets.
+
+        By default, the keys of the returned dictionary are the minimal set of facets
+        required to uniquely describe the search. If you prefer to use a full set of
+        facets, set `minimal_keys=False`. You can also specify
+
+        Parameters
+        ----------
+        minimal_keys
+            Disable to return a dictonary whose keys are formed using all facets, by
+            default we use a minimal set of facets to build the simplest keys.
+        ignore_facets
+            When constructing the dictionary keys, which facets should we ignore?
+        separator
+            When generating the keys, the string to use as a seperator of facets.
+        """
         if self.df is None or len(self.df) == 0:
             raise ValueError("No entries to retrieve.")
-        # Prefer the esgf data root if set, otherwise check the local cache
+        # Prefer the esgf data root if set, otherwise check the local cache for the
+        # existence of files.
         data_root = (
             self.esgf_data_root if self.esgf_data_root is not None else self.local_cache
         )
+        # The keys returned will be just the items that are different.
+        output_key_format = []
+        if ignore_facets is None:
+            ignore_facets = []
+        if isinstance(ignore_facets, str):
+            ignore_facets = [ignore_facets]
+        ignore_facets += [
+            "version",
+            "data_node",
+            "globus_subject",
+        ]  # these we always ignore
+        for col in self.df.drop(columns=ignore_facets):
+            if minimal_keys:
+                if not (self.df[col][0] == self.df[col]).all():
+                    output_key_format.append(col)
+            else:
+                output_key_format.append(col)
+        # Form the returned dataset in the fastest way possible
         ds = {}
         for _, row in tqdm(
             self.df.iterrows(),
@@ -261,7 +302,7 @@ class ESGFCatalog:
                 file_list = response_to_https_download(response, self.local_cache)
 
             # Now open datasets and add to the return dictionary
-            key = row.globus_subject.split("|")[0]
+            key = separator.join([row[k] for k in output_key_format])
             if len(file_list) == 1:
                 ds[key] = xr.open_dataset(file_list[0])
             elif len(file_list) > 1:
@@ -269,3 +310,29 @@ class ESGFCatalog:
             else:
                 ds[key] = "Could not obtain this file."
         return ds
+
+    def to_datatree(
+        self,
+        minimal_keys: bool = True,
+        ignore_facets: Union[None, str, list[str]] = None,
+    ) -> DataTree:
+        """Return the current search as a datatree.
+
+        Parameters
+        ----------
+        minimal_keys
+            Disable to return a dictonary whose keys are formed using all facets, by
+            default we use a minimal set of facets to build the simplest keys.
+        ignore_facets
+            When constructing the dictionary keys, which facets should we ignore?
+
+        See Also
+        --------
+        `to_dataset_dict`
+
+        """
+        return DataTree.from_dict(
+            self.to_dataset_dict(
+                minimal_keys=minimal_keys, ignore_facets=ignore_facets, separator="/"
+            )
+        )
