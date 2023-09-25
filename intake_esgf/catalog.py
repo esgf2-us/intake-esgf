@@ -227,8 +227,21 @@ class ESGFCatalog:
             ascii=True,
             total=len(self.df),
         ):
-            response = SearchClient().search(
-                self.index_id, f'dataset_id: "{row.globus_subject}"', advanced=True
+            response = SearchClient().post_search(
+                self.index_id,
+                {
+                    "q": "",
+                    "filters": [
+                        {
+                            "type": "match_any",
+                            "field_name": "dataset_id",
+                            "values": [row.globus_subject],
+                        }
+                    ],
+                    "facets": [],
+                    "sort": [],
+                },
+                limit=1000,
             )
             file_list = []
             # 1) Look for direct access to files
