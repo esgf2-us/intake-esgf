@@ -1,5 +1,3 @@
-from functools import partial
-
 import pandas as pd
 
 from intake_esgf import ESGFCatalog
@@ -30,8 +28,7 @@ def complete(df: pd.DataFrame) -> bool:
     return False
 
 
-ilamb_complete = partial(complete)
-cat.remove_incomplete(ilamb_complete)
+cat.remove_incomplete(complete)
 
 # For our anlaysis we only want a single ensemble member, so this will remove all but
 # the smallest ensemble in terms of numeric value of the 4 integers in the `member_id`.
