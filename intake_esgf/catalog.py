@@ -2,7 +2,7 @@ import logging
 import time
 import warnings
 from pathlib import Path
-from typing import Union
+from typing import Callable, Union
 
 import pandas as pd
 import xarray as xr
@@ -70,6 +70,12 @@ class ESGFCatalog:
                 continue
             out[col] = self.df[col].unique()
         return pd.Series(out)
+
+    def model_groups(self) -> pd.Series:
+        """Return counts for unique combinations of (source_id,member_id,grid_label)."""
+        return self.df.groupby(["source_id", "member_id", "grid_label"]).count()[
+            "variable_id"
+        ]
 
     def search(
         self, strict: bool = False, limit: int = 1000, **search: Union[str, list[str]]
@@ -336,3 +342,41 @@ class ESGFCatalog:
                 minimal_keys=minimal_keys, ignore_facets=ignore_facets, separator="/"
             )
         )
+
+    def remove_incomplete(self, complete: Callable[[pd.DataFrame], bool]):
+        """Remove the incomplete search results as defined by the `complete` function.
+
+        While the ESGF search results will return anything matching the criteria, we are
+        typically interested in unique combinations of `source_id`, `member_id`, and
+        `grid_label`. Many times modeling groups upload different realizations but they
+        do not contain all the variables either by oversight or design. This function
+        will internally group the results by these criteria and then call the
+        user-provided `complete` function on the grouped dataframe and remove entries
+        deemed incomplete.
+
+        """
+        for lbl, grp in self.df.groupby(["source_id", "member_id", "grid_label"]):
+            if not complete(grp):
+                self.df = self.df.drop(grp.index)
+        return self
+
+    def remove_ensembles(self):
+        """Remove higher numeric ensembles for each `source_id`.
+
+        Many times an ESGF search will return possible many ensembles, but you only need
+        1 for your analysis, usually the smallest numeric values in the `member_id`.
+        While in most cases it will simply be `r1i1p1f1`, this is not always the case.
+        This function will select the *smallest* `member_id` (in terms of the smallest 4
+        integer values) for each `source_id` in your search and remove all others.
+
+        """
+        for source_id, grp in self.df.groupby("source_id"):
+            member_id = "r{}i{}p{}f{}".format(
+                *(
+                    grp.member_id.str.extract(r"r(\d+)i(\d+)p(\d+)f(\d+)")
+                    .sort_values([0, 1, 2, 3])
+                    .iloc[0]
+                )
+            )
+            self.df = self.df.drop(grp[grp.member_id != member_id].index)
+        return self
