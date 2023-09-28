@@ -7,10 +7,121 @@ from typing import Any, Union
 
 import pandas as pd
 import requests
+from globus_sdk import SearchClient
 from globus_sdk.response import GlobusHTTPResponse
+from pyesgf.search import SearchConnection
 from tqdm import tqdm
 
 logger = logging.getLogger("intake-esgf")
+
+
+def get_dataset_pattern() -> str:
+    """Return the dataset id regular expression pattern."""
+    COLUMNS = [
+        "mip_era",
+        "activity_id",
+        "institution_id",
+        "source_id",
+        "experiment_id",
+        "member_id",
+        "table_id",
+        "variable_id",
+        "grid_label",
+        "version",
+        "data_node",
+    ]
+    pattern = r"\.".join([rf"(?P<{c}>\S[^.|]+)" for c in COLUMNS[:-1]])
+    pattern += rf"\|(?P<{COLUMNS[-1]}>\S+)"
+    return pattern
+
+
+class SolrESGFIndex:
+    def __init__(self, index_node: str = "esgf-node.llnl.gov", distrib: bool = True):
+        self.conn = SearchConnection(
+            f"https://{index_node}/esg-search", distrib=distrib
+        )
+
+    def search(self, **search: Union[str, list[str]]) -> pd.DataFrame:
+        if "latest" not in search:
+            search["latest"] = True
+        ctx = self.conn.new_context(facets=list(search.keys()), **search)
+        response = ctx.search()
+        if not ctx.hit_count:
+            raise ValueError("Search returned no results.")
+        assert ctx.hit_count == len(response)
+        pattern = get_dataset_pattern()
+        df = []
+        for dsr in response:
+            m = re.search(pattern, dsr.dataset_id)
+            if m:
+                df.append(m.groupdict())
+                df[-1]["id"] = dsr.dataset_id
+        return pd.DataFrame(df)
+
+
+class GlobusESGFIndex:
+    GLOBUS_INDEX_IDS = {
+        "anl-dev": "d927e2d9-ccdb-48e4-b05d-adbc3d97bbc5",
+    }
+
+    def __init__(self, index_id="anl-dev"):
+        if index_id in GlobusESGFIndex.GLOBUS_INDEX_IDS:
+            index_id = GlobusESGFIndex.GLOBUS_INDEX_IDS[index_id]
+        self.index_id = index_id
+        self.client = SearchClient()
+
+    def search(self, **search: Union[str, list[str]]) -> pd.DataFrame:
+        limit = 2000
+        if "project" in search:
+            project = search.pop("project")
+            if project != "CMIP6":
+                raise ValueError("ANL Globus index only for CMIP6")
+        search["type"] = "Dataset"
+        if "latest" not in search:
+            search["latest"] = True
+        for key, val in search.items():
+            if isinstance(val, bool):
+                search[key] = str(val)
+        query_data = {
+            "q": "",
+            "filters": [
+                {
+                    "type": "match_any",
+                    "field_name": key,
+                    "values": [val] if isinstance(val, str) else val,
+                }
+                for key, val in search.items()
+            ],
+            "facets": [],
+            "sort": [],
+        }
+        response = SearchClient().post_search(self.index_id, query_data, limit=limit)
+        if not response["total"]:
+            raise ValueError("Search returned no results.")
+        pattern = get_dataset_pattern()
+        df = []
+        for g in response["gmeta"]:
+            m = re.search(pattern, g["subject"])
+            if m:
+                df.append(m.groupdict())
+                df[-1]["id"] = g["subject"]
+        df = pd.DataFrame(df)
+        return df
+
+
+def combine_results(dfs: list[pd.DataFrame]) -> pd.DataFrame:
+    """Return a combined dataframe where ids are now a list."""
+    # combine and remove duplicate entries
+    df = pd.concat(dfs).drop_duplicates(subset="id").reset_index(drop=True)
+    # remove earlier versions if present
+    for lbl, grp in df.groupby(list(df.columns[:-3])):
+        df = df.drop(grp[grp.version != grp.version.max()].index)
+    # now convert groups to list
+    for lbl, grp in df.groupby(list(df.columns[:-3])):
+        df = df.drop(grp.iloc[1:].index)
+        df.loc[grp.index[0], "id"] = grp.id.to_list()
+    df = df.drop(columns="data_node")
+    return df
 
 
 def get_file_hash(filepath: Union[str, Path], algorithm: str) -> str:
@@ -177,23 +288,3 @@ def response_to_https_download(
         except requests.exceptions.HTTPError:
             logger.info(f"HTTP error {url}")
     return paths
-
-
-def get_dataset_pattern() -> str:
-    """Return the Globus subject regular expression pattern for datasets."""
-    COLUMNS = [
-        "mip_era",
-        "activity_id",
-        "institution_id",
-        "source_id",
-        "experiment_id",
-        "member_id",
-        "table_id",
-        "variable_id",
-        "grid_label",
-        "version",
-        "data_node",
-    ]
-    pattern = "\.".join([f"(?P<{c}>\S[^.|]+)" for c in COLUMNS[:-1]])  # noqa: W605
-    pattern += f"\|(?P<{COLUMNS[-1]}>\S+)"  # noqa: W605
-    return pattern
