@@ -40,12 +40,14 @@ class SolrESGFIndex:
         self.conn = SearchConnection(
             f"https://{index_node}/esg-search", distrib=distrib
         )
+        self.response = None
 
     def search(self, **search: Union[str, list[str]]) -> pd.DataFrame:
         if "latest" not in search:
             search["latest"] = True
         ctx = self.conn.new_context(facets=list(search.keys()), **search)
         response = ctx.search()
+        self.response = response
         if not ctx.hit_count:
             raise ValueError("Search returned no results.")
         assert ctx.hit_count == len(response)
@@ -57,6 +59,20 @@ class SolrESGFIndex:
                 df.append(m.groupdict())
                 df[-1]["id"] = dsr.dataset_id
         return pd.DataFrame(df)
+
+    def get_file_info(self, dataset_ids: list[str]) -> tuple[Path, str, str, list[str]]:
+        # rel_path, checksum, alg, list of links
+        if self.response is None:
+            raise ValueError("You need to run search() first.")
+        checksums = []
+        checksum_types = []
+        for dsr in self.response:
+            if dsr.dataset_id not in dataset_ids:
+                continue
+            for fr in dsr.file_context().search(ignore_facet_check=True):
+                [u[0][0] for t, u in fr.urls.items() if t != "GridFTP"]
+        assert all([c == checksums[0] for c in checksums])
+        assert all([c == checksum_types[0] for c in checksum_types])
 
 
 class GlobusESGFIndex:
@@ -107,6 +123,10 @@ class GlobusESGFIndex:
                 df[-1]["id"] = g["subject"]
         df = pd.DataFrame(df)
         return df
+
+    def get_file_info(dataset_id: str) -> tuple[Path, str, str, list[str]]:
+        # rel_path, checksum, alg, list of links
+        pass
 
 
 def combine_results(dfs: list[pd.DataFrame]) -> pd.DataFrame:
@@ -198,26 +218,6 @@ def get_relative_esgf_path(entry: dict[str, Any]) -> Path:
         .format(**content)
     )
     return file_path
-
-
-def response_to_dataframe(response: GlobusHTTPResponse, pattern: str) -> pd.DataFrame:
-    """Return a pandas dataframe from the response of a Globus search."""
-    df = []
-    for g in response["gmeta"]:
-        assert len(g["entries"]) == 1  # A check on the assumption of a single entry
-        # Manually remove entries which are not datasets. With the way I am using
-        # search, this is not necesary but if a file type gets through the regular
-        # expression pattern will break and pollute the dataframe.
-        if g["entries"][0]["entry_id"] != "dataset":
-            continue
-        m = re.search(pattern, g["subject"])
-        if m:
-            df.append(m.groupdict())
-            # Also include the globus 'subject' so we can find files later when we are
-            # ready to download.
-            df[-1]["globus_subject"] = g["subject"]
-    df = pd.DataFrame(df)
-    return df
 
 
 def response_to_local_filelist(
