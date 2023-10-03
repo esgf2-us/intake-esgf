@@ -13,7 +13,6 @@ from intake_esgf import ESGFCatalog
 experiments = ["historical", "ssp585"]
 variables = ["gpp", "tas", "pr", "mrso"]
 cat = ESGFCatalog().search(
-    strict=True,
     source_id="CESM2",
     variable_id=variables,
     experiment_id=experiments,

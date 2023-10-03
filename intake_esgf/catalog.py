@@ -1,21 +1,20 @@
 import logging
-import time
 import warnings
+from multiprocessing.pool import ThreadPool
 from pathlib import Path
 from typing import Callable, Union
 
 import pandas as pd
 import xarray as xr
 from datatree import DataTree
-from globus_sdk import SearchAPIError, SearchClient
+from globus_sdk import SearchAPIError
 from tqdm import tqdm
 
 from intake_esgf.core import (
     GlobusESGFIndex,
     SolrESGFIndex,
+    combine_file_info,
     combine_results,
-    response_to_https_download,
-    response_to_local_filelist,
 )
 
 warnings.simplefilter("ignore", category=xr.SerializationWarning)
@@ -40,12 +39,22 @@ logger.setLevel(logging.INFO)
 
 
 class ESGFCatalog:
-    def __init__(self):
+    def __init__(self, num_threads: Union[int, None] = None):
         self.indices = [
-            SolrESGFIndex(),
-            SolrESGFIndex("esgf-node.ornl.gov", distrib=False),
-            GlobusESGFIndex(),
-        ]
+            SolrESGFIndex(node, distrib=False)
+            for node in [
+                "esgf.ceda.ac.uk",
+                "esgf-data.dkrz.de",
+                "esgf-node.ipsl.upmc.fr",
+                "esg-dn1.nsc.liu.se",
+                "esgf-node.llnl.gov",
+                "esgf.nci.org.au",
+                "esgf-node.ornl.gov",
+            ]
+        ] + [GlobusESGFIndex()]
+        self.num_threads = num_threads
+        if num_threads is None:
+            self.num_threads = len(self.indices)
         self.df = None  # dataframe which stores the results of the last call to search
         self.esgf_data_root = None  # the path where the esgf data already exists
         self.local_cache = Path.home() / ".esgf"  # the path to the local cache
@@ -71,18 +80,25 @@ class ESGFCatalog:
     def search(self, **search: Union[str, list[str]]):
         """Populate the catalog by specifying search facets and values."""
 
-        dfs = []
-        for index in self.indices:
-            search_time = time.time()
-            print(f"{index}...", end=" ")
+        def _search(index):
             try:
                 df = index.search(**search)
             except (ValueError, SearchAPIError):
-                pass
-            search_time = time.time() - search_time
-            print(f"{search_time:.2f}")
-            dfs.append(df)
-        self.df = combine_results(dfs)
+                return pd.DataFrame([])
+            return df
+
+        dfs = ThreadPool(self.num_threads).imap_unordered(_search, self.indices)
+        self.df = combine_results(
+            tqdm(
+                dfs,
+                bar_format="{desc}: {percentage:3.0f}%|{bar}|{n_fmt}/{total_fmt} [{rate_fmt}{postfix}]",
+                unit="index",
+                unit_scale=False,
+                desc="Searching indices",
+                ascii=True,
+                total=len(self.indices),
+            )
+        )
         return self
 
     def set_esgf_data_root(self, root: Union[str, Path]) -> None:
@@ -135,8 +151,7 @@ class ESGFCatalog:
             ignore_facets = [ignore_facets]
         ignore_facets += [
             "version",
-            "data_node",
-            "globus_subject",
+            "id",
         ]  # these we always ignore
         for col in self.df.drop(columns=ignore_facets):
             if minimal_keys:
@@ -154,47 +169,12 @@ class ESGFCatalog:
             ascii=True,
             total=len(self.df),
         ):
-            response = SearchClient().post_search(
-                self.index_id,
-                {
-                    "q": "",
-                    "filters": [
-                        {
-                            "type": "match_any",
-                            "field_name": "dataset_id",
-                            "values": [row.globus_subject],
-                        }
-                    ],
-                    "facets": [],
-                    "sort": [],
-                },
-                limit=1000,
-            )
-            file_list = []
-            # 1) Look for direct access to files
-            try:
-                file_list = response_to_local_filelist(response, data_root)
-            except FileNotFoundError:
-                pass
-            # 2) Use THREDDS links, but there are none in this index and so we will put
-            #    this on the list to do.
-
-            # 3) Use Globus for transfer? I know that we could use the sdk to
-            #    authenticate but I am not clear on if we could automatically setup the
-            #    current location as an endpoint.
-
-            # 4) Use the https links to download data locally.
-            if not file_list:
-                file_list = response_to_https_download(response, self.local_cache)
-
-            # Now open datasets and add to the return dictionary
-            key = separator.join([row[k] for k in output_key_format])
-            if len(file_list) == 1:
-                ds[key] = xr.open_dataset(file_list[0])
-            elif len(file_list) > 1:
-                ds[key] = xr.open_mfdataset(file_list)
-            else:
-                ds[key] = "Could not obtain this file."
+            # merge file info from each index
+            info = combine_file_info(self.indices, row.id)
+            for key in info:
+                print(key)
+                print(info[key], end="\n\n")
+            print(data_root)
         return ds
 
     def to_datatree(

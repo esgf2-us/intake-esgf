@@ -10,6 +10,7 @@ import requests
 from globus_sdk import SearchClient
 from globus_sdk.response import GlobusHTTPResponse
 from pyesgf.search import SearchConnection
+from pyesgf.search.exceptions import EsgfSearchException
 from tqdm import tqdm
 
 logger = logging.getLogger("intake-esgf")
@@ -37,10 +38,14 @@ def get_dataset_pattern() -> str:
 
 class SolrESGFIndex:
     def __init__(self, index_node: str = "esgf-node.llnl.gov", distrib: bool = True):
+        self.repr = f"SolrESGFIndex({index_node},{'distrib=True' if distrib else ''})"
         self.conn = SearchConnection(
             f"https://{index_node}/esg-search", distrib=distrib
         )
         self.response = None
+
+    def __repr__(self):
+        return self.repr
 
     def search(self, **search: Union[str, list[str]]) -> pd.DataFrame:
         if "latest" not in search:
@@ -60,19 +65,32 @@ class SolrESGFIndex:
                 df[-1]["id"] = dsr.dataset_id
         return pd.DataFrame(df)
 
-    def get_file_info(self, dataset_ids: list[str]) -> tuple[Path, str, str, list[str]]:
-        # rel_path, checksum, alg, list of links
+    def get_file_info(self, dataset_ids: list[str]) -> dict[str, Any]:
+        """Return a file information dictionary.
+
+        Parameters
+        ----------
+        dataset_ids
+            A list of datasets IDs which scientifically refer to the same files.
+
+        """
         if self.response is None:
             raise ValueError("You need to run search() first.")
-        checksums = []
-        checksum_types = []
+        info = {}
         for dsr in self.response:
             if dsr.dataset_id not in dataset_ids:
                 continue
             for fr in dsr.file_context().search(ignore_facet_check=True):
-                [u[0][0] for t, u in fr.urls.items() if t != "GridFTP"]
-        assert all([c == checksums[0] for c in checksums])
-        assert all([c == checksum_types[0] for c in checksum_types])
+                if "checksum_type" not in info:
+                    info["checksum_type"] = fr.checksum_type
+                    info["checksum"] = fr.checksum
+                    info["size"] = fr.size
+                assert info["checksum"] == fr.checksum
+                for link_type, link in fr.urls.items():
+                    if link_type not in info:
+                        info[link_type] = []
+                    info[link_type].append(link[0][0])
+        return info
 
 
 class GlobusESGFIndex:
@@ -124,13 +142,62 @@ class GlobusESGFIndex:
         df = pd.DataFrame(df)
         return df
 
-    def get_file_info(dataset_id: str) -> tuple[Path, str, str, list[str]]:
-        # rel_path, checksum, alg, list of links
-        pass
+    def get_file_info(self, dataset_ids: list[str]) -> dict[str, Any]:
+        """"""
+        response = SearchClient().post_search(
+            self.index_id,
+            {
+                "q": "",
+                "filters": [
+                    {
+                        "type": "match_any",
+                        "field_name": "dataset_id",
+                        "values": dataset_ids,
+                    }
+                ],
+                "facets": [],
+                "sort": [],
+            },
+            limit=1000,
+        )
+        info = {}
+        for g in response["gmeta"]:
+            assert len(g["entries"]) == 1
+            entry = g["entries"][0]
+            if entry["entry_id"] != "file":
+                continue
+            content = entry["content"]
+            if "checksum_type" not in info:
+                info["checksum_type"] = content["checksum_type"][0]
+                info["checksum"] = content["checksum"][0]
+                info["size"] = content["size"]
+            assert info["checksum"] == content["checksum"][0]
+            for url in content["url"]:
+                link, link_type = url.split("|")
+                if link_type not in info:
+                    info[link_type] = []
+                info[link_type].append(link)
+            # For some reason, the `version` in the globus response is just an integer
+            # and not what is used in the file path so I have to parse it out of the
+            # `dataset_id`
+            content["version"] = [content["dataset_id"].split("|")[0].split(".")[-1]]
+            file_path = content["directory_format_template_"][0]
+            info["path"] = (
+                Path(
+                    file_path.replace("%(root)s/", "")
+                    .replace("%(", "{")
+                    .replace(")s", "[0]}")
+                    .format(**content)
+                )
+                / content["title"]
+            )
+        return info
 
 
 def combine_results(dfs: list[pd.DataFrame]) -> pd.DataFrame:
     """Return a combined dataframe where ids are now a list."""
+    if not dfs:
+        raise ValueError("Search returned no results.")
     # combine and remove duplicate entries
     df = pd.concat(dfs).drop_duplicates(subset="id").reset_index(drop=True)
     # remove earlier versions if present
@@ -288,3 +355,26 @@ def response_to_https_download(
         except requests.exceptions.HTTPError:
             logger.info(f"HTTP error {url}")
     return paths
+
+
+def combine_file_info(
+    indices: list[Union[SolrESGFIndex, GlobusESGFIndex]], dataset_ids: list[str]
+) -> dict[str, Any]:
+    """"""
+    info = {}
+    for ind in indices:
+        try:
+            node_info = ind.get_file_info(dataset_ids)
+        except EsgfSearchException:
+            continue
+        for key, val in node_info.items():
+            if isinstance(val, list):
+                if key not in info:
+                    info[key] = val
+                else:
+                    info[key] += val
+            else:
+                if key not in info:
+                    info[key] = val
+                assert info[key] == val
+    return info
