@@ -73,9 +73,24 @@ class ESGFCatalog:
 
     def model_groups(self) -> pd.Series:
         """Return counts for unique combinations of (source_id,member_id,grid_label)."""
-        return self.df.groupby(["source_id", "member_id", "grid_label"]).count()[
-            "variable_id"
-        ]
+        lower = self.df.source_id.str.lower()
+        lower.name = "lower"
+        return (
+            pd.concat(
+                [
+                    self.df,
+                    self.df.member_id.str.extract(r"r(\d+)i(\d+)p(\d+)f(\d+)").astype(
+                        int
+                    ),
+                    lower,
+                ],
+                axis=1,
+            )
+            .sort_values(["lower", 0, 1, 2, 3, "grid_label"])
+            .drop(columns=["lower", 0, 1, 2, 3])
+            .groupby(["source_id", "member_id", "grid_label"], sort=False)
+            .count()["variable_id"]
+        )
 
     def search(self, **search: Union[str, list[str]]):
         """Populate the catalog by specifying search facets and values."""
@@ -83,7 +98,12 @@ class ESGFCatalog:
         def _search(index):
             try:
                 df = index.search(**search)
-            except (ValueError, SearchAPIError):
+            except ValueError:
+                return pd.DataFrame([])
+            except (SearchAPIError, ConnectionError):
+                warnings.warn(
+                    f"{index} failed to return a response, results may be incomplete"
+                )
                 return pd.DataFrame([])
             return df
 
@@ -234,6 +254,7 @@ class ESGFCatalog:
             member_id = "r{}i{}p{}f{}".format(
                 *(
                     grp.member_id.str.extract(r"r(\d+)i(\d+)p(\d+)f(\d+)")
+                    .astype(int)
                     .sort_values([0, 1, 2, 3])
                     .iloc[0]
                 )
