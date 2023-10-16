@@ -8,6 +8,7 @@ import pandas as pd
 import xarray as xr
 from datatree import DataTree
 from globus_sdk import SearchAPIError
+from requests import ConnectTimeout, ReadTimeout
 from tqdm import tqdm
 
 from intake_esgf.core import (
@@ -127,7 +128,7 @@ class ESGFCatalog:
                 df = index.search(**search)
             except ValueError:
                 return pd.DataFrame([])
-            except (SearchAPIError, ConnectionError):
+            except (SearchAPIError, ConnectionError, ReadTimeout, ConnectTimeout):
                 warnings.warn(
                     f"{index} failed to return a response, results may be incomplete"
                 )
