@@ -39,19 +39,46 @@ logger.setLevel(logging.INFO)
 
 
 class ESGFCatalog:
-    def __init__(self, num_threads: Union[int, None] = None):
-        self.indices = [
-            SolrESGFIndex(node, distrib=False)
-            for node in [
-                "esgf.ceda.ac.uk",
-                "esgf-data.dkrz.de",
-                "esgf-node.ipsl.upmc.fr",
-                "esg-dn1.nsc.liu.se",
-                "esgf-node.llnl.gov",
-                "esgf.nci.org.au",
-                "esgf-node.ornl.gov",
+    """A data catalog for searching ESGF nodes and downloading data.
+
+    This catalog is largely experimental. We are using it to test capabilities and
+    understand consequences of index design. Please feel free to use it but understand
+    that the API will likely change.
+
+    num_threads
+        The number of threads to use when downloading files.
+    legacy_nodes
+        Set to True (defaults to False) to use all ESGF1 nodes in the federation or
+        specify a node or list of nodes.
+
+    """
+
+    _legacy_nodes = [
+        "esgf.ceda.ac.uk",
+        "esgf-data.dkrz.de",
+        "esgf-node.ipsl.upmc.fr",
+        "esg-dn1.nsc.liu.se",
+        "esgf-node.llnl.gov",
+        "esgf.nci.org.au",
+        "esgf-node.ornl.gov",
+    ]
+
+    def __init__(
+        self,
+        num_threads: Union[int, None] = None,
+        legacy_nodes: Union[bool, str, list[str]] = False,
+    ):
+        self.indices = [GlobusESGFIndex()]
+        if isinstance(legacy_nodes, bool) and legacy_nodes:
+            self.indices += [
+                SolrESGFIndex(node, distrib=False) for node in ESGFCatalog._legacy_nodes
             ]
-        ] + [GlobusESGFIndex()]
+        if isinstance(legacy_nodes, str):
+            legacy_nodes = [legacy_nodes]
+        if isinstance(legacy_nodes, list):
+            self.indices += [
+                SolrESGFIndex(node, distrib=False) for node in legacy_nodes
+            ]
         self.num_threads = num_threads
         if num_threads is None:
             self.num_threads = len(self.indices)

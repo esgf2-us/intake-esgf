@@ -10,7 +10,7 @@ from intake_esgf import ESGFCatalog
 
 experiments = ["historical", "ssp585", "ssp370", "ssp245", "ssp126"]
 variables = ["gpp", "tas", "pr", "mrso"]
-cat = ESGFCatalog().search(
+cat = ESGFCatalog(legacy_nodes=True).search(
     variable_id=variables,
     experiment_id=experiments,
     frequency="mon",
