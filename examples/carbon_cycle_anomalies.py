@@ -10,7 +10,8 @@ from intake_esgf import ESGFCatalog
 
 experiments = ["historical", "ssp585", "ssp370", "ssp245", "ssp126"]
 variables = ["gpp", "tas", "pr", "mrso"]
-cat = ESGFCatalog(legacy_nodes=True).search(
+cat = ESGFCatalog(legacy_nodes="esgf-node.llnl.gov").search(
+    source_id="CESM2",
     variable_id=variables,
     experiment_id=experiments,
     frequency="mon",
@@ -45,8 +46,11 @@ def is_complete(sub_df):
 cat.remove_incomplete(is_complete)
 print(cat.model_groups().to_string())
 
+# Pick just the numerically smallest variant
 cat.remove_ensembles()
 print(cat.model_groups().to_string())
+
+# incomplete example
 
 # load the dataset dictionary
 
