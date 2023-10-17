@@ -6,13 +6,11 @@ from intake_esgf import ESGFCatalog
 # ILAMB analysis is to have a carbon cycle. So we require certain variables to be
 # present.
 cat = ESGFCatalog().search(
-    strict=True,
     activity_id="CMIP",
     experiment_id="historical",
     variable_id=["cSoil", "cVeg", "gpp", "lai", "nbp", "netAtmosLandCO2Flux"],
     frequency="mon",
     grid_label="gn",
-    limit=2000,
 )
 
 

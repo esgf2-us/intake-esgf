@@ -6,14 +6,11 @@
 # to the monthly output from a single model for both the historical period as well as
 # the aggressive SSP5-8.5 scenario.
 
-import xarray as xr
-
 from intake_esgf import ESGFCatalog
 
-experiments = ["historical", "ssp585"]
+experiments = ["historical", "ssp585", "ssp370", "ssp245", "ssp126"]
 variables = ["gpp", "tas", "pr", "mrso"]
-cat = ESGFCatalog().search(
-    strict=True,
+cat = ESGFCatalog(legacy_nodes="esgf-node.llnl.gov").search(
     source_id="CESM2",
     variable_id=variables,
     experiment_id=experiments,
@@ -47,21 +44,17 @@ def is_complete(sub_df):
 
 
 cat.remove_incomplete(is_complete)
+print(cat.model_groups().to_string())
+
+# Pick just the numerically smallest variant
+cat.remove_ensembles()
+print(cat.model_groups().to_string())
+
+# incomplete example
 
 # load the dataset dictionary
-dsd = cat.to_dataset_dict(ignore_facets=["activity_id", "table_id"])
 
 # concat these files
-ds = {}
-for member_id in cat.df.member_id.unique():
-    for variable_id in cat.df.variable_id.unique():
-        ds[f"{member_id}.{variable_id}"] = xr.concat(
-            [
-                dsd[f"historical.{member_id}.{variable_id}"],
-                dsd[f"ssp585.{member_id}.{variable_id}"],
-            ],
-            dim="time",
-        )
 
 # compute iav: remove trend then cycle
 

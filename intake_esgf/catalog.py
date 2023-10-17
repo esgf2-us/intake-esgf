@@ -1,28 +1,29 @@
 import logging
-import time
 import warnings
+from functools import partial
+from multiprocessing.pool import ThreadPool
 from pathlib import Path
 from typing import Callable, Union
 
 import pandas as pd
 import xarray as xr
 from datatree import DataTree
-from globus_sdk import SearchClient
+from globus_sdk import SearchAPIError
+from requests import ConnectTimeout, ReadTimeout
 from tqdm import tqdm
 
 from intake_esgf.core import (
-    get_dataset_pattern,
-    response_to_dataframe,
-    response_to_https_download,
-    response_to_local_filelist,
+    GlobusESGFIndex,
+    SolrESGFIndex,
+    combine_file_info,
+    combine_results,
+    parallel_download,
 )
 
 warnings.simplefilter("ignore", category=xr.SerializationWarning)
-
-# create an alias for the different indices we want to support.
-GLOBUS_INDEX_IDS = {
-    "anl-dev": "d927e2d9-ccdb-48e4-b05d-adbc3d97bbc5",
-}
+BAR_FORMAT = (
+    "{desc}: {percentage:3.0f}%|{bar}|{n_fmt}/{total_fmt} [{rate_fmt:>15s}{postfix}]"
+)
 
 # setup logging, not sure if this belongs here but if the catalog gets used I want logs
 # dumped to this location.
@@ -44,164 +45,106 @@ logger.setLevel(logging.INFO)
 
 
 class ESGFCatalog:
-    def __init__(self, index_id="anl-dev"):
-        assert index_id in GLOBUS_INDEX_IDS
-        self.index_id = GLOBUS_INDEX_IDS[index_id]
+    """A data catalog for searching ESGF nodes and downloading data.
+
+    This catalog is largely experimental. We are using it to test capabilities and
+    understand consequences of index design. Please feel free to use it but understand
+    that the API will likely change.
+
+    legacy_nodes
+        Set to True (defaults to False) to use all ESGF1 nodes in the federation or
+        specify a node or list of nodes.
+
+    """
+
+    _legacy_nodes = [
+        "esgf.ceda.ac.uk",
+        "esgf-data.dkrz.de",
+        "esgf-node.ipsl.upmc.fr",
+        "esg-dn1.nsc.liu.se",
+        "esgf-node.llnl.gov",
+        "esgf.nci.org.au",
+        "esgf-node.ornl.gov",
+    ]
+
+    def __init__(
+        self,
+        legacy_nodes: Union[bool, str, list[str]] = False,
+    ):
+        self.indices = [GlobusESGFIndex()]
+        if isinstance(legacy_nodes, bool) and legacy_nodes:
+            self.indices += [
+                SolrESGFIndex(node, distrib=False) for node in ESGFCatalog._legacy_nodes
+            ]
+        if isinstance(legacy_nodes, str):
+            legacy_nodes = [legacy_nodes]
+        if isinstance(legacy_nodes, list):
+            self.indices += [
+                SolrESGFIndex(node, distrib=False) for node in legacy_nodes
+            ]
         self.df = None  # dataframe which stores the results of the last call to search
-        self.total_results = 0  # the total number of results from the last search
         self.esgf_data_root = None  # the path where the esgf data already exists
         self.local_cache = Path.home() / ".esgf"  # the path to the local cache
 
     def __repr__(self):
         if self.df is None:
             return "Perform a search() to populate the catalog."
-        repr = ""
-        # The globus search returns the first 'page' of the total results. This may be
-        # very many if only a few facets were specified.
-        if len(self.df) != self.total_results:
-            repr = f"Displaying summary info for {len(self.df)} out of {self.total_results} results:\n"  # noqa: E501
-        return repr + self.unique().__repr__()
+        return self.unique().__repr__()
 
     def unique(self) -> pd.Series:
         """Return the the unique values in each facet of the search."""
         out = {}
-        for col in self.df.columns:
-            if col in ["globus_subject", "version", "data_node"]:
-                continue
+        for col in self.df.drop(columns=["id", "version"]).columns:
             out[col] = self.df[col].unique()
         return pd.Series(out)
 
     def model_groups(self) -> pd.Series:
         """Return counts for unique combinations of (source_id,member_id,grid_label)."""
-        return self.df.groupby(["source_id", "member_id", "grid_label"]).count()[
-            "variable_id"
-        ]
-
-    def search(
-        self, strict: bool = False, limit: int = 1000, **search: Union[str, list[str]]
-    ):
-        """Populate the catalog by specifying search facets and values.
-
-        Keyword values may be strings or lists of strings. Keyword arguments can be the
-        familiar facets (`experiment_id`, `source_id`, etc.) but are not limited to
-        this. You may specify anything included in the dataset metadata including
-        `cf_standard_name`, `variable_units`, and `variable_long_name`. Multiple calls
-        to this function are not cumulative. Each call will overwrite the dataframe.
-
-        Parameters
-        ----------
-        strict
-            Enable to match search values exactly.
-        limit
-            The number of results to parse from the response.
-        search
-            Further keyword arguments which specify
-
-        Examples
-        --------
-        >>> cat = ESGFCatalog()
-        >>> cat.search(
-                experiment_id=["historical","ssp585"],
-                source_id="CESM2",
-                variable_id="tas",
-                table_id="Amon",
-            )
-        mip_era                                                     [CMIP6]
-        activity_id                      [ScenarioMIP, C4MIP, ISMIP6, CMIP]
-        institution_id                                               [NCAR]
-        source_id          [CESM2, CESM2-WACCM, CESM2-FV2, CESM2-WACCM-FV2]
-        experiment_id     [ssp585, esm-ssp585, ssp585-withism, historica...
-        member_id         [r11i1p1f1, r10i1p1f1, r4i1p1f1, r5i1p1f1, r3i...
-        table_id                                                     [Amon]
-        variable_id                                                   [tas]
-        grid_label                                                     [gn]
-        dtype: object
-
-        Notice that the result contains variants of `CESM2` and `ssp585`. This is
-        because by default the search is permissive to allow for flexible queries in
-        case the user is not sure for what they are searching. Repeating the search with
-        `strict=True` will remove the variants.
-
-        >>> cat.search(
-                strict=True,
-                experiment_id=["historical","ssp585"],
-                source_id="CESM2",
-                variable_id="tas",
-                table_id="Amon",
-            )
-        mip_era                                                     [CMIP6]
-        activity_id                                     [CMIP, ScenarioMIP]
-        institution_id                                               [NCAR]
-        source_id                                                   [CESM2]
-        experiment_id                                  [historical, ssp585]
-        member_id         [r9i1p1f1, r1i1p1f1, r5i1p1f1, r8i1p1f1, r11i1...
-        table_id                                                     [Amon]
-        variable_id                                                   [tas]
-        grid_label
-        dtype: object
-
-        Leaving `strict=False` can be useful if you are not sure what variable you need,
-        but have an idea of what it is called. The follow search reveals that there are
-        several choices for `variable_id` that have 'temperature' in the long name.
-
-        >>> cat.search(variable_long_name='temperature')
-        Displaying summary info for 1000 out of 480459 results:
-        mip_era                                                     [CMIP6]
-        activity_id       [ScenarioMIP, RFMIP, DCPP, DAMIP, CMIP, HighRe...
-        institution_id    [MPI-M, DKRZ, MOHC, CSIRO, CMCC, CCCma, CNRM-C...
-        source_id         [MPI-ESM1-2-LR, UKESM1-0-LL, ACCESS-ESM1-5, Ha...
-        experiment_id     [ssp370, ssp119, ssp245, ssp126, ssp585, ssp43...
-        member_id         [r10i1p1f1, r3i1p1f1, r9i1p1f1, r8i1p1f1, r2i1...
-        table_id          [CFmon, Emon, AERmonZ, Eday, Amon, 6hrPlevPt, ...
-        variable_id                           [ta, ts, ta500, ta850, ta700]
-        grid_label                             [gn, gnz, gr, gr1, grz, gr2]
-        dtype: object
-
-        """
-        search_time = time.time()
-        search["type"] = "Dataset"  # only search for datasets, not files
-        if "latest" not in search:  # by default only find the latest
-            search["latest"] = True
-        # convert booleans to strings
-        for key, val in search.items():
-            if isinstance(val, bool):
-                search[key] = str(val)
-        if strict:
-            query_data = {
-                "q": "",
-                "filters": [
-                    {
-                        "type": "match_any",
-                        "field_name": key,
-                        "values": [val] if isinstance(val, str) else val,
-                    }
-                    for key, val in search.items()
-                ],
-                "facets": [],
-                "sort": [],
-            }
-            result = SearchClient().post_search(self.index_id, query_data, limit=limit)
-        else:
-            query = " AND ".join(
+        lower = self.df.source_id.str.lower()
+        lower.name = "lower"
+        return (
+            pd.concat(
                 [
-                    f'({key}: "{val}")'
-                    if isinstance(val, str)
-                    else "(" + " OR ".join([f'({key}: "{v}")' for v in val]) + ")"
-                    for key, val in search.items()
-                ]
+                    self.df,
+                    self.df.member_id.str.extract(r"r(\d+)i(\d+)p(\d+)f(\d+)").astype(
+                        int
+                    ),
+                    lower,
+                ],
+                axis=1,
             )
-            result = SearchClient().search(
-                self.index_id, query, limit=limit, advanced=True
+            .sort_values(["lower", 0, 1, 2, 3, "grid_label"])
+            .drop(columns=["lower", 0, 1, 2, 3])
+            .groupby(["source_id", "member_id", "grid_label"], sort=False)
+            .count()["variable_id"]
+        )
+
+    def search(self, **search: Union[str, list[str]]):
+        """Populate the catalog by specifying search facets and values."""
+
+        def _search(index):
+            try:
+                df = index.search(**search)
+            except ValueError:
+                return pd.DataFrame([])
+            except (SearchAPIError, ConnectionError, ReadTimeout, ConnectTimeout):
+                warnings.warn(
+                    f"{index} failed to return a response, results may be incomplete"
+                )
+                return pd.DataFrame([])
+            return df
+
+        dfs = ThreadPool(len(self.indices)).imap_unordered(_search, self.indices)
+        self.df = combine_results(
+            tqdm(
+                dfs,
+                bar_format=BAR_FORMAT,
+                unit="index",
+                unit_scale=False,
+                desc="  Searching indices",
+                ascii=True,
+                total=len(self.indices),
             )
-        search_time = time.time() - search_time
-        self.total_results = result["total"]
-        if not self.total_results:
-            raise ValueError("Search returned no results.")
-        process_time = time.time()
-        self.df = response_to_dataframe(result, get_dataset_pattern())
-        process_time = time.time() - process_time
-        logger.info(
-            f"{strict=}, {limit=}, {search_time=:.3f}, {process_time=:.3f}, {str(search)}"
         )
         return self
 
@@ -223,6 +166,7 @@ class ESGFCatalog:
         minimal_keys: bool = True,
         ignore_facets: Union[None, str, list[str]] = None,
         separator: str = ".",
+        num_threads: int = 6,
     ) -> dict[str, xr.Dataset]:
         """Return the current search as a dictionary of datasets.
 
@@ -239,14 +183,12 @@ class ESGFCatalog:
             When constructing the dictionary keys, which facets should we ignore?
         separator
             When generating the keys, the string to use as a seperator of facets.
+        num_threads
+            The number of threads to use when downloading files.
         """
         if self.df is None or len(self.df) == 0:
             raise ValueError("No entries to retrieve.")
-        # Prefer the esgf data root if set, otherwise check the local cache for the
-        # existence of files.
-        data_root = (
-            self.esgf_data_root if self.esgf_data_root is not None else self.local_cache
-        )
+
         # The keys returned will be just the items that are different.
         output_key_format = []
         if ignore_facets is None:
@@ -255,66 +197,54 @@ class ESGFCatalog:
             ignore_facets = [ignore_facets]
         ignore_facets += [
             "version",
-            "data_node",
-            "globus_subject",
+            "id",
         ]  # these we always ignore
         for col in self.df.drop(columns=ignore_facets):
             if minimal_keys:
-                if not (self.df[col][0] == self.df[col]).all():
+                if not (self.df[col].iloc[0] == self.df[col]).all():
                     output_key_format.append(col)
             else:
                 output_key_format.append(col)
-        # Form the returned dataset in the fastest way possible
-        ds = {}
+        if not output_key_format:  # at minimum we have the variable id as a key
+            output_key_format = ["variable_id"]
+
+        # Query the nodes to get the file information for download
+        infos = []
         for _, row in tqdm(
             self.df.iterrows(),
+            bar_format=BAR_FORMAT,
             unit="dataset",
             unit_scale=False,
-            desc="Loading datasets",
+            desc="Obtaining file info",
             ascii=True,
             total=len(self.df),
         ):
-            response = SearchClient().post_search(
-                self.index_id,
-                {
-                    "q": "",
-                    "filters": [
-                        {
-                            "type": "match_any",
-                            "field_name": "dataset_id",
-                            "values": [row.globus_subject],
-                        }
-                    ],
-                    "facets": [],
-                    "sort": [],
-                },
-                limit=1000,
-            )
-            file_list = []
-            # 1) Look for direct access to files
-            try:
-                file_list = response_to_local_filelist(response, data_root)
-            except FileNotFoundError:
-                pass
-            # 2) Use THREDDS links, but there are none in this index and so we will put
-            #    this on the list to do.
+            # get file info from each index and then add in a unique key
+            info = combine_file_info(self.indices, row.id)
+            for i, _ in enumerate(info):
+                info[i]["key"] = separator.join([row[k] for k in output_key_format])
+            infos += info
 
-            # 3) Use Globus for transfer? I know that we could use the sdk to
-            #    authenticate but I am not clear on if we could automatically setup the
-            #    current location as an endpoint.
-
-            # 4) Use the https links to download data locally.
-            if not file_list:
-                file_list = response_to_https_download(response, self.local_cache)
-
-            # Now open datasets and add to the return dictionary
-            key = separator.join([row[k] for k in output_key_format])
-            if len(file_list) == 1:
-                ds[key] = xr.open_dataset(file_list[0])
-            elif len(file_list) > 1:
-                ds[key] = xr.open_mfdataset(file_list)
+        # Run parallel download if needed
+        fetch = partial(
+            parallel_download, local_cache=local_cache, esg_dataroot=self.esgf_data_root
+        )
+        results = ThreadPool(num_threads).imap_unordered(fetch, infos)
+        ds = {}
+        for key, local_file in results:
+            if key in ds:
+                ds[key].append(local_file)
             else:
-                ds[key] = "Could not obtain this file."
+                ds[key] = [local_file]
+
+        # Return xarray objects
+        for key, files in ds.items():
+            if len(files) == 1:
+                ds[key] = xr.open_dataset(files[0])
+            elif len(files) > 1:
+                ds[key] = xr.open_mfdataset(sorted(files))
+            else:
+                ds[key] = "Error in opening"
         return ds
 
     def to_datatree(
@@ -374,6 +304,7 @@ class ESGFCatalog:
             member_id = "r{}i{}p{}f{}".format(
                 *(
                     grp.member_id.str.extract(r"r(\d+)i(\d+)p(\d+)f(\d+)")
+                    .astype(int)
                     .sort_values([0, 1, 2, 3])
                     .iloc[0]
                 )

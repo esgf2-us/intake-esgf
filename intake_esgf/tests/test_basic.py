@@ -7,18 +7,17 @@ def test_search():
         experiment_id="historical",
         source_id="CESM2",
         variable_id=["gpp", "areacella", "sftlf"],
-        member_id=["r1i1p1f1"],
+        variant_label=["r1i1p1f1"],
     )
-    assert len(cat.df) == 11
+    assert len(cat.df) == 3
 
 
-def test_strict_search():
-    cat = ESGFCatalog().search(
-        strict=True,
+def test_global_search():
+    cat = ESGFCatalog(legacy_nodes=True).search(
         activity_id="CMIP",
         experiment_id="historical",
         source_id="CESM2",
         variable_id=["gpp", "areacella", "sftlf"],
-        member_id=["r1i1p1f1"],
+        variant_label=["r1i1p1f1"],
     )
     assert len(cat.df) == 3
