@@ -8,7 +8,6 @@ from typing import Any, Union
 import pandas as pd
 import requests
 from globus_sdk import SearchClient
-from globus_sdk.response import GlobusHTTPResponse
 from pyesgf.search import SearchConnection
 from pyesgf.search.exceptions import EsgfSearchException
 from tqdm import tqdm
@@ -76,21 +75,34 @@ class SolrESGFIndex:
         """
         if self.response is None:
             raise ValueError("You need to run search() first.")
-        info = {}
+        infos = []
         for dsr in self.response:
             if dsr.dataset_id not in dataset_ids:
                 continue
             for fr in dsr.file_context().search(ignore_facet_check=True):
-                if "checksum_type" not in info:
-                    info["checksum_type"] = fr.checksum_type
-                    info["checksum"] = fr.checksum
-                    info["size"] = fr.size
-                assert info["checksum"] == fr.checksum
+                info = {}
+                info["checksum_type"] = fr.checksum_type
+                info["checksum"] = fr.checksum
+                info["size"] = fr.size
+                fr.json["version"] = [
+                    fr.json["dataset_id"].split("|")[0].split(".")[-1]
+                ]
+                file_path = fr.json["directory_format_template_"][0]
+                info["path"] = (
+                    Path(
+                        file_path.replace("%(root)s/", "")
+                        .replace("%(", "{")
+                        .replace(")s", "[0]}")
+                        .format(**fr.json)
+                    )
+                    / fr.json["title"]
+                )
                 for link_type, link in fr.urls.items():
                     if link_type not in info:
                         info[link_type] = []
                     info[link_type].append(link[0][0])
-        return info
+                infos.append(info)
+        return infos
 
 
 class GlobusESGFIndex:
@@ -160,18 +172,17 @@ class GlobusESGFIndex:
             },
             limit=1000,
         )
-        info = {}
+        infos = []
         for g in response["gmeta"]:
+            info = {}
             assert len(g["entries"]) == 1
             entry = g["entries"][0]
             if entry["entry_id"] != "file":
                 continue
             content = entry["content"]
-            if "checksum_type" not in info:
-                info["checksum_type"] = content["checksum_type"][0]
-                info["checksum"] = content["checksum"][0]
-                info["size"] = content["size"]
-            assert info["checksum"] == content["checksum"][0]
+            info["checksum_type"] = content["checksum_type"][0]
+            info["checksum"] = content["checksum"][0]
+            info["size"] = content["size"]
             for url in content["url"]:
                 link, link_type = url.split("|")
                 if link_type not in info:
@@ -191,7 +202,8 @@ class GlobusESGFIndex:
                 )
                 / content["title"]
             )
-        return info
+            infos.append(info)
+        return infos
 
 
 def combine_results(dfs: list[pd.DataFrame]) -> pd.DataFrame:
@@ -230,7 +242,7 @@ def download_and_verify(
     local_file: Union[str, Path],
     hash: str,
     hash_algorithm: str,
-    content_length: Union[None, int] = None,
+    content_length: int,
 ) -> None:
     """Download the url to a local file and check for validity, removing if not."""
     if not isinstance(local_file, Path):
@@ -238,11 +250,10 @@ def download_and_verify(
     local_file.parent.mkdir(parents=True, exist_ok=True)
     resp = requests.get(url, stream=True)
     resp.raise_for_status()
-    if content_length is None and "content-length" in resp.headers:
-        content_length = int(resp.headers.get("content-length"))
     transfer_time = time.time()
     with open(local_file, "wb") as fdl:
         with tqdm(
+            bar_format="{desc}: {percentage:3.0f}%|{bar}|{n_fmt}/{total_fmt} [{rate_fmt}{postfix}]",
             total=content_length,
             unit="B",
             unit_scale=True,
@@ -254,14 +265,32 @@ def download_and_verify(
                     fdl.write(chunk)
                     pbar.update(len(chunk))
     transfer_time = time.time() - transfer_time
-    rate = content_length * 1e-6 / transfer_time
     if get_file_hash(local_file, hash_algorithm) != hash:
-        logger.info(f"{local_file} failed validation, removing")
         local_file.unlink()
-        return
-    logger.info(
-        f"Downloaded {url} to {local_file} in {transfer_time:.2f} [s] at {rate:.2f} [Mb s-1] with {hash_algorithm.lower()}={hash}"  # noqa: E501
-    )
+        raise ValueError("Hash does not match")
+
+
+def parallel_download(
+    info: dict[str, Any], local_cache: Path, esg_dataroot: Union[None, Path] = None
+):
+    """."""
+    # does this exist on a copy we have access to?
+    if esg_dataroot is not None:
+        local_file = esg_dataroot / info["path"]
+        if local_file.exists():
+            return info["key"], local_file
+    # have we already downloaded this?
+    local_file = local_cache / info["path"]
+    if local_file.exists():
+        return info["key"], local_file
+    # else we try to download it, try all links until it passes
+    for url in info["HTTPServer"]:
+        download_and_verify(
+            url, local_file, info["checksum"], info["checksum_type"], info["size"]
+        )
+        if local_file.exists():
+            break
+    return info["key"], local_file
 
 
 def get_relative_esgf_path(entry: dict[str, Any]) -> Path:
@@ -287,94 +316,28 @@ def get_relative_esgf_path(entry: dict[str, Any]) -> Path:
     return file_path
 
 
-def response_to_local_filelist(
-    response: GlobusHTTPResponse, data_root: Union[str, Path]
-) -> list[Path]:
-    """Return a list of local paths to netCDF files described in the Globus response.
-
-    This function is used to check if the files for which we searched are already
-    available locally. This could be because we have previously downloaded them and they
-    are in the local cache. It could also be because we are on a resource that has
-    direct access to the ESGF data and we have called `set_esgf_data_root()`. This
-    function uses the `directory_format_template_` and values in the response to form a
-    relative location of the files represented in the Globus response. We then prepend
-    the given `data_root` to make the path absolute and check for existence.
-
-    """
-    assert data_root is not None
-    if isinstance(data_root, str):
-        data_root = Path(data_root)
-    if not data_root.is_dir():
-        raise FileNotFoundError(f"Directory {data_root} does not exist.")
-    paths = []
-    for g in response["gmeta"]:
-        assert len(g["entries"]) == 1
-        entry = g["entries"][0]
-        if entry["entry_id"] != "file":
-            continue
-        file_path = data_root / get_relative_esgf_path(entry)
-        if not file_path.is_dir():
-            raise FileNotFoundError(f"Directory {file_path} does not exist.")
-        for file_name in file_path.glob("*.nc"):
-            paths.append(file_name)
-        if paths:
-            logger.info(f"Using files from {file_path}")
-    return paths
-
-
-def response_to_https_download(
-    response: GlobusHTTPResponse, local_root: Union[str, Path]
-) -> list[Path]:
-    """Download the file using the links found in the globus response."""
-    if isinstance(local_root, str):
-        local_root = Path(local_root)
-    if not local_root.is_dir():
-        raise FileNotFoundError(f"Directory {local_root} does not exist.")
-    paths = []
-    for g in response["gmeta"]:
-        assert len(g["entries"]) == 1
-        entry = g["entries"][0]
-        if entry["entry_id"] != "file":
-            continue
-        content = entry["content"]
-        url = [u for u in content["url"] if u.endswith("|HTTPServer")]
-        if len(url) != 1:
-            continue
-        url = url[0].replace("|HTTPServer", "")
-        local_file = local_root / get_relative_esgf_path(entry) / Path(Path(url).name)
-        local_file.parent.mkdir(parents=True, exist_ok=True)
-        try:
-            download_and_verify(
-                url,
-                local_file,
-                content["checksum"][0],
-                content["checksum_type"][0],
-                int(content["size"]),
-            )
-            paths.append(local_file)
-        except requests.exceptions.HTTPError:
-            logger.info(f"HTTP error {url}")
-    return paths
-
-
 def combine_file_info(
     indices: list[Union[SolrESGFIndex, GlobusESGFIndex]], dataset_ids: list[str]
 ) -> dict[str, Any]:
     """"""
-    info = {}
+    merged_info = {}
     for ind in indices:
         try:
-            node_info = ind.get_file_info(dataset_ids)
+            infos = ind.get_file_info(dataset_ids)
         except EsgfSearchException:
             continue
-        for key, val in node_info.items():
-            if isinstance(val, list):
-                if key not in info:
-                    info[key] = val
+        # loop thru all the infos and uniquely add by path
+        for info in infos:
+            path = info["path"]
+            if path not in merged_info:
+                merged_info[path] = {}
+            for key, val in info.items():
+                if isinstance(val, list):
+                    if key not in merged_info[path]:
+                        merged_info[path][key] = val
+                    else:
+                        merged_info[path][key] += val
                 else:
-                    info[key] += val
-            else:
-                if key not in info:
-                    info[key] = val
-                assert info[key] == val
-    return info
+                    if key not in merged_info[path]:
+                        merged_info[path][key] = val
+    return [info for key, info in merged_info.items()]

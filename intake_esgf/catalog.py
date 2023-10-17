@@ -1,5 +1,6 @@
 import logging
 import warnings
+from functools import partial
 from multiprocessing.pool import ThreadPool
 from pathlib import Path
 from typing import Callable, Union
@@ -16,9 +17,13 @@ from intake_esgf.core import (
     SolrESGFIndex,
     combine_file_info,
     combine_results,
+    parallel_download,
 )
 
 warnings.simplefilter("ignore", category=xr.SerializationWarning)
+BAR_FORMAT = (
+    "{desc}: {percentage:3.0f}%|{bar}|{n_fmt}/{total_fmt} [{rate_fmt:>15s}{postfix}]"
+)
 
 # setup logging, not sure if this belongs here but if the catalog gets used I want logs
 # dumped to this location.
@@ -46,8 +51,6 @@ class ESGFCatalog:
     understand consequences of index design. Please feel free to use it but understand
     that the API will likely change.
 
-    num_threads
-        The number of threads to use when downloading files.
     legacy_nodes
         Set to True (defaults to False) to use all ESGF1 nodes in the federation or
         specify a node or list of nodes.
@@ -66,7 +69,6 @@ class ESGFCatalog:
 
     def __init__(
         self,
-        num_threads: Union[int, None] = None,
         legacy_nodes: Union[bool, str, list[str]] = False,
     ):
         self.indices = [GlobusESGFIndex()]
@@ -80,9 +82,6 @@ class ESGFCatalog:
             self.indices += [
                 SolrESGFIndex(node, distrib=False) for node in legacy_nodes
             ]
-        self.num_threads = num_threads
-        if num_threads is None:
-            self.num_threads = len(self.indices)
         self.df = None  # dataframe which stores the results of the last call to search
         self.esgf_data_root = None  # the path where the esgf data already exists
         self.local_cache = Path.home() / ".esgf"  # the path to the local cache
@@ -135,14 +134,14 @@ class ESGFCatalog:
                 return pd.DataFrame([])
             return df
 
-        dfs = ThreadPool(self.num_threads).imap_unordered(_search, self.indices)
+        dfs = ThreadPool(len(self.indices)).imap_unordered(_search, self.indices)
         self.df = combine_results(
             tqdm(
                 dfs,
-                bar_format="{desc}: {percentage:3.0f}%|{bar}|{n_fmt}/{total_fmt} [{rate_fmt}{postfix}]",
+                bar_format=BAR_FORMAT,
                 unit="index",
                 unit_scale=False,
-                desc="Searching indices",
+                desc="  Searching indices",
                 ascii=True,
                 total=len(self.indices),
             )
@@ -167,6 +166,7 @@ class ESGFCatalog:
         minimal_keys: bool = True,
         ignore_facets: Union[None, str, list[str]] = None,
         separator: str = ".",
+        num_threads: int = 6,
     ) -> dict[str, xr.Dataset]:
         """Return the current search as a dictionary of datasets.
 
@@ -183,14 +183,12 @@ class ESGFCatalog:
             When constructing the dictionary keys, which facets should we ignore?
         separator
             When generating the keys, the string to use as a seperator of facets.
+        num_threads
+            The number of threads to use when downloading files.
         """
         if self.df is None or len(self.df) == 0:
             raise ValueError("No entries to retrieve.")
-        # Prefer the esgf data root if set, otherwise check the local cache for the
-        # existence of files.
-        data_root = (
-            self.esgf_data_root if self.esgf_data_root is not None else self.local_cache
-        )
+
         # The keys returned will be just the items that are different.
         output_key_format = []
         if ignore_facets is None:
@@ -207,22 +205,46 @@ class ESGFCatalog:
                     output_key_format.append(col)
             else:
                 output_key_format.append(col)
-        # Form the returned dataset in the fastest way possible
-        ds = {}
+        if not output_key_format:  # at minimum we have the variable id as a key
+            output_key_format = ["variable_id"]
+
+        # Query the nodes to get the file information for download
+        infos = []
         for _, row in tqdm(
             self.df.iterrows(),
+            bar_format=BAR_FORMAT,
             unit="dataset",
             unit_scale=False,
-            desc="Loading datasets",
+            desc="Obtaining file info",
             ascii=True,
             total=len(self.df),
         ):
-            # merge file info from each index
+            # get file info from each index and then add in a unique key
             info = combine_file_info(self.indices, row.id)
-            for key in info:
-                print(key)
-                print(info[key], end="\n\n")
-            print(data_root)
+            for i, _ in enumerate(info):
+                info[i]["key"] = separator.join([row[k] for k in output_key_format])
+            infos += info
+
+        # Run parallel download if needed
+        fetch = partial(
+            parallel_download, local_cache=local_cache, esg_dataroot=self.esgf_data_root
+        )
+        results = ThreadPool(num_threads).imap_unordered(fetch, infos)
+        ds = {}
+        for key, local_file in results:
+            if key in ds:
+                ds[key].append(local_file)
+            else:
+                ds[key] = [local_file]
+
+        # Return xarray objects
+        for key, files in ds.items():
+            if len(files) == 1:
+                ds[key] = xr.open_dataset(files[0])
+            elif len(files) > 1:
+                ds[key] = xr.open_mfdataset(sorted(files))
+            else:
+                ds[key] = "Error in opening"
         return ds
 
     def to_datatree(
