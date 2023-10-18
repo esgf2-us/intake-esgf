@@ -22,9 +22,7 @@ from intake_esgf.core import (
 from intake_esgf.util import add_cell_measures
 
 warnings.simplefilter("ignore", category=xr.SerializationWarning)
-BAR_FORMAT = (
-    "{desc}: {percentage:3.0f}%|{bar}|{n_fmt}/{total_fmt} [{rate_fmt:>15s}{postfix}]"
-)
+BAR_FORMAT = "{desc:>20}: {percentage:3.0f}%|{bar}|{n_fmt}/{total_fmt} [{rate_fmt:>15s}{postfix}]"
 
 # setup logging, not sure if this belongs here but if the catalog gets used I want logs
 # dumped to this location.
@@ -151,7 +149,7 @@ class ESGFCatalog:
                 bar_format=BAR_FORMAT,
                 unit="index",
                 unit_scale=False,
-                desc="  Searching indices",
+                desc="Searching indices",
                 ascii=True,
                 total=len(self.indices),
             )
@@ -261,7 +259,16 @@ class ESGFCatalog:
 
         # Attempt to add cell measures
         if add_measures:
-            for key in ds:
+            for key in tqdm(
+                ds,
+                disable=quiet,
+                bar_format=BAR_FORMAT,
+                unit="dataset",
+                unit_scale=False,
+                desc="Adding cell measures",
+                ascii=True,
+                total=len(ds),
+            ):
                 ds[key] = add_cell_measures(ds[key], self)
         return ds
 
