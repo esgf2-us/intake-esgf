@@ -19,6 +19,7 @@ from intake_esgf.core import (
     combine_results,
     parallel_download,
 )
+from intake_esgf.util import add_cell_measures
 
 warnings.simplefilter("ignore", category=xr.SerializationWarning)
 BAR_FORMAT = (
@@ -91,6 +92,14 @@ class ESGFCatalog:
             return "Perform a search() to populate the catalog."
         return self.unique().__repr__()
 
+    def clone(self):
+        """Return a new instance of a catalog with the same indices and settings."""
+        cat = ESGFCatalog()
+        cat.indices = self.indices
+        cat.esgf_data_root = self.esgf_data_root
+        cat.local_cache = self.local_cache
+        return cat
+
     def unique(self) -> pd.Series:
         """Return the the unique values in each facet of the search."""
         out = {}
@@ -119,7 +128,7 @@ class ESGFCatalog:
             .count()["variable_id"]
         )
 
-    def search(self, **search: Union[str, list[str]]):
+    def search(self, quiet: bool = False, **search: Union[str, list[str]]):
         """Populate the catalog by specifying search facets and values."""
 
         def _search(index):
@@ -138,6 +147,7 @@ class ESGFCatalog:
         self.df = combine_results(
             tqdm(
                 dfs,
+                disable=quiet,
                 bar_format=BAR_FORMAT,
                 unit="index",
                 unit_scale=False,
@@ -167,6 +177,8 @@ class ESGFCatalog:
         ignore_facets: Union[None, str, list[str]] = None,
         separator: str = ".",
         num_threads: int = 6,
+        quiet: bool = False,
+        add_measures: bool = True,
     ) -> dict[str, xr.Dataset]:
         """Return the current search as a dictionary of datasets.
 
@@ -212,6 +224,7 @@ class ESGFCatalog:
         infos = []
         for _, row in tqdm(
             self.df.iterrows(),
+            disable=quiet,
             bar_format=BAR_FORMAT,
             unit="dataset",
             unit_scale=False,
@@ -245,6 +258,11 @@ class ESGFCatalog:
                 ds[key] = xr.open_mfdataset(sorted(files))
             else:
                 ds[key] = "Error in opening"
+
+        # Attempt to add cell measures
+        if add_measures:
+            for key in ds:
+                ds[key] = add_cell_measures(ds[key], self)
         return ds
 
     def to_datatree(

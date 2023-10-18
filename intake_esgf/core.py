@@ -208,10 +208,10 @@ class GlobusESGFIndex:
 
 def combine_results(dfs: list[pd.DataFrame]) -> pd.DataFrame:
     """Return a combined dataframe where ids are now a list."""
-    if not dfs:
-        raise ValueError("Search returned no results.")
     # combine and remove duplicate entries
     df = pd.concat(dfs).drop_duplicates(subset="id").reset_index(drop=True)
+    if len(df) == 0:
+        raise ValueError("Search returned no results.")
     # remove earlier versions if present
     for lbl, grp in df.groupby(list(df.columns[:-3])):
         df = df.drop(grp[grp.version != grp.version.max()].index)
@@ -243,6 +243,7 @@ def download_and_verify(
     hash: str,
     hash_algorithm: str,
     content_length: int,
+    quiet: bool = False,
 ) -> None:
     """Download the url to a local file and check for validity, removing if not."""
     if not isinstance(local_file, Path):
@@ -253,6 +254,7 @@ def download_and_verify(
     transfer_time = time.time()
     with open(local_file, "wb") as fdl:
         with tqdm(
+            disable=quiet,
             bar_format="{desc}: {percentage:3.0f}%|{bar}|{n_fmt}/{total_fmt} [{rate_fmt}{postfix}]",
             total=content_length,
             unit="B",
