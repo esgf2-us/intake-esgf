@@ -82,8 +82,10 @@ class ESGFCatalog:
                 SolrESGFIndex(node, distrib=False) for node in legacy_nodes
             ]
         self.df = None  # dataframe which stores the results of the last call to search
-        self.esgf_data_root = None  # the path where the esgf data already exists
         self.local_cache = Path.home() / ".esgf"  # the path to the local cache
+
+        # the path where the esgf data already exists
+        self.esgf_data_root = check_for_esgf_dataroot()
 
     def __repr__(self):
         if self.df is None:
@@ -336,3 +338,14 @@ class ESGFCatalog:
             )
             self.df = self.df.drop(grp[grp.member_id != member_id].index)
         return self
+
+
+def check_for_esgf_dataroot() -> Union[Path, None]:
+    """Return a direct path to the ESGF data is it exists."""
+    to_check = [
+        "/gpfs/alpine/cli137/proj-shared/ESGF/esg_dataroot/css03_data/",  # OLCF
+    ]
+    for check in to_check:
+        if Path(check).is_dir():
+            return check
+    return None
