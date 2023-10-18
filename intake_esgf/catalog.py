@@ -344,6 +344,7 @@ def check_for_esgf_dataroot() -> Union[Path, None]:
     """Return a direct path to the ESGF data is it exists."""
     to_check = [
         "/gpfs/alpine/cli137/proj-shared/ESGF/esg_dataroot/css03_data/",  # OLCF
+        "/p/css03/esgf_publish",  # Nimbus
     ]
     for check in to_check:
         if Path(check).is_dir():
