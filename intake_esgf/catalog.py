@@ -3,7 +3,7 @@ import warnings
 from functools import partial
 from multiprocessing.pool import ThreadPool
 from pathlib import Path
-from typing import Callable, Union
+from typing import Any, Callable, Union
 
 import pandas as pd
 import xarray as xr
@@ -179,6 +179,7 @@ class ESGFCatalog:
         num_threads: int = 6,
         quiet: bool = False,
         add_measures: bool = True,
+        operators: list[Any] = [],
     ) -> dict[str, xr.Dataset]:
         """Return the current search as a dictionary of datasets.
 
@@ -272,6 +273,11 @@ class ESGFCatalog:
                 total=len(ds),
             ):
                 ds[key] = add_cell_measures(ds[key], self)
+
+        # If the user specifies operators, apply them now
+        for op in operators:
+            ds = op(ds)
+
         return ds
 
     def to_datatree(
