@@ -1,4 +1,5 @@
 import re
+from typing import Union
 
 import xarray as xr
 
@@ -72,7 +73,22 @@ def add_variable(variable_id: str, ds: xr.Dataset, catalog) -> xr.Dataset:
 
 
 def add_cell_measures(ds: xr.Dataset, catalog) -> xr.Dataset:
-    """."""
+    """Search the catalog for variables needed by the cell measures/methods.
+
+    Parameters
+    ----------
+    ds
+        The dataset whose dataarrays we will check for cell measures/methods.
+    catalog
+        The ESGFCatalog instance to search. We will clone this catalog so no copy is
+        made.
+
+    Returns
+    -------
+    ds
+        The same dataset with the required measures added and downloaded if needed.
+
+    """
     to_add = []
     for var, da in ds.items():
         if "cell_measures" not in da.attrs:
@@ -84,6 +100,8 @@ def add_cell_measures(ds: xr.Dataset, catalog) -> xr.Dataset:
             continue
         if "where land" in da.attrs["cell_methods"]:
             to_add.append("sftlf")
+        if "where sea" in da.attrs["cell_methods"]:
+            to_add.append("sftof")
     to_add = set(to_add)
     for add in to_add:
         try:
@@ -91,3 +109,43 @@ def add_cell_measures(ds: xr.Dataset, catalog) -> xr.Dataset:
         except ValueError:
             pass
     return ds
+
+
+def get_cell_measure(var: str, ds: xr.Dataset) -> Union[xr.DataArray, None]:
+    """Return the dataarray of the measures required by the given var.
+
+    This routine will examine the `cell_measures` attribute of the specified `var` as
+    well as the `cell_measures` applying any land/sea fractions that are necesary. This
+    assumes that these variables are already part of the input dataset.
+
+    Parameters
+    ----------
+    var
+        The variable whose measures we will return.
+    ds
+        The dataset from which we will find the measures.
+
+    """
+    # if the dataarray has a cell_measures attribute and 'area' in it, we can
+    # integrate it
+    da = ds[var]
+    if "cell_measures" not in da.attrs:
+        return None
+    m = re.search(r"area:\s(\w+)\s*", da.attrs["cell_measures"])
+    if not m:
+        return None
+    msr = m.group(1)
+    if msr not in ds:
+        raise ValueError(f"{var} cell_measures={msr} but not in dataset")
+    measure = ds[msr]
+    # apply land/sea fractions if applicable, this is messy and there are maybe
+    # others we need to find
+    for domain, vid in zip(["land", "sea"], ["sftlf", "sftof"]):
+        if "cell_methods" in da.attrs and f"where {domain}" in da.attrs["cell_methods"]:
+            if vid not in ds:
+                raise ValueError(f"{var} is land but {vid} not in dataset")
+            # if fractions aren't [0,1], convert % to 1
+            if ds[vid].max() > 2.0:
+                ds[vid] *= 0.01
+            measure *= ds[vid]
+    return measure
