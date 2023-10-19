@@ -345,6 +345,7 @@ def check_for_esgf_dataroot() -> Union[Path, None]:
     to_check = [
         "/gpfs/alpine/cli137/proj-shared/ESGF/esg_dataroot/css03_data/",  # OLCF
         "/p/css03/esgf_publish",  # Nimbus
+        "/eagle/projects/ESGF2/esg_dataroot",  # ALCF
     ]
     for check in to_check:
         if Path(check).is_dir():
