@@ -242,7 +242,7 @@ class ESGFCatalog:
         fetch = partial(
             parallel_download, local_cache=local_cache, esg_dataroot=self.esgf_data_root
         )
-        results = ThreadPool(num_threads).imap_unordered(fetch, infos)
+        results = ThreadPool(min(num_threads, len(infos))).imap_unordered(fetch, infos)
         ds = {}
         for key, local_file in results:
             if key in ds:
