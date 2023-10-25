@@ -12,7 +12,7 @@ from pyesgf.search import SearchConnection
 from pyesgf.search.exceptions import EsgfSearchException
 from tqdm import tqdm
 
-logger = logging.getLogger("intake-esgf")
+from intake_esgf.logging import setup_logging
 
 
 def get_dataset_pattern() -> str:
@@ -37,32 +37,42 @@ def get_dataset_pattern() -> str:
 
 class SolrESGFIndex:
     def __init__(self, index_node: str = "esgf-node.llnl.gov", distrib: bool = True):
-        self.repr = f"SolrESGFIndex({index_node},{'distrib=True' if distrib else ''})"
+        self.repr = f"SolrESGFIndex('{index_node}'{',distrib=True' if distrib else ''})"
         self.conn = SearchConnection(
             f"https://{index_node}/esg-search", distrib=distrib
         )
         self.response = None
+        self.logger = None
 
     def __repr__(self):
         return self.repr
 
     def search(self, **search: Union[str, list[str]]) -> pd.DataFrame:
+        total_time = time.time()
         if "latest" not in search:
             search["latest"] = True
+        response_time = time.time()
         ctx = self.conn.new_context(facets=list(search.keys()), **search)
         response = ctx.search()
+        response_time = time.time() - response_time
         self.response = response
         if not ctx.hit_count:
             raise ValueError("Search returned no results.")
         assert ctx.hit_count == len(response)
         pattern = get_dataset_pattern()
         df = []
+        process_time = time.time()
         for dsr in response:
             m = re.search(pattern, dsr.dataset_id)
             if m:
                 df.append(m.groupdict())
                 df[-1]["id"] = dsr.dataset_id
-        return pd.DataFrame(df)
+        process_time = time.time() - process_time
+        df = pd.DataFrame(df)
+        total_time = time.time() - total_time
+        if self.logger is not None:
+            self.logger.info(f"{self} {response_time=:.2f} {total_time=:.2f}")
+        return df
 
     def get_file_info(self, dataset_ids: list[str]) -> dict[str, Any]:
         """Return a file information dictionary.
@@ -111,12 +121,20 @@ class GlobusESGFIndex:
     }
 
     def __init__(self, index_id="anl-dev"):
+        self.repr = f"GlobusESGFIndex('{index_id}')"
         if index_id in GlobusESGFIndex.GLOBUS_INDEX_IDS:
             index_id = GlobusESGFIndex.GLOBUS_INDEX_IDS[index_id]
         self.index_id = index_id
         self.client = SearchClient()
+        self.logger = None
+
+    def __repr__(self):
+        return self.repr
 
     def search(self, **search: Union[str, list[str]]) -> pd.DataFrame:
+        # We need to implement the pagination here, I am just using a large limit for
+        # now but that isn't safe and I am not sure of performance implications.
+        total_time = time.time()
         limit = 2000
         if "project" in search:
             project = search.pop("project")
@@ -141,7 +159,9 @@ class GlobusESGFIndex:
             "facets": [],
             "sort": [],
         }
+        response_time = time.time()
         response = SearchClient().post_search(self.index_id, query_data, limit=limit)
+        response_time = time.time() - response_time
         if not response["total"]:
             raise ValueError("Search returned no results.")
         pattern = get_dataset_pattern()
@@ -152,6 +172,9 @@ class GlobusESGFIndex:
                 df.append(m.groupdict())
                 df[-1]["id"] = g["subject"]
         df = pd.DataFrame(df)
+        total_time = time.time() - total_time
+        if self.logger is not None:
+            self.logger.info(f"{self} {response_time=:.2f} {total_time=:.2f}")
         return df
 
     def get_file_info(self, dataset_ids: list[str]) -> dict[str, Any]:
@@ -244,6 +267,7 @@ def download_and_verify(
     hash_algorithm: str,
     content_length: int,
     quiet: bool = False,
+    logger: Union[logging.Logger, None] = None,
 ) -> None:
     """Download the url to a local file and check for validity, removing if not."""
     if not isinstance(local_file, Path):
@@ -267,29 +291,49 @@ def download_and_verify(
                     fdl.write(chunk)
                     pbar.update(len(chunk))
     transfer_time = time.time() - transfer_time
+    rate = content_length * 1e-6 / transfer_time
     if get_file_hash(local_file, hash_algorithm) != hash:
+        if logger is not None:
+            logger.info(f"\x1b[91;20mHash error\033[0m {url}")
         local_file.unlink()
         raise ValueError("Hash does not match")
+    if logger is not None:
+        logger.info(f"{transfer_time=:.2f} [s] at {rate:.2f} [Mb s-1] {url}")
 
 
 def parallel_download(
-    info: dict[str, Any], local_cache: Path, esg_dataroot: Union[None, Path] = None
+    info: dict[str, Any],
+    local_cache: Path,
+    esg_dataroot: Union[None, Path] = None,
 ):
     """."""
+    logger = setup_logging()
     # does this exist on a copy we have access to?
     if esg_dataroot is not None:
         local_file = esg_dataroot / info["path"]
         if local_file.exists():
+            if logger is not None:
+                logger.info(f"Accessed {local_file}")
             return info["key"], local_file
     # have we already downloaded this?
     local_file = local_cache / info["path"]
     if local_file.exists():
+        if logger is not None:
+            logger.info(f"Accessed {local_file}")
         return info["key"], local_file
     # else we try to download it, try all links until it passes
     for url in info["HTTPServer"]:
-        download_and_verify(
-            url, local_file, info["checksum"], info["checksum_type"], info["size"]
-        )
+        try:
+            download_and_verify(
+                url,
+                local_file,
+                info["checksum"],
+                info["checksum_type"],
+                info["size"],
+                logger=logger,
+            )
+        except Exception as exc:
+            return exc, None
         if local_file.exists():
             break
     return info["key"], local_file

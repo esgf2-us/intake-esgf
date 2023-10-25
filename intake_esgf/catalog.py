@@ -1,4 +1,4 @@
-import logging
+import time
 import warnings
 from functools import partial
 from multiprocessing.pool import ThreadPool
@@ -19,28 +19,11 @@ from intake_esgf.core import (
     combine_results,
     parallel_download,
 )
+from intake_esgf.logging import setup_logging
 from intake_esgf.util import add_cell_measures
 
 warnings.simplefilter("ignore", category=xr.SerializationWarning)
 BAR_FORMAT = "{desc:>20}: {percentage:3.0f}%|{bar}|{n_fmt}/{total_fmt} [{rate_fmt:>15s}{postfix}]"
-
-# setup logging, not sure if this belongs here but if the catalog gets used I want logs
-# dumped to this location.
-local_cache = Path.home() / ".esgf"
-local_cache.mkdir(parents=True, exist_ok=True)
-logger = logging.getLogger("intake-esgf")
-log_file = local_cache / "esgf.log"
-if not log_file.is_file():
-    log_file.touch()
-file_handler = logging.FileHandler(log_file)
-file_handler.setFormatter(
-    logging.Formatter(
-        "\x1b[36;20m%(asctime)s \x1b[36;32m%(funcName)s()\033[0m %(message)s",
-        datefmt="%Y-%m-%d %H:%M:%S",
-    )
-)
-logger.addHandler(file_handler)
-logger.setLevel(logging.INFO)
 
 
 class ESGFCatalog:
@@ -50,9 +33,30 @@ class ESGFCatalog:
     understand consequences of index design. Please feel free to use it but understand
     that the API will likely change.
 
+    Parameters
+    ----------
     legacy_nodes
         Set to True (defaults to False) to use all ESGF1 nodes in the federation or
         specify a node or list of nodes.
+
+    Attributes
+    ----------
+    indices : list[Union[SolrESGFIndex, GlobusESGFIndex]]
+        A list of indices to search, implementations are in `intake_esgf.core`. The test
+        Globus index `anl-dev` is default and always included.
+    df : pd.DataFrame
+        A pandas dataframe into which the results from the search are parsed. Once you
+        are satisfied with the datasets listed in this dataframe, calling
+        `to_dataset_dict()` will then requery the indices to obtain file information and
+        then download files in parallel.
+    local_cache : pathlib.Path
+        The location to which this package will download files if necessary, mirroring
+        the directory structure of the ESGF node.
+    esgf_data_root : Union[pathlib.Path, None]
+        The location where a portion of the ESGF holdings are available locally. This
+        allows for the same search interface to be used in a Jupyter notebook. Once the
+        file information is obtained for the datasets in a search, we check this
+        location for existence before downloading the files to `local_cache`.
 
     """
 
@@ -75,22 +79,38 @@ class ESGFCatalog:
             self.indices += [
                 SolrESGFIndex(node, distrib=False) for node in ESGFCatalog._legacy_nodes
             ]
-        if isinstance(legacy_nodes, str):
-            legacy_nodes = [legacy_nodes]
-        if isinstance(legacy_nodes, list):
+        elif isinstance(legacy_nodes, list):
             self.indices += [
                 SolrESGFIndex(node, distrib=False) for node in legacy_nodes
             ]
-        self.df = None  # dataframe which stores the results of the last call to search
-        self.local_cache = Path.home() / ".esgf"  # the path to the local cache
-
-        # the path where the esgf data already exists
+        elif isinstance(legacy_nodes, str):
+            legacy_nodes = [legacy_nodes]
+        self.df = None
+        self.local_cache = None
+        self.set_local_cache_directory()
         self.esgf_data_root = check_for_esgf_dataroot()
+        if self.esgf_data_root is not None:
+            self.logger.info(f"ESGF dataroot set {self.esgf_data_root}")
 
     def __repr__(self):
+        """Return the unique facets and values from the search."""
         if self.df is None:
             return "Perform a search() to populate the catalog."
-        return self.unique().__repr__()
+        repr = f"Summary information for {len(self.df)} results:\n"
+        return repr + self.unique().__repr__()
+
+    def set_local_cache_directory(self, path: Union[str, Path, None] = None):
+        """Set the local cache directory and create it if it does not exist."""
+        if path is None:
+            path = Path.home() / ".esgf"
+        if not isinstance(path, Path):
+            path = Path(path)
+        path.mkdir(parents=True, exist_ok=True)
+        # a change to the local cache means a change to logging
+        self.local_cache = path
+        self.logger = setup_logging(self.local_cache)
+        for index in self.indices:
+            index.logger = self.logger
 
     def clone(self):
         """Return a new instance of a catalog with the same indices and settings."""
@@ -129,7 +149,16 @@ class ESGFCatalog:
         )
 
     def search(self, quiet: bool = False, **search: Union[str, list[str]]):
-        """Populate the catalog by specifying search facets and values."""
+        """Populate the catalog by specifying search facets and values.
+
+        Parameters
+        ----------
+        quiet
+            Enable to silence the progress bar.
+        search
+            Any number of facet keywords and values.
+
+        """
 
         def _search(index):
             try:
@@ -143,6 +172,7 @@ class ESGFCatalog:
                 return pd.DataFrame([])
             return df
 
+        search_time = time.time()
         dfs = ThreadPool(len(self.indices)).imap_unordered(_search, self.indices)
         self.df = combine_results(
             tqdm(
@@ -156,6 +186,15 @@ class ESGFCatalog:
                 total=len(self.indices),
             )
         )
+        search_time = time.time() - search_time
+        search_str = ", ".join(
+            [
+                f"{key}={val if isinstance(val,list) else [val]}"
+                for key, val in search.items()
+            ]
+        )
+        self.logger.info(f"time={search_time:.2f}, {search_str}")
+
         return self
 
     def set_esgf_data_root(self, root: Union[str, Path]) -> None:
@@ -241,11 +280,15 @@ class ESGFCatalog:
 
         # Run parallel download if needed
         fetch = partial(
-            parallel_download, local_cache=local_cache, esg_dataroot=self.esgf_data_root
+            parallel_download,
+            local_cache=self.local_cache,
+            esg_dataroot=self.esgf_data_root,
         )
         results = ThreadPool(min(num_threads, len(infos))).imap_unordered(fetch, infos)
         ds = {}
         for key, local_file in results:
+            if local_file is None:  # there was a problem getting this file
+                continue
             if key in ds:
                 ds[key].append(local_file)
             else:
