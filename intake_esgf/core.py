@@ -273,7 +273,7 @@ def download_and_verify(
     if not isinstance(local_file, Path):
         local_file = Path(local_file)
     local_file.parent.mkdir(parents=True, exist_ok=True)
-    resp = requests.get(url, stream=True)
+    resp = requests.get(url, stream=True, timeout=10)
     resp.raise_for_status()
     transfer_time = time.time()
     with open(local_file, "wb") as fdl:
@@ -313,13 +313,13 @@ def parallel_download(
         local_file = esg_dataroot / info["path"]
         if local_file.exists():
             if logger is not None:
-                logger.info(f"Accessed {local_file}")
+                logger.info(f"accessed {local_file}")
             return info["key"], local_file
     # have we already downloaded this?
     local_file = local_cache / info["path"]
     if local_file.exists():
         if logger is not None:
-            logger.info(f"Accessed {local_file}")
+            logger.info(f"accessed {local_file}")
         return info["key"], local_file
     # else we try to download it, try all links until it passes
     for url in info["HTTPServer"]:
@@ -332,11 +332,12 @@ def parallel_download(
                 info["size"],
                 logger=logger,
             )
-        except Exception as exc:
-            return exc, None
+        except Exception:
+            logger.info(f"\x1b[91;20mdownload failed\033[0m {url}")
+            continue
         if local_file.exists():
-            break
-    return info["key"], local_file
+            return info["key"], local_file
+    return None, None
 
 
 def get_relative_esgf_path(entry: dict[str, Any]) -> Path:
