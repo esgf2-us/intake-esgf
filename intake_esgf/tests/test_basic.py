@@ -13,7 +13,7 @@ def test_search():
 
 
 def test_global_search():
-    cat = ESGFCatalog(legacy_nodes=True).search(
+    cat = ESGFCatalog(esgf1_indices=True).search(
         activity_id="CMIP",
         experiment_id="historical",
         source_id="CESM2",

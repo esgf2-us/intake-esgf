@@ -10,7 +10,7 @@ from intake_esgf import ESGFCatalog
 
 experiments = ["historical", "ssp585", "ssp370", "ssp245", "ssp126"]
 variables = ["gpp", "tas", "pr", "mrso"]
-cat = ESGFCatalog(legacy_nodes="esgf-node.llnl.gov").search(
+cat = ESGFCatalog(esgf1_indices="esgf-node.llnl.gov").search(
     source_id="CESM2",
     variable_id=variables,
     experiment_id=experiments,

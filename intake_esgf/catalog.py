@@ -35,7 +35,7 @@ class ESGFCatalog:
 
     Parameters
     ----------
-    legacy_nodes
+    esgf1_indices
         Set to True (defaults to False) to use all ESGF1 nodes in the federation or
         specify a node or list of nodes.
 
@@ -60,7 +60,7 @@ class ESGFCatalog:
 
     """
 
-    _legacy_nodes = [
+    _esgf1_indices = [
         "esgf.ceda.ac.uk",
         "esgf-data.dkrz.de",
         "esgf-node.ipsl.upmc.fr",
@@ -72,19 +72,20 @@ class ESGFCatalog:
 
     def __init__(
         self,
-        legacy_nodes: Union[bool, str, list[str]] = False,
+        esgf1_indices: Union[bool, str, list[str]] = False,
     ):
         self.indices = [GlobusESGFIndex()]
-        if isinstance(legacy_nodes, bool) and legacy_nodes:
+        if isinstance(esgf1_indices, bool) and esgf1_indices:
             self.indices += [
-                SolrESGFIndex(node, distrib=False) for node in ESGFCatalog._legacy_nodes
+                SolrESGFIndex(node, distrib=False)
+                for node in ESGFCatalog._esgf1_indices
             ]
-        elif isinstance(legacy_nodes, list):
+        elif isinstance(esgf1_indices, list):
             self.indices += [
-                SolrESGFIndex(node, distrib=False) for node in legacy_nodes
+                SolrESGFIndex(node, distrib=False) for node in esgf1_indices
             ]
-        elif isinstance(legacy_nodes, str):
-            legacy_nodes = [legacy_nodes]
+        elif isinstance(esgf1_indices, str):
+            self.indices.append(SolrESGFIndex(esgf1_indices, distrib=False))
         self.df = None
         self.local_cache = None
         self.set_local_cache_directory()
