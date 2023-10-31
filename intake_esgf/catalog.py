@@ -1,3 +1,4 @@
+import re
 import time
 import warnings
 from functools import partial
@@ -57,7 +58,9 @@ class ESGFCatalog:
         allows for the same search interface to be used in a Jupyter notebook. Once the
         file information is obtained for the datasets in a search, we check this
         location for existence before downloading the files to `local_cache`.
-
+    session_time : pd.Timestamp
+        The time that the class instance was initialized. Used in `session_log()` to
+        parse out only the portion of the log used in this session.
     """
 
     _esgf1_indices = [
@@ -92,6 +95,7 @@ class ESGFCatalog:
         self.esgf_data_root = check_for_esgf_dataroot()
         if self.esgf_data_root is not None:
             self.logger.info(f"ESGF dataroot set {self.esgf_data_root}")
+        self.session_time = pd.Timestamp.now()
 
     def __repr__(self):
         """Return the unique facets and values from the search."""
@@ -173,6 +177,17 @@ class ESGFCatalog:
                 return pd.DataFrame([])
             return df
 
+        # log what is being searched for
+        self.logger.info(
+            ", ".join(
+                [
+                    f"{key}={val if isinstance(val,list) else [val]}"
+                    for key, val in search.items()
+                ]
+            )
+        )
+
+        # threaded search over indices
         search_time = time.time()
         dfs = ThreadPool(len(self.indices)).imap_unordered(_search, self.indices)
         self.df = combine_results(
@@ -188,13 +203,7 @@ class ESGFCatalog:
             )
         )
         search_time = time.time() - search_time
-        search_str = ", ".join(
-            [
-                f"{key}={val if isinstance(val,list) else [val]}"
-                for key, val in search.items()
-            ]
-        )
-        self.logger.info(f"time={search_time:.2f}, {search_str}")
+        self.logger.info(f"time={search_time:.2f} search successful")
 
         return self
 
@@ -388,6 +397,17 @@ class ESGFCatalog:
             )
             self.df = self.df.drop(grp[grp.member_id != member_id].index)
         return self
+
+    def session_log(self):
+        """"""
+        log = open(self.local_cache / "esgf.log").readlines()[::-1]
+        for n, line in enumerate(log):
+            m = re.search(r"\x1b\[36;20m(.*)\s\x1b\[36;32m", line)
+            if not m:
+                continue
+            if pd.to_datetime(m.group(1)) < self.session_time:
+                break
+        return "".join(log[:n][::-1])
 
 
 def check_for_esgf_dataroot() -> Union[Path, None]:
