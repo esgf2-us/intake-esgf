@@ -171,6 +171,7 @@ class ESGFCatalog:
             except ValueError:
                 return pd.DataFrame([])
             except (SearchAPIError, ConnectionError, ReadTimeout, ConnectTimeout):
+                self.logger.info(f"└─{index} \x1b[91;20mno response\033[0m")
                 warnings.warn(
                     f"{index} failed to return a response, results may be incomplete"
                 )
@@ -178,14 +179,13 @@ class ESGFCatalog:
             return df
 
         # log what is being searched for
-        self.logger.info(
-            ", ".join(
-                [
-                    f"{key}={val if isinstance(val,list) else [val]}"
-                    for key, val in search.items()
-                ]
-            )
+        search_str = ", ".join(
+            [
+                f"{key}={val if isinstance(val,list) else [val]}"
+                for key, val in search.items()
+            ]
         )
+        self.logger.info(f"\x1b[36;32msearch begin\033[0m {search_str}")
 
         # threaded search over indices
         search_time = time.time()
@@ -203,7 +203,7 @@ class ESGFCatalog:
             )
         )
         search_time = time.time() - search_time
-        self.logger.info(f"time={search_time:.2f} search successful")
+        self.logger.info(f"\x1b[36;32msearch end\033[0m total_time={search_time:.2f}")
 
         return self
 
@@ -402,7 +402,7 @@ class ESGFCatalog:
         """"""
         log = open(self.local_cache / "esgf.log").readlines()[::-1]
         for n, line in enumerate(log):
-            m = re.search(r"\x1b\[36;20m(.*)\s\x1b\[36;32m", line)
+            m = re.search(r"\x1b\[36;20m(.*)\s\033\[0m", line)
             if not m:
                 continue
             if pd.to_datetime(m.group(1)) < self.session_time:

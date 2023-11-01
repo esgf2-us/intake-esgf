@@ -57,6 +57,8 @@ class SolrESGFIndex:
         response_time = time.time() - response_time
         self.response = response
         if not ctx.hit_count:
+            if self.logger is not None:
+                self.logger.info(f"└─{self} no results")
             raise ValueError("Search returned no results.")
         assert ctx.hit_count == len(response)
         pattern = get_dataset_pattern()
@@ -71,7 +73,7 @@ class SolrESGFIndex:
         df = pd.DataFrame(df)
         total_time = time.time() - total_time
         if self.logger is not None:
-            self.logger.info(f"{self} {response_time=:.2f} {total_time=:.2f}")
+            self.logger.info(f"└─{self} {response_time=:.2f} {total_time=:.2f}")
         return df
 
     def get_file_info(self, dataset_ids: list[str]) -> dict[str, Any]:
@@ -163,6 +165,8 @@ class GlobusESGFIndex:
         response = SearchClient().post_search(self.index_id, query_data, limit=limit)
         response_time = time.time() - response_time
         if not response["total"]:
+            if self.logger is not None:
+                self.logger.info(f"└─{self} no results")
             raise ValueError("Search returned no results.")
         pattern = get_dataset_pattern()
         df = []
@@ -174,7 +178,7 @@ class GlobusESGFIndex:
         df = pd.DataFrame(df)
         total_time = time.time() - total_time
         if self.logger is not None:
-            self.logger.info(f"{self} {response_time=:.2f} {total_time=:.2f}")
+            self.logger.info(f"└─{self} {response_time=:.2f} {total_time=:.2f}")
         return df
 
     def get_file_info(self, dataset_ids: list[str]) -> dict[str, Any]:
@@ -234,6 +238,8 @@ def combine_results(dfs: list[pd.DataFrame]) -> pd.DataFrame:
     # combine and remove duplicate entries
     df = pd.concat(dfs).drop_duplicates(subset="id").reset_index(drop=True)
     if len(df) == 0:
+        logger = setup_logging()
+        logger.info("\x1b[36;32msearch end \x1b[91;20mno results\033[0m")
         raise ValueError("Search returned no results.")
     # remove earlier versions if present
     for lbl, grp in df.groupby(list(df.columns[:-3])):

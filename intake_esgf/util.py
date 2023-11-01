@@ -54,10 +54,14 @@ def add_variable(variable_id: str, ds: xr.Dataset, catalog) -> xr.Dataset:
     search.update({"table_id": ["fx", "Ofx"], "variable_id": variable_id})
     # we could just pop all these facets at once, but this way gets you measures which
     # are as 'close' to the original search as we can get
+    previous_search = {}
     for relax in ["", "variant_label", "member_id", "experiment_id", "activity_id"]:
         if relax in search:
             search.pop(relax)
+        if previous_search == search:
+            continue
         try:
+            previous_search = search.copy()
             cat.search(quiet=True, **search)
             cat.df = cat.df.iloc[:1]  # we just need 1
             break

@@ -20,7 +20,7 @@ def setup_logging(local_cache: Union[Path, None] = None) -> logging.Logger:
         file_handler = logging.FileHandler(log_file)
         file_handler.setFormatter(
             logging.Formatter(
-                "\x1b[36;20m%(asctime)s \x1b[36;32m%(funcName)s\033[0m %(message)s",
+                "\x1b[36;20m%(asctime)s \033[0m%(message)s",
                 datefmt="%Y-%m-%d %H:%M:%S",
             )
         )
