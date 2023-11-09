@@ -3,13 +3,15 @@ from pathlib import Path
 from typing import Union
 
 
-def setup_logging(local_cache: Union[Path, None] = None) -> logging.Logger:
+def setup_logging(
+    local_cache: Union[Path, None] = None, filename: Union[str, None] = None
+) -> logging.Logger:
     """Setup the location and logging for this package."""
 
     # Where will the log be written?
     if local_cache is None:
         local_cache = Path.home() / ".esgf"
-    log_file = local_cache / "esgf.log"
+    log_file = local_cache / ("esgf.log" if filename is None else filename)
     if not log_file.is_file():
         log_file.touch()
 
