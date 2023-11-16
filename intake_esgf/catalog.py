@@ -475,8 +475,8 @@ class ESGFCatalog:
             self.df = self.df.drop(grp[grp.member_id != member_id].index)
         return self
 
-    def session_log(self):
-        """"""
+    def session_log(self) -> str:
+        """Return the log since the instantiation of `ESGFCatalog()`."""
         log = open(self.local_cache / "esgf.log").readlines()[::-1]
         for n, line in enumerate(log):
             m = re.search(r"\x1b\[36;20m(.*)\s\033\[0m", line)

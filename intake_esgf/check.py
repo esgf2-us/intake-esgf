@@ -33,7 +33,22 @@ def get_directory_search_pattern() -> str:
     return pattern
 
 
-def get_dataset_info(path: Path, file_list: list[str], data_node: str):
+def get_dataset_info(path: Path, file_list: list[str], data_node: str) -> None:
+    """Check consistency of the dataset and files associated with this path.
+
+    Anomalies will be logged in `${HOME}/.esgf/check.log`.
+
+    Parameters
+    ----------
+    path
+        The path in which the netCDF files are stored. The standard CMIP6 structure is
+        assumed.
+    file_list
+        The list of files in this dircetory.
+    data_node
+        The name of the ESGF1 index node to use to check consistency.
+
+    """
     # The search critera can be harvested from the path.
     m = re.search(get_directory_search_pattern(), str(path))
     if not m:
@@ -51,11 +66,11 @@ def get_dataset_info(path: Path, file_list: list[str], data_node: str):
     conn = SearchConnection(f"https://{data_node}/esg-search", distrib=False)
     try:
         ctx = conn.new_context(facets=list(search.keys()), **search)
+        if not ctx.hit_count:
+            logger.info(f"{dataset_id=} does not exist")
+            return
     except ReadTimeout:
         logger.info(f"Timeout for dataset search for {dataset_id=}")
-        return
-    if not ctx.hit_count:
-        logger.info(f"{dataset_id=} does not exist")
         return
     try:
         response = ctx.search()
@@ -66,7 +81,7 @@ def get_dataset_info(path: Path, file_list: list[str], data_node: str):
     # Now we make sure the version string is in the id
     dsr = [dsr for dsr in response if dataset_id == dsr.dataset_id]
     if len(dsr) != 1:
-        logger.info(f"search returned datasets but no matches for {dataset_id=}")
+        logger.info(f"Search returned datasets but no matches for {dataset_id=}")
     dsr = dsr[0]
 
     # Do we have the same number of files in the directory as is in the index record?
@@ -131,6 +146,7 @@ def walk_directory(
     visit_file: Iterable[Callable] = [],
     extensions: Iterable[str] = [".nc"],
 ):
+    logger.info(f"Begin search {root}")
     for path, dirs, files in os.walk(root):
         files = [f for f in files if any([f.endswith(ext) for ext in extensions])]
         if not files:
@@ -139,4 +155,5 @@ def walk_directory(
             visit(Path(path), files)
         for visit in visit_file:
             for filename in files:
-                visit(filename)
+                visit(Path(path) / filename)
+    logger.info(f"End search {root}")
