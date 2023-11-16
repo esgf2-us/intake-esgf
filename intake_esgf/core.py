@@ -290,7 +290,7 @@ def download_and_verify(
             unit="B",
             unit_scale=True,
             desc=local_file.name,
-            ascii=True,
+            ascii=False,
         ) as pbar:
             for chunk in resp.iter_content(chunk_size=1024):
                 if chunk:

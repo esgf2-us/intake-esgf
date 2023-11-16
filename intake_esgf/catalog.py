@@ -206,7 +206,7 @@ class ESGFCatalog:
                 unit="index",
                 unit_scale=False,
                 desc="Searching indices",
-                ascii=True,
+                ascii=False,
                 total=len(self.indices),
             )
         )
@@ -287,7 +287,7 @@ class ESGFCatalog:
             unit="dataset",
             unit_scale=False,
             desc="Obtaining file info",
-            ascii=True,
+            ascii=False,
             total=len(self.df),
         ):
             # get file info from each index and then add in a unique key
@@ -330,7 +330,7 @@ class ESGFCatalog:
                 unit="dataset",
                 unit_scale=False,
                 desc="Adding cell measures",
-                ascii=True,
+                ascii=False,
                 total=len(ds),
             ):
                 ds[key] = add_cell_measures(ds[key], self)
