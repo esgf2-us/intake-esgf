@@ -238,6 +238,12 @@ class ESGFCatalog:
                 df = index.from_tracking_ids(tracking_ids)
             except ValueError:
                 return pd.DataFrame([])
+            except NotImplementedError:
+                self.logger.info(f"└─{index} function not implemented")
+                warnings.warn(
+                    f"{index} function not implemented for this index, results may be incomplete"
+                )
+                return pd.DataFrame([])
             except (
                 SearchAPIError,
                 ConnectionError,

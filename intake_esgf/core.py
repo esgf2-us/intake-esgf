@@ -76,6 +76,11 @@ class SolrESGFIndex:
             self.logger.info(f"└─{self} {response_time=:.2f} {total_time=:.2f}")
         return df
 
+    def from_tracking_ids(self, tracking_ids: Union[str, list[str]]) -> pd.DataFrame:
+        if isinstance(tracking_ids, str):
+            tracking_ids = [tracking_ids]
+        raise NotImplementedError
+
     def get_file_info(self, dataset_ids: list[str]) -> dict[str, Any]:
         """Return a file information dictionary.
 
