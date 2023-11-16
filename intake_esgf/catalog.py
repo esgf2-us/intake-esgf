@@ -10,7 +10,8 @@ import pandas as pd
 import xarray as xr
 from datatree import DataTree
 from globus_sdk import SearchAPIError
-from requests import ConnectTimeout, HTTPError, ReadTimeout
+from requests.adapters import MaxRetryError
+from requests.exceptions import ConnectionError, ConnectTimeout, HTTPError, ReadTimeout
 from tqdm import tqdm
 
 from intake_esgf.core import (
@@ -176,6 +177,7 @@ class ESGFCatalog:
                 ReadTimeout,
                 ConnectTimeout,
                 HTTPError,
+                MaxRetryError,
             ):
                 self.logger.info(f"└─{index} \x1b[91;20mno response\033[0m")
                 warnings.warn(
