@@ -232,6 +232,39 @@ class GlobusESGFIndex:
             infos.append(info)
         return infos
 
+    def from_tracking_ids(self, tracking_ids: Union[str, list[str]]) -> pd.DataFrame:
+        if isinstance(tracking_ids, str):
+            tracking_ids = [tracking_ids]
+        response = SearchClient().post_search(
+            self.index_id,
+            {
+                "q": "",
+                "filters": [
+                    {
+                        "type": "match_any",
+                        "field_name": "tracking_id",
+                        "values": tracking_ids,
+                    }
+                ],
+                "facets": [],
+                "sort": [],
+            },
+            limit=1000,
+        )
+        pattern = get_dataset_pattern()
+        df = []
+        for g in response["gmeta"]:
+            try:
+                dataset_id = g["entries"][0]["content"]["dataset_id"]
+            except Exception:
+                continue
+            m = re.search(pattern, dataset_id)
+            if m:
+                df.append(m.groupdict())
+                df[-1]["id"] = dataset_id
+        df = pd.DataFrame(df)
+        return df
+
 
 def combine_results(dfs: list[pd.DataFrame]) -> pd.DataFrame:
     """Return a combined dataframe where ids are now a list."""

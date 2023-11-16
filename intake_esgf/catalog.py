@@ -215,6 +215,75 @@ class ESGFCatalog:
 
         return self
 
+    def from_tracking_ids(
+        self, tracking_ids: Union[str, list[str]], quiet: bool = False
+    ):
+        """Populate the catalog by speciying tracking ids.
+
+        While tracking_ids should uniquely define individual files, we observe that some
+        centers erronsouly reuse ids on multiple files. For this reason, you may find
+        that more dataset records are returned that tracking_ids you specify.
+
+        Parameters
+        ----------
+        tracking_ids
+            The ids whose datasets will form the items in the catalog.
+        quiet
+            Enable to silence the progress bar.
+
+        """
+
+        def _from_tracking_ids(index):
+            try:
+                df = index.from_tracking_ids(tracking_ids)
+            except ValueError:
+                return pd.DataFrame([])
+            except (
+                SearchAPIError,
+                ConnectionError,
+                ReadTimeout,
+                ConnectTimeout,
+                HTTPError,
+                MaxRetryError,
+            ):
+                self.logger.info(f"└─{index} \x1b[91;20mno response\033[0m")
+                warnings.warn(
+                    f"{index} failed to return a response, results may be incomplete"
+                )
+                return pd.DataFrame([])
+            return df
+
+        # log what is being searched for
+        self.logger.info("\x1b[36;32mfrom_tracking_ids begin\033[0m")
+
+        # threaded search over indices
+        search_time = time.time()
+        dfs = ThreadPool(len(self.indices)).imap_unordered(
+            _from_tracking_ids, self.indices
+        )
+        self.df = combine_results(
+            tqdm(
+                dfs,
+                disable=quiet,
+                bar_format=BAR_FORMAT,
+                unit="index",
+                unit_scale=False,
+                desc="Searching indices",
+                ascii=False,
+                total=len(self.indices),
+            )
+        )
+        search_time = time.time() - search_time
+        if len(self.df) != len(tracking_ids):
+            self.logger.info(
+                "One or more of the tracking_ids resolve to multiple files."
+            )
+        self.logger.info(
+            f"\x1b[36;32mfrom_tracking_ids end\033[0m total_time={search_time:.2f}"
+        )
+
+        return self
+
     def set_esgf_data_root(self, root: Union[str, Path]) -> None:
         """Set the root directory of the ESGF data local to your system.
 

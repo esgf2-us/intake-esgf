@@ -63,5 +63,4 @@ def test_composition():
         ignore_facets=["institution_id", "table_id"],
         operators=[trim_time, ops.global_mean, ensemble_mean],
     )
-    print(dsd.keys())
     assert set(["mean", "std"]) == set(dsd.keys())
