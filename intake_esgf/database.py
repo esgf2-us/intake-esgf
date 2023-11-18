@@ -60,14 +60,13 @@ def get_download_rate_dataframe(
 
     """
     assert history in [None, "day", "week", "month"]
-    condition = (
-        ""
-        if history is None
-        else f" WHERE timestamp > datetime('now', '-1 {history}', 'localtime')"
-    )
+    condition = ["transfer_size > 10"]
+    if history is not None:
+        condition.append(f"timestamp > datetime('now', '-1 {history}', 'localtime')")
+    condition = " AND ".join(condition)
     with sqlite3.connect(path) as con:
         df = pd.read_sql_query(
-            f"SELECT * FROM downloads{condition}",
+            f"SELECT * FROM downloads WHERE {condition}",
             con,
         )
     if not len(df):
