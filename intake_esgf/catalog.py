@@ -12,13 +12,12 @@ import xarray as xr
 from datatree import DataTree
 from tqdm import tqdm
 
-from intake_esgf.core import (
-    GlobusESGFIndex,
-    SolrESGFIndex,
+from intake_esgf.base import (
     combine_file_info,
     combine_results,
     parallel_download,
 )
+from intake_esgf.core import GlobusESGFIndex, SolrESGFIndex
 from intake_esgf.database import create_download_database
 from intake_esgf.logging import setup_logging
 from intake_esgf.util import add_cell_measures

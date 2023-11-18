@@ -8,7 +8,7 @@ from pyesgf.search import SearchConnection
 from requests import ReadTimeout
 from tqdm import tqdm
 
-from intake_esgf.core import get_file_hash
+from intake_esgf.base import get_file_hash
 from intake_esgf.logging import setup_logging
 
 logger = setup_logging(filename="check.log")
