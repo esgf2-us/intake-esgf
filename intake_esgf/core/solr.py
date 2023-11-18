@@ -1,3 +1,4 @@
+"""A ESGF1 Solr index class."""
 import re
 import time
 from pathlib import Path

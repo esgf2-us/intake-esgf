@@ -1,3 +1,4 @@
+"""A Globus-based ESGF1 style index."""
 import re
 import time
 from pathlib import Path

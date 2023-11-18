@@ -1,12 +1,11 @@
+"""A collection of common operators used in CMIP analysis."""
 from typing import Union
 
 import pandas as pd
 import xarray as xr
 from tqdm import tqdm
 
-from intake_esgf.util import get_cell_measure, get_search_criteria
-
-BAR_FORMAT = "{desc:>20}: {percentage:3.0f}%|{bar}|{n_fmt}/{total_fmt} [{rate_fmt:>15s}{postfix}]"
+from intake_esgf.base import bar_format, get_cell_measure, get_search_criteria
 
 
 def global_sum(
@@ -42,7 +41,7 @@ def global_sum(
     for key, ds in tqdm(
         dsd.items(),
         disable=quiet,
-        bar_format=BAR_FORMAT,
+        bar_format=bar_format,
         unit="dataset",
         unit_scale=False,
         desc="Global sum",
@@ -85,7 +84,7 @@ def global_mean(
     for key, ds in tqdm(
         dsd.items(),
         disable=quiet,
-        bar_format=BAR_FORMAT,
+        bar_format=bar_format,
         unit="dataset",
         unit_scale=False,
         desc="Global mean",
@@ -126,7 +125,7 @@ def ensemble_mean(
     for _, grp in tqdm(
         df.groupby(grp_cols),
         disable=quiet,
-        bar_format=BAR_FORMAT,
+        bar_format=bar_format,
         unit="dataset",
         unit_scale=False,
         desc="Ensemble mean",

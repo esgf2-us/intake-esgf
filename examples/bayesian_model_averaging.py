@@ -8,7 +8,7 @@ from drs import drs
 from tqdm import tqdm
 
 from intake_esgf import ESGFCatalog
-from intake_esgf.catalog import BAR_FORMAT
+from intake_esgf.base import bar_format
 
 # Using the ILAMB CRU4.02 as a reference dataset
 ilamb = intake.open_catalog(
@@ -84,7 +84,7 @@ posterior = [
     for post in tqdm(
         ThreadPool(num_threads).imap_unordered(compute_sample, range(n_samples)),
         total=n_samples,
-        bar_format=BAR_FORMAT,
+        bar_format=bar_format,
         unit="sample",
         unit_scale=False,
         desc="Computing posterior",

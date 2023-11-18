@@ -1,3 +1,4 @@
+"""The primary object in intake-esgf."""
 import re
 import time
 import warnings
@@ -13,6 +14,9 @@ from datatree import DataTree
 from tqdm import tqdm
 
 from intake_esgf.base import (
+    add_cell_measures,
+    bar_format,
+    check_for_esgf_dataroot,
     combine_file_info,
     combine_results,
     parallel_download,
@@ -20,10 +24,6 @@ from intake_esgf.base import (
 from intake_esgf.core import GlobusESGFIndex, SolrESGFIndex
 from intake_esgf.database import create_download_database
 from intake_esgf.logging import setup_logging
-from intake_esgf.util import add_cell_measures
-
-warnings.simplefilter("ignore", category=xr.SerializationWarning)
-BAR_FORMAT = "{desc:>20}: {percentage:3.0f}%|{bar}|{n_fmt}/{total_fmt} [{rate_fmt:>15s}{postfix}]"
 
 
 class ESGFCatalog:
@@ -197,7 +197,7 @@ class ESGFCatalog:
             tqdm(
                 dfs,
                 disable=quiet,
-                bar_format=BAR_FORMAT,
+                bar_format=bar_format,
                 unit="index",
                 unit_scale=False,
                 desc="Searching indices",
@@ -259,7 +259,7 @@ class ESGFCatalog:
             tqdm(
                 dfs,
                 disable=quiet,
-                bar_format=BAR_FORMAT,
+                bar_format=bar_format,
                 unit="index",
                 unit_scale=False,
                 desc="Searching indices",
@@ -347,7 +347,7 @@ class ESGFCatalog:
         for _, row in tqdm(
             self.df.iterrows(),
             disable=quiet,
-            bar_format=BAR_FORMAT,
+            bar_format=bar_format,
             unit="dataset",
             unit_scale=False,
             desc="Obtaining file info",
@@ -391,7 +391,7 @@ class ESGFCatalog:
             for key in tqdm(
                 ds,
                 disable=quiet,
-                bar_format=BAR_FORMAT,
+                bar_format=bar_format,
                 unit="dataset",
                 unit_scale=False,
                 desc="Adding cell measures",
@@ -481,17 +481,3 @@ class ESGFCatalog:
             if pd.to_datetime(m.group(1)) < self.session_time:
                 break
         return "".join(log[:n][::-1])
-
-
-def check_for_esgf_dataroot() -> Union[Path, None]:
-    """Return a direct path to the ESGF data is it exists."""
-    to_check = [
-        "/gpfs/alpine/cli137/proj-shared/ESGF/esg_dataroot/css03_data/",  # OLCF
-        "/p/css03/esgf_publish",  # Nimbus
-        "/eagle/projects/ESGF2/esg_dataroot",  # ALCF
-        "/global/cfs/projectdirs/m3522/cmip6/",  # NERSC data lake
-    ]
-    for check in to_check:
-        if Path(check).is_dir():
-            return check
-    return None
