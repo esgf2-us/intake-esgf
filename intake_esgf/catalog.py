@@ -7,11 +7,9 @@ from pathlib import Path
 from typing import Any, Callable, Union
 
 import pandas as pd
+import requests
 import xarray as xr
 from datatree import DataTree
-from globus_sdk import SearchAPIError
-from requests.adapters import MaxRetryError
-from requests.exceptions import ConnectionError, ConnectTimeout, HTTPError, ReadTimeout
 from tqdm import tqdm
 
 from intake_esgf.core import (
@@ -21,6 +19,7 @@ from intake_esgf.core import (
     combine_results,
     parallel_download,
 )
+from intake_esgf.database import create_download_database
 from intake_esgf.logging import setup_logging
 from intake_esgf.util import add_cell_measures
 
@@ -117,6 +116,10 @@ class ESGFCatalog:
         self.logger = setup_logging(self.local_cache)
         for index in self.indices:
             index.logger = self.logger
+        # initialize the local database
+        self.download_db = path / "download.db"
+        if not self.download_db.is_file():
+            create_download_database(self.download_db)
 
     def clone(self):
         """Return a new instance of a catalog with the same indices and settings."""
@@ -171,14 +174,7 @@ class ESGFCatalog:
                 df = index.search(**search)
             except ValueError:
                 return pd.DataFrame([])
-            except (
-                SearchAPIError,
-                ConnectionError,
-                ReadTimeout,
-                ConnectTimeout,
-                HTTPError,
-                MaxRetryError,
-            ):
+            except requests.exceptions.RequestException:
                 self.logger.info(f"└─{index} \x1b[91;20mno response\033[0m")
                 warnings.warn(
                     f"{index} failed to return a response, results may be incomplete"
@@ -244,14 +240,7 @@ class ESGFCatalog:
                     f"{index} function not implemented for this index, results may be incomplete"
                 )
                 return pd.DataFrame([])
-            except (
-                SearchAPIError,
-                ConnectionError,
-                ReadTimeout,
-                ConnectTimeout,
-                HTTPError,
-                MaxRetryError,
-            ):
+            except requests.exceptions.RequestException:
                 self.logger.info(f"└─{index} \x1b[91;20mno response\033[0m")
                 warnings.warn(
                     f"{index} failed to return a response, results may be incomplete"
@@ -317,7 +306,7 @@ class ESGFCatalog:
 
         By default, the keys of the returned dictionary are the minimal set of facets
         required to uniquely describe the search. If you prefer to use a full set of
-        facets, set `minimal_keys=False`. You can also specify
+        facets, set `minimal_keys=False`.
 
         Parameters
         ----------
@@ -334,16 +323,17 @@ class ESGFCatalog:
         if self.df is None or len(self.df) == 0:
             raise ValueError("No entries to retrieve.")
 
-        # The keys returned will be just the items that are different.
+        # The keys of the returned dictionary should only consist of different facets.
         output_key_format = []
         if ignore_facets is None:
             ignore_facets = []
         if isinstance(ignore_facets, str):
             ignore_facets = [ignore_facets]
+        # ...but these we always ignore
         ignore_facets += [
             "version",
             "id",
-        ]  # these we always ignore
+        ]
         for col in self.df.drop(columns=ignore_facets):
             if minimal_keys:
                 if not (self.df[col].iloc[0] == self.df[col]).all():
@@ -353,7 +343,7 @@ class ESGFCatalog:
         if not output_key_format:  # at minimum we have the variable id as a key
             output_key_format = ["variable_id"]
 
-        # Query the nodes to get the file information for download
+        # Query the nodes (serial) to get the file information for download
         infos = []
         for _, row in tqdm(
             self.df.iterrows(),
@@ -371,10 +361,11 @@ class ESGFCatalog:
                 info[i]["key"] = separator.join([row[k] for k in output_key_format])
             infos += info
 
-        # Run parallel download if needed
+        # Download in parallel using threads
         fetch = partial(
             parallel_download,
             local_cache=self.local_cache,
+            download_db=self.download_db,
             esg_dataroot=self.esgf_data_root,
         )
         results = ThreadPool(min(num_threads, len(infos))).imap_unordered(fetch, infos)
@@ -396,7 +387,7 @@ class ESGFCatalog:
             else:
                 ds[key] = "Error in opening"
 
-        # Attempt to add cell measures
+        # Attempt to add cell measures (serial)
         if add_measures:
             for key in tqdm(
                 ds,

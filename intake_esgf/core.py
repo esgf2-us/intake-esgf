@@ -2,6 +2,7 @@ import hashlib
 import logging
 import re
 import time
+from functools import partial
 from pathlib import Path
 from typing import Any, Union
 
@@ -12,6 +13,11 @@ from pyesgf.search import SearchConnection
 from pyesgf.search.exceptions import EsgfSearchException
 from tqdm import tqdm
 
+from intake_esgf.database import (
+    get_download_rate_dataframe,
+    log_download_information,
+    sort_download_links,
+)
 from intake_esgf.logging import setup_logging
 
 
@@ -91,7 +97,7 @@ class SolrESGFIndex:
 
         """
         if self.response is None:
-            raise ValueError("You need to run search() first.")
+            return []
         infos = []
         for dsr in self.response:
             if dsr.dataset_id not in dataset_ids:
@@ -310,6 +316,7 @@ def download_and_verify(
     hash: str,
     hash_algorithm: str,
     content_length: int,
+    download_db: Path,
     quiet: bool = False,
     logger: Union[logging.Logger, None] = None,
 ) -> None:
@@ -343,11 +350,14 @@ def download_and_verify(
         raise ValueError("Hash does not match")
     if logger is not None:
         logger.info(f"{transfer_time=:.2f} [s] at {rate:.2f} [Mb s-1] {url}")
+    host = url[: url.index("/", 10)].replace("http://", "").replace("https://", "")
+    log_download_information(download_db, host, transfer_time, content_length * 1e-6)
 
 
 def parallel_download(
     info: dict[str, Any],
     local_cache: Path,
+    download_db: Path,
     esg_dataroot: Union[None, Path] = None,
 ):
     """."""
@@ -365,7 +375,12 @@ def parallel_download(
         if logger is not None:
             logger.info(f"accessed {local_file}")
         return info["key"], local_file
-    # else we try to download it, try all links until it passes
+    # else we try to download it, first we sort links by the fastest host to you
+    df_rate = get_download_rate_dataframe(download_db)
+    info["HTTPServer"] = sorted(
+        info["HTTPServer"], key=partial(sort_download_links, df_rate=df_rate)
+    )
+    # keep trying to download until one works out
     for url in info["HTTPServer"]:
         try:
             download_and_verify(
@@ -374,9 +389,11 @@ def parallel_download(
                 info["checksum"],
                 info["checksum_type"],
                 info["size"],
+                download_db=download_db,
                 logger=logger,
             )
-        except Exception:
+        except Exception as exc:
+            print(exc)
             logger.info(f"\x1b[91;20mdownload failed\033[0m {url}")
             continue
         if local_file.exists():
