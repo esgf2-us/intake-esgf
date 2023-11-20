@@ -47,7 +47,9 @@ def log_download_information(
 
 
 def get_download_rate_dataframe(
-    path: Path, history: Literal[None, "day", "week", "month"] = None
+    path: Path,
+    history: Literal[None, "day", "week", "month"] = None,
+    minimum_size: float = 10,
 ) -> pd.DataFrame:
     """Get a dataframe with average download rates per host.
 
@@ -57,10 +59,11 @@ def get_download_rate_dataframe(
         The full path of the database file.
     history
         How much download history should we use in computing rates.
-
+    minimum_size
+        The minimum size in Mb to include in the reported record.
     """
     assert history in [None, "day", "week", "month"]
-    condition = ["transfer_size > 10"]
+    condition = [f"transfer_size > {minimum_size}"]
     if history is not None:
         condition.append(f"timestamp > datetime('now', '-1 {history}', 'localtime')")
     condition = " AND ".join(condition)

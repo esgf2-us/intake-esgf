@@ -5,7 +5,7 @@ import warnings
 from functools import partial
 from multiprocessing.pool import ThreadPool
 from pathlib import Path
-from typing import Any, Callable, Union
+from typing import Any, Callable, Literal, Union
 
 import pandas as pd
 import requests
@@ -22,7 +22,7 @@ from intake_esgf.base import (
     parallel_download,
 )
 from intake_esgf.core import GlobusESGFIndex, SolrESGFIndex
-from intake_esgf.database import create_download_database
+from intake_esgf.database import create_download_database, get_download_rate_dataframe
 from intake_esgf.logging import setup_logging
 
 
@@ -121,7 +121,12 @@ class ESGFCatalog:
             create_download_database(self.download_db)
 
     def clone(self):
-        """Return a new instance of a catalog with the same indices and settings."""
+        """Return a new instance of a catalog with the same indices and settings.
+
+        This is used internally for when we want to find cell measures relating to the
+        previous search but not overwrite the results.
+
+        """
         cat = ESGFCatalog()
         cat.indices = self.indices
         cat.esgf_data_root = self.esgf_data_root
@@ -481,3 +486,25 @@ class ESGFCatalog:
             if pd.to_datetime(m.group(1)) < self.session_time:
                 break
         return "".join(log[:n][::-1])
+
+    def download_summary(
+        self,
+        history: Literal[None, "day", "week", "month"] = None,
+        minimum_size: float = 0,
+    ) -> pd.DataFrame:
+        """Return the per host download summary statistics as a dataframe.
+
+        Parameters
+        ----------
+        history
+            How much download history should we use in computing rates. Leave `None` to
+            use the entire history.
+        minimum_size
+            The minimum size in Mb to include in the reported record.
+
+        """
+        df = get_download_rate_dataframe(
+            self.download_db, history=history, minimum_size=minimum_size
+        )
+        df = df.sort_values("rate", ascending=False)
+        return df

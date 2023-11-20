@@ -8,6 +8,7 @@ import pandas as pd
 from globus_sdk import SearchClient
 
 from intake_esgf.base import get_dataset_pattern
+from intake_esgf.exceptions import NoSearchResults, SearchError
 
 
 class GlobusESGFIndex:
@@ -27,20 +28,31 @@ class GlobusESGFIndex:
         return self.repr
 
     def search(self, **search: Union[str, list[str]]) -> pd.DataFrame:
-        # We need to implement the pagination here, I am just using a large limit for
-        # now but that isn't safe and I am not sure of performance implications.
+        """Search the index and return as a pandas dataframe.
+
+        This function uses the Globus `post_search()` function where our query consists
+        of a `match_any` filter for each of the keywords given in the input `search`. We
+        manually add constraints to only look for Dataset entries that are flagged as
+        the latest version. Note that this version of the index only contains CMIP6
+        entries.
+
+        """
+        # process inputs
         total_time = time.time()
-        limit = 2000
         if "project" in search:
             project = search.pop("project")
             if project != "CMIP6":
-                raise ValueError("ANL Globus index only for CMIP6")
+                raise SearchError(f"{self} only contains project=CMIP6 data.")
         search["type"] = "Dataset"
         if "latest" not in search:
             search["latest"] = True
+
+        # booleans need to be strings in the Globus sdk
         for key, val in search.items():
             if isinstance(val, bool):
                 search[key] = str(val)
+
+        # build up the query and search
         query_data = {
             "q": "",
             "filters": [
@@ -55,12 +67,14 @@ class GlobusESGFIndex:
             "sort": [],
         }
         response_time = time.time()
-        response = SearchClient().post_search(self.index_id, query_data, limit=limit)
+        response = SearchClient().post_search(self.index_id, query_data, limit=1000)
         response_time = time.time() - response_time
         if not response["total"]:
             if self.logger is not None:
                 self.logger.info(f"└─{self} no results")
-            raise ValueError("Search returned no results.")
+            raise NoSearchResults()
+
+        # parse out the CMIP facets from the dataset_id
         pattern = get_dataset_pattern()
         df = []
         for g in response["gmeta"]:
@@ -69,9 +83,13 @@ class GlobusESGFIndex:
                 df.append(m.groupdict())
                 df[-1]["id"] = g["subject"]
         df = pd.DataFrame(df)
+
+        # logging
         total_time = time.time() - total_time
         if self.logger is not None:
-            self.logger.info(f"└─{self} {response_time=:.2f} {total_time=:.2f}")
+            self.logger.info(
+                f"└─{self} results={len(df)} {response_time=:.2f} {total_time=:.2f}"
+            )
         return df
 
     def get_file_info(self, dataset_ids: list[str]) -> dict[str, Any]:
