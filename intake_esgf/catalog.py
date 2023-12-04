@@ -17,7 +17,6 @@ from intake_esgf.base import (
     add_cell_measures,
     bar_format,
     check_for_esgf_dataroot,
-    combine_file_info,
     combine_results,
     parallel_download,
 )
@@ -347,23 +346,43 @@ class ESGFCatalog:
         if not output_key_format:  # at minimum we have the variable id as a key
             output_key_format = ["variable_id"]
 
-        # Query the nodes (serial) to get the file information for download
+        # Populate lists of dataset_ids and matching keys for the output dictionary
+        dataset_ids = []
+        keys = []
+        for _, row in self.df.iterrows():
+            dataset_ids.append(row["id"])
+            key = separator.join([row[k] for k in output_key_format])
+            keys.append([key] * len(row["id"]))
+        dataset_ids = [item for row in dataset_ids for item in row]
+        keys = [item for row in keys for item in row]
+
+        for key, did in zip(keys, dataset_ids):
+            print(key, did)
+
         infos = []
-        for _, row in tqdm(
-            self.df.iterrows(),
-            disable=quiet,
-            bar_format=bar_format,
-            unit="dataset",
-            unit_scale=False,
-            desc="Obtaining file info",
-            ascii=False,
-            total=len(self.df),
-        ):
-            # get file info from each index and then add in a unique key
-            info = combine_file_info(self.indices, row.id)
-            for i, _ in enumerate(info):
-                info[i]["key"] = separator.join([row[k] for k in output_key_format])
-            infos += info
+        """
+        merged_info = {}
+        for ind in indices:
+            try:
+                infos = ind.get_file_info(dataset_ids)
+            except EsgfSearchException:
+                continue
+            # loop thru all the infos and uniquely add by path
+            for info in infos:
+                path = info["path"]
+                if path not in merged_info:
+                    merged_info[path] = {}
+                for key, val in info.items():
+                    if isinstance(val, list):
+                        if key not in merged_info[path]:
+                            merged_info[path][key] = val
+                        else:
+                            merged_info[path][key] += val
+                    else:
+                        if key not in merged_info[path]:
+                            merged_info[path][key] = val
+        return [info for key, info in merged_info.items()]
+        """
 
         # Download in parallel using threads
         fetch = partial(
