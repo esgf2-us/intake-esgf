@@ -67,21 +67,24 @@ class GlobusESGFIndex:
             "sort": [],
         }
         response_time = time.time()
-        response = SearchClient().post_search(self.index_id, query_data, limit=1000)
+        sc = SearchClient()
+        paginator = sc.paginated.post_search(self.index_id, query_data)
+        paginator.limit = 1000
         response_time = time.time() - response_time
-        if not response["total"]:
-            if self.logger is not None:
-                self.logger.info(f"└─{self} no results")
-            raise NoSearchResults()
-
-        # parse out the CMIP facets from the dataset_id
         pattern = get_dataset_pattern()
         df = []
-        for g in response["gmeta"]:
-            m = re.search(pattern, g["subject"])
-            if m:
-                df.append(m.groupdict())
-                df[-1]["id"] = g["subject"]
+        for response in paginator:
+            if not response["total"]:
+                if self.logger is not None:
+                    self.logger.info(f"└─{self} no results")
+                raise NoSearchResults()
+
+            # parse out the CMIP facets from the dataset_id
+            for g in response["gmeta"]:
+                m = re.search(pattern, g["subject"])
+                if m:
+                    df.append(m.groupdict())
+                    df[-1]["id"] = g["subject"]
         df = pd.DataFrame(df)
 
         # logging
