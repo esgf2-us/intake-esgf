@@ -68,11 +68,13 @@ class SolrESGFIndex:
         if self.response is None:
             return []
         infos = []
+        response_time = time.time()
         for dsr in self.response:
             if dsr.dataset_id not in dataset_ids:
                 continue
             for fr in dsr.file_context().search(ignore_facet_check=True):
                 info = {}
+                info["dataset_id"] = fr.json["dataset_id"]
                 info["checksum_type"] = fr.checksum_type
                 info["checksum"] = fr.checksum
                 info["size"] = fr.size
@@ -94,4 +96,8 @@ class SolrESGFIndex:
                         info[link_type] = []
                     info[link_type].append(link[0][0])
                 infos.append(info)
+        response_time = time.time() - response_time
+        if self.logger is not None:
+            self.logger.info(f"└─{self} results={len(infos)} {response_time=:.2f}")
+
         return infos

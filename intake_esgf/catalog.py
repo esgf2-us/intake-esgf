@@ -17,7 +17,6 @@ from intake_esgf.base import (
     add_cell_measures,
     bar_format,
     check_for_esgf_dataroot,
-    combine_file_info,
     combine_results,
     parallel_download,
 )
@@ -327,7 +326,8 @@ class ESGFCatalog:
         if self.df is None or len(self.df) == 0:
             raise ValueError("No entries to retrieve.")
 
-        # The keys of the returned dictionary should only consist of different facets.
+        # The keys of the returned dictionary should only consist of the facets that are
+        # different.
         output_key_format = []
         if ignore_facets is None:
             ignore_facets = []
@@ -347,23 +347,66 @@ class ESGFCatalog:
         if not output_key_format:  # at minimum we have the variable id as a key
             output_key_format = ["variable_id"]
 
-        # Query the nodes (serial) to get the file information for download
-        infos = []
-        for _, row in tqdm(
-            self.df.iterrows(),
-            disable=quiet,
-            bar_format=bar_format,
-            unit="dataset",
-            unit_scale=False,
-            desc="Obtaining file info",
-            ascii=False,
-            total=len(self.df),
-        ):
-            # get file info from each index and then add in a unique key
-            info = combine_file_info(self.indices, row.id)
-            for i, _ in enumerate(info):
-                info[i]["key"] = separator.join([row[k] for k in output_key_format])
-            infos += info
+        # Populate a dictionary of dataset_ids in this search and which keys they will
+        # map to in the output dictionary.
+        dataset_ids = {}
+        for _, row in self.df.iterrows():
+            key = separator.join([row[k] for k in output_key_format])
+            dataset_ids.update({dataset_id: key for dataset_id in row["id"]})
+
+        def _get_file_info(index, dataset_ids):
+            try:
+                info = index.get_file_info(list(dataset_ids.keys()))
+            except ValueError:
+                return []
+            except requests.exceptions.RequestException:
+                self.logger.info(f"└─{index} \x1b[91;20mno response\033[0m")
+                warnings.warn(
+                    f"{index} failed to return a response, info may be incomplete"
+                )
+                return []
+            return info
+
+        self.logger.info("\x1b[36;32mfile info begin\033[0m")
+
+        # threaded file info over indices and flatten output
+        info_time = time.time()
+        get_file_info = ThreadPool(len(self.indices)).imap_unordered(
+            partial(_get_file_info, dataset_ids=dataset_ids), self.indices
+        )
+        index_infos = list(
+            tqdm(
+                get_file_info,
+                disable=quiet,
+                bar_format=bar_format,
+                unit="index",
+                unit_scale=False,
+                desc="Get file information",
+                ascii=False,
+                total=len(self.indices),
+            )
+        )
+        index_infos = [info for index_info in index_infos for info in index_info]
+
+        # now we merge this info together.
+        merged_info = {}
+        for info in index_infos:
+            path = info["path"]
+            if path not in merged_info:
+                merged_info[path] = {"key": dataset_ids[info["dataset_id"]]}
+            for key, val in info.items():
+                if isinstance(val, list):
+                    if key not in merged_info[path]:
+                        merged_info[path][key] = val
+                    else:
+                        merged_info[path][key] += val
+                else:
+                    if key not in merged_info[path]:
+                        merged_info[path][key] = val
+        infos = [info for key, info in merged_info.items()]
+
+        info_time = time.time() - info_time
+        self.logger.info(f"\x1b[36;32mfile info end\033[0m total_time={info_time:.2f}")
 
         # Download in parallel using threads
         fetch = partial(
@@ -507,4 +550,11 @@ class ESGFCatalog:
             self.download_db, history=history, minimum_size=minimum_size
         )
         df = df.sort_values("rate", ascending=False)
+        df = df.rename(
+            columns=dict(
+                transfer_time="transfer_time [s]",
+                transfer_size="transfer_size [Mb]",
+                rate="rate [Mb s-1]",
+            )
+        )
         return df

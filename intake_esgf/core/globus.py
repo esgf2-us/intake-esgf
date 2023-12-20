@@ -94,6 +94,7 @@ class GlobusESGFIndex:
 
     def get_file_info(self, dataset_ids: list[str]) -> dict[str, Any]:
         """"""
+        response_time = time.time()
         response = SearchClient().post_search(
             self.index_id,
             {
@@ -118,6 +119,7 @@ class GlobusESGFIndex:
             if entry["entry_id"] != "file":
                 continue
             content = entry["content"]
+            info["dataset_id"] = content["dataset_id"]
             info["checksum_type"] = content["checksum_type"][0]
             info["checksum"] = content["checksum"][0]
             info["size"] = content["size"]
@@ -141,6 +143,9 @@ class GlobusESGFIndex:
                 / content["title"]
             )
             infos.append(info)
+        response_time = time.time() - response_time
+        if self.logger is not None:
+            self.logger.info(f"└─{self} results={len(infos)} {response_time=:.2f}")
         return infos
 
     def from_tracking_ids(self, tracking_ids: Union[str, list[str]]) -> pd.DataFrame:
