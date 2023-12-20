@@ -550,4 +550,11 @@ class ESGFCatalog:
             self.download_db, history=history, minimum_size=minimum_size
         )
         df = df.sort_values("rate", ascending=False)
+        df = df.rename(
+            columns=dict(
+                transfer_time="transfer_time [s]",
+                transfer_size="transfer_size [Mb]",
+                rate="rate [Mb s-1]",
+            )
+        )
         return df
