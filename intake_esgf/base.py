@@ -50,19 +50,19 @@ def get_dataset_pattern() -> str:
 def combine_results(dfs: list[pd.DataFrame]) -> pd.DataFrame:
     """Return a combined dataframe where ids are now a list."""
     # combine and remove duplicate entries
+    logger = setup_logging()
+    combine_time = time.time()
     df = pd.concat(dfs).drop_duplicates(subset="id").reset_index(drop=True)
     if len(df) == 0:
-        logger = setup_logging()
         logger.info("\x1b[36;32msearch end \x1b[91;20mno results\033[0m")
         raise ValueError("Search returned no results.")
-    # remove earlier versions if present
-    for lbl, grp in df.groupby(list(df.columns[:-3])):
-        df = df.drop(grp[grp.version != grp.version.max()].index)
     # now convert groups to list
-    for lbl, grp in df.groupby(list(df.columns[:-3])):
+    for _, grp in df.groupby(list(df.columns[:-3])):
         df = df.drop(grp.iloc[1:].index)
         df.loc[grp.index[0], "id"] = grp.id.to_list()
     df = df.drop(columns="data_node")
+    combine_time = time.time() - combine_time
+    logger.info(f"{combine_time=:.2f}")
     return df
 
 
