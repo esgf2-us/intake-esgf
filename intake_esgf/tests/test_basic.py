@@ -39,3 +39,17 @@ def test_tracking_ids():
         ]
     )
     assert len(cat.df) == 7
+
+
+def test_add_cell_measures():
+    # these measures are in r1i1p1f2 / piControl
+    cat = ESGFCatalog().search(
+        variable_id="gpp",
+        source_id="UKESM1-0-LL",
+        variant_label="r2i1p1f2",
+        frequency="mon",
+        experiment_id="historical",
+    )
+    ds = cat.to_dataset_dict()["gpp"]
+    assert "sftlf" in ds
+    assert "areacella" in ds
