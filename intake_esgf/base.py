@@ -18,6 +18,7 @@ from intake_esgf.database import (
     log_download_information,
     sort_download_links,
 )
+from intake_esgf.exceptions import NoSearchResults
 from intake_esgf.logging import setup_logging
 
 bar_format = "{desc:>20}: {percentage:3.0f}%|{bar}|{n_fmt}/{total_fmt} [{rate_fmt:>15s}{postfix}]"
@@ -278,7 +279,9 @@ def add_variable(variable_id: str, ds: xr.Dataset, catalog) -> xr.Dataset:
         that any current search is not altered.
     """
     cat = catalog.clone()  # so we do not interfere with the current search
+
     search = get_search_criteria(ds)
+    # some keys we get rid of either because we do not need them or they are wrong
     for key in [
         "frequency",
         "institution_id",
@@ -288,23 +291,24 @@ def add_variable(variable_id: str, ds: xr.Dataset, catalog) -> xr.Dataset:
     ]:
         if key in search:
             search.pop(key)
+    # now we update for this search
     search.update({"table_id": ["fx", "Ofx"], "variable_id": variable_id})
-    # we could just pop all these facets at once, but this way gets you measures which
-    # are as 'close' to the original search as we can get
-    previous_search = {}
-    for relax in ["", "variant_label", "member_id", "experiment_id", "activity_id"]:
-        if relax in search:
-            search.pop(relax)
-        if previous_search == search:
-            continue
+    # relax search criteria
+    relaxation = ["variant_label", "experiment_id", "activity_id"]
+    while True:
         try:
-            previous_search = search.copy()
             cat.search(quiet=True, **search)
             cat.df = cat.df.iloc[:1]  # we just need 1
             break
-        except ValueError:
-            continue
-        raise ValueError(f"Could not find {variable_id}")
+        except NoSearchResults:
+            while True:
+                # no more criteria to relax... just can't find it
+                if not relaxation:
+                    raise NoSearchResults
+                relax = relaxation.pop(0)
+                if relax in search:
+                    search.pop(relax)
+                    break
     # many times the coordinates of the measures differ in only precision of the
     # variables and will lead to unexpected merged results
     var = cat.to_dataset_dict(quiet=True, add_measures=False)[variable_id]

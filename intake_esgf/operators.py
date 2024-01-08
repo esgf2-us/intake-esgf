@@ -45,7 +45,7 @@ def global_sum(
         unit="dataset",
         unit_scale=False,
         desc="Global sum",
-        ascii=True,
+        ascii=False,
         total=len(dsd),
     ):
         dsd[key] = _global_sum(ds)
@@ -88,7 +88,7 @@ def global_mean(
         unit="dataset",
         unit_scale=False,
         desc="Global mean",
-        ascii=True,
+        ascii=False,
         total=len(dsd),
     ):
         dsd[key] = _global_mean(ds)
@@ -118,7 +118,9 @@ def ensemble_mean(
     for key, ds in dsd.items():
         df.append(get_search_criteria(ds))
         df[-1]["key"] = key
-    df = pd.DataFrame(df).drop(columns=["version"])
+    df = pd.DataFrame(df)
+    if "version" in df.columns:
+        df = df.drop(columns="version")
     # now groupby everything but the variant_label and compute the mean/std
     grp_cols = [c for c in list(df.columns) if c not in ["variant_label", "key"]]
     out = {}
@@ -129,7 +131,7 @@ def ensemble_mean(
         unit="dataset",
         unit_scale=False,
         desc="Ensemble mean",
-        ascii=True,
+        ascii=False,
     ):
         ds = xr.concat([dsd[key] for key in grp["key"].to_list()], dim="variant")
         ds.attrs["variant_label"] = grp["variant_label"].to_list()
