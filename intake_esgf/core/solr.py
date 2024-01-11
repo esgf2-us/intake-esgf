@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import Any, Union
 
 import pandas as pd
-from pyesgf.search import SearchConnection
+import requests
 
 from intake_esgf.base import get_dataset_pattern
 
@@ -13,10 +13,8 @@ from intake_esgf.base import get_dataset_pattern
 class SolrESGFIndex:
     def __init__(self, index_node: str = "esgf-node.llnl.gov", distrib: bool = True):
         self.repr = f"SolrESGFIndex('{index_node}'{',distrib=True' if distrib else ''})"
-        self.conn = SearchConnection(
-            f"https://{index_node}/esg-search", distrib=distrib
-        )
-        self.response = None
+        self.url = f"https://{index_node}/esg-search/search"
+        self.distrib = distrib
         self.logger = None
 
     def __repr__(self):
@@ -24,26 +22,34 @@ class SolrESGFIndex:
 
     def search(self, **search: Union[str, list[str]]) -> pd.DataFrame:
         total_time = time.time()
-        if "latest" not in search:
-            search["latest"] = True
+        search.update(
+            dict(
+                type="Dataset",
+                format="application/solr+json",
+                limit=1000,  # FIX: need to manually paginate
+                latest=search["latest"] if "latest" in search else True,
+                retracted=search["retracted"] if "retracted" in search else False,
+                distrib=search["distrib"] if "distrib" in search else self.distrib,
+            )
+        )
         response_time = time.time()
-        ctx = self.conn.new_context(facets=list(search.keys()), **search)
-        response = ctx.search()
+        response = requests.get(self.url, params=search)
+        response.raise_for_status()
+        response = response.json()["response"]
         response_time = time.time() - response_time
-        self.response = response
-        if not ctx.hit_count:
+        if not response["numFound"]:
             if self.logger is not None:
                 self.logger.info(f"└─{self} no results")
             raise ValueError("Search returned no results.")
-        assert ctx.hit_count == len(response)
+        assert response["numFound"] == len(response["docs"])
         pattern = get_dataset_pattern()
         df = []
         process_time = time.time()
-        for dsr in response:
-            m = re.search(pattern, dsr.dataset_id)
+        for doc in response["docs"]:
+            m = re.search(pattern, doc["id"])
             if m:
                 df.append(m.groupdict())
-                df[-1]["id"] = dsr.dataset_id
+                df[-1]["id"] = doc["id"]
         process_time = time.time() - process_time
         df = pd.DataFrame(df)
         total_time = time.time() - total_time
@@ -65,39 +71,49 @@ class SolrESGFIndex:
             A list of datasets IDs which scientifically refer to the same files.
 
         """
-        if self.response is None:
-            return []
-        infos = []
         response_time = time.time()
-        for dsr in self.response:
-            if dsr.dataset_id not in dataset_ids:
-                continue
-            for fr in dsr.file_context().search(ignore_facet_check=True):
-                info = {}
-                info["dataset_id"] = fr.json["dataset_id"]
-                info["checksum_type"] = fr.checksum_type
-                info["checksum"] = fr.checksum
-                info["size"] = fr.size
-                fr.json["version"] = [
-                    fr.json["dataset_id"].split("|")[0].split(".")[-1]
-                ]
-                file_path = fr.json["directory_format_template_"][0]
-                info["path"] = (
-                    Path(
-                        file_path.replace("%(root)s/", "")
-                        .replace("%(", "{")
-                        .replace(")s", "[0]}")
-                        .format(**fr.json)
-                    )
-                    / fr.json["title"]
-                )
-                for link_type, link in fr.urls.items():
-                    if link_type not in info:
-                        info[link_type] = []
-                    info[link_type].append(link[0][0])
-                infos.append(info)
+        search = dict(
+            type="File",
+            format="application/solr+json",
+            limit=1000,  # FIX: need to manually paginate
+            latest=True,
+            retracted=False,
+            distrib=self.distrib,
+            dataset_id=dataset_ids,
+        )
+        response = requests.get(self.url, params=search)
+        response.raise_for_status()
+        response = response.json()["response"]
         response_time = time.time() - response_time
+        if not response["numFound"]:
+            if self.logger is not None:
+                self.logger.info(f"└─{self} no results")
+            raise ValueError("Search returned no results.")
+        assert response["numFound"] == len(response["docs"])
+        infos = []
+        for doc in response["docs"]:
+            info = {}
+            info["dataset_id"] = doc["dataset_id"]
+            info["checksum_type"] = doc["checksum_type"][0]
+            info["checksum"] = doc["checksum"][0]
+            info["size"] = doc["size"]
+            doc["version"] = [doc["dataset_id"].split("|")[0].split(".")[-1]]
+            file_path = doc["directory_format_template_"][0]
+            info["path"] = (
+                Path(
+                    file_path.replace("%(root)s/", "")
+                    .replace("%(", "{")
+                    .replace(")s", "[0]}")
+                    .format(**doc)
+                )
+                / doc["title"]
+            )
+            for entry in doc["url"]:
+                link, _, link_type = entry.split("|")
+                if link_type not in info:
+                    info[link_type] = []
+                info[link_type].append(link)
+            infos.append(info)
         if self.logger is not None:
             self.logger.info(f"└─{self} results={len(infos)} {response_time=:.2f}")
-
         return infos

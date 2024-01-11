@@ -10,7 +10,6 @@ from typing import Any, Union
 import pandas as pd
 import requests
 import xarray as xr
-from pyesgf.search.exceptions import EsgfSearchException
 from tqdm import tqdm
 
 from intake_esgf.database import (
@@ -209,7 +208,7 @@ def combine_file_info(indices, dataset_ids: list[str]) -> dict[str, Any]:
     for ind in indices:
         try:
             infos = ind.get_file_info(dataset_ids)
-        except EsgfSearchException:
+        except requests.exceptions.RequestException:
             continue
         # loop thru all the infos and uniquely add by path
         for info in infos:
