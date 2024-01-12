@@ -38,8 +38,8 @@ Installing
    :hidden:
    :caption: User Guide
 
-   quickstart
    beginner
+   quickstart
 
 .. toctree::
    :maxdepth: 2

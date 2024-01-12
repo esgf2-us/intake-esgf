@@ -28,7 +28,9 @@ cat = ESGFCatalog()
 print(cat)  # <-- nothing to see here yet
 ```
 
-To populate the catalog, perform a search using the traditional facets. If you are not familiar with these, we recommend you starting with our XXX tutorial.
+To populate the catalog, perform a search using the traditional facets. If you
+are not familiar with these, we recommend you starting with our
+[beginner](beginner) tutorial.
 
 ```{code-cell}
 cat.search(
@@ -96,6 +98,17 @@ exists and use it instead of re-downloading. Then it returns a dictionary whose
 keys are by default the minimal set of facets to uniquely describe a dataset in
 the current search.
 
+Now that we have downloaded/accessed the data and loaded it into memory, we can
+look at the keys of the resulting dictionary.
+
+```{code-cell}
+print(dsd.keys())
+```
+
+By defult the keys are populated using the different facet values in the
+dictionary. However, you have a lot of [control](dictkeys) on the form
+that they take.
+
 ## Automatic cell measures
 
 During the download process, you may have also noticed that a progress bar
@@ -112,8 +125,18 @@ with `cat.to_dataset_dict(add_measures=False)`).
 
 We determine which measures need downloaded by looking in the dataset
 attributes. Since `tas` is an atmospheric variable, we see that its
-`cell_measures = 'area: areacella'`. If you print this variable you will see
-that measure has been added.
+`cell_measures = 'area: areacella'`. However, `gpp` is a land variable and thus
+also needs the land fractions, determined by `where land` in their
+`cell_methods`. If you print these variables you will see that measure
+information has been added to each dataset.
+
+```{code-cell}
+dsd['Amon.tas']
+```
+
+```{code-cell}
+dsd['Lmon.gpp']
+```
 
 ## Plots
 
