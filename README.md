@@ -4,6 +4,11 @@
 
 # intake-esgf
 
+## Badges
+
+[![Documentation Status][rtd-badge]][rtd-link]
+
+## Motivation
 A small intake and intake-esm *inspired* package under development in ESGF2.
 This package queries a sample index of the replicas hosted at Argonne National
 Laboratory and returns the response as a pandas dataframe, mimicing the
@@ -29,3 +34,6 @@ stored in `${HOME}/.esgf` as well as a log of searches and downloads in `${HOME}
 * Currently the package will attempt to download files using the first https link that it finds. If a link fails, we continue on to the next link in the list. However, this list should be prioritized by what is fastest for the user. This is possibly something we can measure and adapt as the user uses the tool.
 * We currently use the https links to download the data. However, we plan to add a `stream=True` option to `to_dataset_dict` which would not download but rather pass OPeNDAP/THREDDS links to the xarray constructor.
 * A growing number of file entries now also contain Globus links. We will add authentication and then the option to select and endpoint to download the current catalog to.
+
+[rtd-badge]: https://readthedocs.org/projects/intake-esm/badge/?version=latest
+[rtd-link]: https://intake-esm.readthedocs.io/en/latest/?badge=latest
