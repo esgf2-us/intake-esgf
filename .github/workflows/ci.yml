@@ -37,15 +37,14 @@ jobs:
         uses: mamba-org/setup-micromamba@v1
         with:
           cache-downloads: true
-          micromamba-version: "latest"
           environment-file: ci/environment.yml
+          environment-name: intake-esgf-dev
           create-args: >-
             python=${{ matrix.python-version }}
 
       - name: Install intake-esgf
         run: |
           python -m pip install -e . --no-deps --force-reinstall
-          conda list
 
       - name: Run Tests
         run: |
