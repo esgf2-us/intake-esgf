@@ -11,6 +11,7 @@ dependencies:
   - distributed
   - netCDF4
   - matplotlib
+  - ipywidgets
   - pip
   - pip:
       - myst_nb

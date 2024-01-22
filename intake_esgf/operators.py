@@ -3,9 +3,14 @@ from typing import Union
 
 import pandas as pd
 import xarray as xr
-from tqdm import tqdm
 
+from intake_esgf import IN_NOTEBOOK
 from intake_esgf.base import bar_format, get_cell_measure, get_search_criteria
+
+if IN_NOTEBOOK:
+    from tqdm import tqdm_notebook as tqdm
+else:
+    from tqdm import tqdm
 
 
 def global_sum(

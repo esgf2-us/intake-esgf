@@ -10,8 +10,8 @@ from typing import Any, Union
 import pandas as pd
 import requests
 import xarray as xr
-from tqdm import tqdm
 
+from intake_esgf import IN_NOTEBOOK
 from intake_esgf.database import (
     get_download_rate_dataframe,
     log_download_information,
@@ -19,6 +19,11 @@ from intake_esgf.database import (
 )
 from intake_esgf.exceptions import NoSearchResults
 from intake_esgf.logging import setup_logging
+
+if IN_NOTEBOOK:
+    from tqdm import tqdm_notebook as tqdm
+else:
+    from tqdm import tqdm
 
 bar_format = "{desc:>20}: {percentage:3.0f}%|{bar}|{n_fmt}/{total_fmt} [{rate_fmt:>15s}{postfix}]"
 
@@ -93,6 +98,12 @@ def download_and_verify(
     """Download the url to a local file and check for validity, removing if not."""
     if not isinstance(local_file, Path):
         local_file = Path(local_file)
+    max_file_length = 40
+    desc = (
+        local_file.name
+        if len(local_file.name) < max_file_length
+        else f"{local_file.name[:(max_file_length-3)]}..."
+    )
     local_file.parent.mkdir(parents=True, exist_ok=True)
     resp = requests.get(url, stream=True, timeout=10)
     resp.raise_for_status()
@@ -104,7 +115,7 @@ def download_and_verify(
             total=content_length,
             unit="B",
             unit_scale=True,
-            desc=local_file.name,
+            desc=desc,
             ascii=False,
         ) as pbar:
             for chunk in resp.iter_content(chunk_size=1024):
