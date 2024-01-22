@@ -533,7 +533,9 @@ class ESGFCatalog:
             m = re.search(r"\x1b\[36;20m(.*)\s\033\[0m", line)
             if not m:
                 continue
-            if pd.to_datetime(m.group(1)) < self.session_time:
+            if pd.to_datetime(m.group(1)) < (
+                self.session_time - pd.Timedelta(1, "s")  # little pad
+            ):
                 break
         return "".join(log[:n][::-1])
 
