@@ -209,6 +209,13 @@ class ESGFCatalog:
                 total=len(self.indices),
             )
         )
+
+        # even though we are using latest=True, because the search is distributed, we
+        # may have different versions.
+        for r, row in self.df.iterrows():
+            latest = max([x.split("|")[0].split(".")[-1] for x in row.id])
+            self.df.loc[r, "id"] = [x for x in row.id if latest in x]
+
         search_time = time.time() - search_time
         self.logger.info(f"\x1b[36;32msearch end\033[0m total_time={search_time:.2f}")
 
@@ -403,7 +410,7 @@ class ESGFCatalog:
                 else:
                     if key not in merged_info[path]:
                         merged_info[path][key] = val
-        infos = [info for key, info in merged_info.items()]
+        infos = [info for _, info in merged_info.items()]
 
         info_time = time.time() - info_time
         self.logger.info(f"\x1b[36;32mfile info end\033[0m total_time={info_time:.2f}")
