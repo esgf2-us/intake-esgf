@@ -98,6 +98,12 @@ def download_and_verify(
     """Download the url to a local file and check for validity, removing if not."""
     if not isinstance(local_file, Path):
         local_file = Path(local_file)
+    max_file_length = 40
+    desc = (
+        local_file.name
+        if len(local_file.name) < max_file_length
+        else f"{local_file.name[:(max_file_length-3)]}..."
+    )
     local_file.parent.mkdir(parents=True, exist_ok=True)
     resp = requests.get(url, stream=True, timeout=10)
     resp.raise_for_status()
@@ -109,7 +115,7 @@ def download_and_verify(
             total=content_length,
             unit="B",
             unit_scale=True,
-            desc=local_file.name,
+            desc=desc,
             ascii=False,
         ) as pbar:
             for chunk in resp.iter_content(chunk_size=1024):
