@@ -6,7 +6,11 @@ dependencies:
   - xarray
   - xarray-datatree
   - jupyterlab
-  - netcdf4
+  - netCDF4
   - matplotlib
   - pytest
   - pytest-cov
+  - tqdm
+  - pandas
+  - globus-sdk
+  - requests
