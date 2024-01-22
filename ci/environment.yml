@@ -8,3 +8,5 @@ dependencies:
   - jupyterlab
   - netcdf4
   - matplotlib
+  - pytest
+  - pytest-cov
