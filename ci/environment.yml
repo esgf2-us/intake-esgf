@@ -14,3 +14,4 @@ dependencies:
   - pandas
   - globus-sdk
   - requests
+  - dask
