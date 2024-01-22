@@ -51,18 +51,8 @@ Installing
    logging
    measures
    modelgroups
-   ensembles
    operators
    reproduce
-   summary
-
-.. toctree::
-   :maxdepth: 2
-   :hidden:
-   :caption: Sample Searches
-
-   extremes
-   ilamb
 
 .. toctree::
    :maxdepth: 2

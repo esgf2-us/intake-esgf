@@ -106,37 +106,11 @@ print(dsd.keys())
 ```
 
 By defult the keys are populated using the different facet values in the
-dictionary. However, you have a lot of [control](dictkeys) on the form
-that they take.
-
-## Automatic cell measures
-
-During the download process, you may have also noticed that a progress bar
-informed you that we were adding cell measures. If you have worked with ESGF
-data before, you know that cell measure information like `areacella` is needed
-to take proper area-weighted means/summations. Yet many times, model centers
-have not uploaded this information uniformly in all submissions. We perform a
-search for each dataset being placed in the dataset dictionary, progressively
-dropping facets to find, if possible, the cell measures that are *closest* to
-the dataset being downloaded. Sometimes they are simply in another
-`variant_label`, but other times they could be in a different `activity_id`. No
-matter where they are, we find them for you and add them by default (disable
-with `cat.to_dataset_dict(add_measures=False)`).
-
-We determine which measures need downloaded by looking in the dataset
-attributes. Since `tas` is an atmospheric variable, we see that its
-`cell_measures = 'area: areacella'`. However, `gpp` is a land variable and thus
-also needs the land fractions, determined by `where land` in their
-`cell_methods`. If you print these variables you will see that measure
-information has been added to each dataset.
-
-```{code-cell}
-dsd['Amon.tas']
-```
-
-```{code-cell}
-dsd['Lmon.gpp']
-```
+dictionary. However, you have a lot of [control](dictkeys) on the form that they
+take. During the download process, you may have also noticed that a progress bar
+informed you that we were adding cell measures. We add [cell measures](measures)
+automatically to your datasets by looking at the attributes to determine what is
+needed.
 
 ## Plots
 
