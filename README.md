@@ -1,11 +1,10 @@
 [<img width=250px src=https://nvcl.energy.gov/content/images/project/earth-system-grid-federation-2-93.jpg>](https://climatemodeling.science.energy.gov/presentations/esgf2-building-next-generation-earth-system-grid-federation)
 
-*Experimental version under development*
-
 # intake-esgf
 
 ## Badges
 
+[![Continuous Integration][ci-badge]][rtd-link]
 [![Documentation Status][rtd-badge]][rtd-link]
 
 ## Motivation
@@ -35,5 +34,7 @@ stored in `${HOME}/.esgf` as well as a log of searches and downloads in `${HOME}
 * We currently use the https links to download the data. However, we plan to add a `stream=True` option to `to_dataset_dict` which would not download but rather pass OPeNDAP/THREDDS links to the xarray constructor.
 * A growing number of file entries now also contain Globus links. We will add authentication and then the option to select and endpoint to download the current catalog to.
 
+[ci-badge]: https://github.com/esgf2-us/intake-esgf/actions/workflows/ci.yml/badge.svg?branch=main
+[ci-link]: https://github.com/esgf2-us/intake-esgf/actions/workflows/ci.yml
 [rtd-badge]: https://readthedocs.org/projects/intake-esm/badge/?version=latest
 [rtd-link]: https://intake-esm.readthedocs.io/en/latest/?badge=latest
