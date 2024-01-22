@@ -10,8 +10,8 @@ from typing import Any, Union
 import pandas as pd
 import requests
 import xarray as xr
-from tqdm import tqdm
 
+from intake_esgf import IN_NOTEBOOK
 from intake_esgf.database import (
     get_download_rate_dataframe,
     log_download_information,
@@ -19,6 +19,11 @@ from intake_esgf.database import (
 )
 from intake_esgf.exceptions import NoSearchResults
 from intake_esgf.logging import setup_logging
+
+if IN_NOTEBOOK:
+    from tqdm import tqdm_notebook as tqdm
+else:
+    from tqdm import tqdm
 
 bar_format = "{desc:>20}: {percentage:3.0f}%|{bar}|{n_fmt}/{total_fmt} [{rate_fmt:>15s}{postfix}]"
 

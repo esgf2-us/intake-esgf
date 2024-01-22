@@ -11,8 +11,8 @@ import pandas as pd
 import requests
 import xarray as xr
 from datatree import DataTree
-from tqdm import tqdm
 
+from intake_esgf import IN_NOTEBOOK
 from intake_esgf.base import (
     add_cell_measures,
     bar_format,
@@ -23,6 +23,11 @@ from intake_esgf.base import (
 from intake_esgf.core import GlobusESGFIndex, SolrESGFIndex
 from intake_esgf.database import create_download_database, get_download_rate_dataframe
 from intake_esgf.logging import setup_logging
+
+if IN_NOTEBOOK:
+    from tqdm import tqdm_notebook as tqdm
+else:
+    from tqdm import tqdm
 
 
 class ESGFCatalog:
