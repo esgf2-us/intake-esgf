@@ -1,0 +1,19 @@
+name: intake-esgf-doc
+channels:
+  - conda-forge
+  - defaults
+dependencies:
+  - furo
+  - numpydoc
+  - xarray
+  - xarray-datatree
+  - dask
+  - distributed
+  - netCDF4
+  - matplotlib
+  - pip
+  - pip:
+      - myst_nb
+      - sphinx_autosummary_accessors
+      - sphinx_copybutton
+      - -e ..

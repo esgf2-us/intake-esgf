@@ -127,7 +127,8 @@ ds.plot(ax=axs[1], cmap="Blues", vmax=10, cbar_kwargs={"label": "pr [mm d-1]"})
 
 # gross primary productivty
 ds = dsd["Lmon.gpp"]["gpp"].mean(dim="time") * 86400 * 1000  # to [g m-2 d-1]
-ds.plot(ax=axs[2], cmap="Greens", cbar_kwargs={"label": "gpp [g m-2 d-1]"});
+ds.plot(ax=axs[2], cmap="Greens", cbar_kwargs={"label": "gpp [g m-2 d-1]"})
+plt.tight_layout()
 ```
 
 ## Summary
