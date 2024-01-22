@@ -47,9 +47,9 @@ Installing
    :caption: Features
 
    configure
+   measures
    dictkeys
    logging
-   measures
    modelgroups
    operators
    reproduce

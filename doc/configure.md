@@ -31,3 +31,11 @@ for ind in cat.indices:
 ```
 
 `intake-esgf` is designed to build a composite response from all indices that you provide while also warning you if a node failed to return a response. If you want to ensure that your search has found all possible results, we recommend using `esgf1_indices=True`.
+
+## Setting the local cache
+
+To do. Comment about working on shared resourece where you have a quota.
+
+## Using data directly
+
+To do.
