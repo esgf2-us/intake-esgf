@@ -12,7 +12,6 @@ on:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
 
 jobs:
   build:
@@ -34,12 +33,12 @@ jobs:
           fetch-depth: 0 # Fetch all history for all branches and tags.
 
       - name: Create conda environment
-        uses: mamba-org/provision-with-micromamba@main
+        uses: mamba-org/setup-micromamba@v1
         with:
           cache-downloads: true
           micromamba-version: "latest"
           environment-file: ci/environment.yml
-          extra-specs: |
+          create-args: >-
             python=${{ matrix.python-version }}
 
       - name: Install intake-esgf
