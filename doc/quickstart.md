@@ -9,6 +9,14 @@ kernelspec:
 
 # Quickstart
 
+To get started, you will need to install `intake-esgf` using [pip](https://pypi.org/project/pip/):
+
+```bash
+python -m pip install intake-esgf
+```
+
+Next you will need to import the `ESGFCatalog` and `matplotlib` for plotting later in the document.
+
 ```{code-cell}
 from intake_esgf import ESGFCatalog
 import matplotlib.pyplot as plt
@@ -19,9 +27,9 @@ import matplotlib.pyplot as plt
 A catalog in `intake-esgf` initializes empty. This is because while intake-esm
 loads a large file-based database into memory, we are going to populate a
 catalog by searching one or many index nodes. The ESGFCatalog is configured by
-default to query a Globus (ElasticSearch) based index which has information
-about holdings at the Argonne Leadership Computing Facility (ALCF) only. We will
-demonstrate how this may be expanded to include other nodes later.
+default to query a Globus-based index which has information about holdings at
+the Argonne Leadership Computing Facility (ALCF) only. We will demonstrate how
+this may be expanded to include other nodes [later](configure).
 
 ```{code-cell}
 cat = ESGFCatalog()
@@ -29,8 +37,8 @@ print(cat)  # <-- nothing to see here yet
 ```
 
 To populate the catalog, perform a search using the traditional facets. If you
-are not familiar with these, we recommend you starting with our
-[beginner](beginner) tutorial.
+are not familiar with these, we recommend you starting with
+our[beginner](beginner) tutorial.
 
 ```{code-cell}
 cat.search(
