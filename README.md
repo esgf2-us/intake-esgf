@@ -4,7 +4,7 @@
 
 ## Badges
 
-[![Continuous Integration][ci-badge]][rtd-link]
+[![Continuous Integration][ci-badge]][ci-link]
 [![Documentation Status][rtd-badge]][rtd-link]
 
 ## Overview
