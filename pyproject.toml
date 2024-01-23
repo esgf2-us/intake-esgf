@@ -1,8 +1,11 @@
 # https://snarky.ca/what-the-heck-is-pyproject-toml/
 
 [build-system]
-requires = ["setuptools"]
+requires = ["setuptools", "setuptools_scm", "wheel"]
 build-backend = "setuptools.build_meta"
+
+[tool.setuptools_scm]
+version_scheme = "no-guess-dev"
 
 [tool.coverage.run]
 omit = ["*/intake_esgf/tests/*"]

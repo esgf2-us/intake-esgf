@@ -3,6 +3,7 @@
 import warnings
 
 import xarray as xr
+from pkg_resources import DistributionNotFound, get_distribution
 
 warnings.simplefilter("ignore", category=xr.SerializationWarning)
 
@@ -26,3 +27,8 @@ IN_NOTEBOOK = in_notebook()
 from intake_esgf.catalog import ESGFCatalog  # noqa
 
 __all__ = ["ESGFCatalog", "IN_NOTEBOOK"]
+
+try:
+    __version__ = get_distribution(__name__).version
+except DistributionNotFound:  # pragma: no cover
+    __version__ = "0.0.0"  # pragma: no cover
