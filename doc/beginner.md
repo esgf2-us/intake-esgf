@@ -21,5 +21,4 @@ At the highest level, ESGF stores data in *projects* such as `CMIP5` and `CMIP6`
 
 * `experiment_id` - The identifier of the experiment. As part of the planning phase of the CMIP process, groups of researchers can write a paper detailing a specific method that a model is to be run. This allows modeling centers to read the paper and follow the protocol if they wish to be part of the experiment. You can browse the experiments [here](https://wcrp-cmip.github.io/CMIP6_CVs/docs/CMIP6_experiment_id.html) to see the indentifiers and some basic information.
 * `source_id` - The identifier of the model. We use the term *source* instead of *model* in an attempt to make the control vocabular more general and in the future unify vocabularies among projects. Each model or model version will have a unique string identifying which model and/or configuration was run. [here](https://wcrp-cmip.github.io/CMIP6_CVs/docs/CMIP6_source_id.html)
-
 * `variable_id` - The identifier of the variable.
