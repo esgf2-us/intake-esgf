@@ -6,6 +6,8 @@
 
 [![Continuous Integration][ci-badge]][ci-link]
 [![Documentation Status][rtd-badge]][rtd-link]
+[![Code Coverage Status][codecov-badge]][codecov-link]
+[![PyPI][pypi-badge]][pypi-link]
 
 ## Overview
 
@@ -34,3 +36,7 @@ For a full listing of features with code examples, please consult the [documenta
 [ci-link]: https://github.com/esgf2-us/intake-esgf/actions/workflows/ci.yml
 [rtd-badge]: https://readthedocs.org/projects/intake-esgf/badge/?version=latest
 [rtd-link]: https://intake-esgf.readthedocs.io/en/latest/?badge=latest
+[codecov-badge]: https://img.shields.io/codecov/c/github/esgf2-us/intake-esgf.svg?logo=codecov
+[codecov-link]: https://codecov.io/gh/esgf2-us/intake-esgf
+[pypi-badge]: https://img.shields.io/pypi/v/intake-esgf?logo=pypi
+[pypi-link]: https://pypi.org/project/intake-esgf
