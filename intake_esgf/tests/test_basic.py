@@ -28,6 +28,9 @@ def test_esgroot():
     )
     ds = cat.to_dataset_dict(add_measures=False)
     assert "gpp" in ds
+    log = cat.session_log()
+    assert "download" not in log
+    assert f"accessed {cat.esgf_data_root}" in cat.session_log()
 
 
 def test_noresults():
@@ -88,16 +91,6 @@ def test_remove_ensemble():
     cat.remove_ensembles()
     assert len(cat.df) == 1
     assert cat.df.iloc[0]["member_id"] == "r1i1p1f2"
-
-
-def test_log():
-    cat = ESGFCatalog().search(
-        experiment_id="historical",
-        source_id="CanESM5",
-        variable_id=["gpp"],
-        variant_label=["r1i1p1f1"],
-    )
-    assert "CanESM5" in cat.session_log()
 
 
 def test_download_dbase():
