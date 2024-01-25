@@ -182,39 +182,6 @@ def parallel_download(
     return None, None
 
 
-def combine_file_info(indices, dataset_ids: list[str]) -> dict[str, Any]:
-    """Combine file information for the given datasets from all indices.
-
-    Parameters
-    ----------
-    indices
-        A list of index classes, see `intake_esgf.core`.
-    dataset_ids
-        The dataset_ids for which we are seeking file information.
-    """
-    merged_info = {}
-    for ind in indices:
-        try:
-            infos = ind.get_file_info(dataset_ids)
-        except requests.exceptions.RequestException:
-            continue
-        # loop thru all the infos and uniquely add by path
-        for info in infos:
-            path = info["path"]
-            if path not in merged_info:
-                merged_info[path] = {}
-            for key, val in info.items():
-                if isinstance(val, list):
-                    if key not in merged_info[path]:
-                        merged_info[path][key] = val
-                    else:
-                        merged_info[path][key] += val
-                else:
-                    if key not in merged_info[path]:
-                        merged_info[path][key] = val
-    return [info for key, info in merged_info.items()]
-
-
 def check_for_esgf_dataroot() -> Union[Path, None]:
     """Return a direct path to the ESGF data is it exists."""
     to_check = [
