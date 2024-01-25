@@ -182,66 +182,9 @@ def parallel_download(
     return None, None
 
 
-def get_relative_esgf_path(entry: dict[str, Any]) -> Path:
-    """Return the relative ESGF path from the Globus entry."""
-    if "content" not in entry:
-        raise ValueError("'content' not part of the entry.")
-    content = entry["content"]
-    if set(["version", "dataset_id", "directory_format_template_"]).difference(
-        content.keys()
-    ):
-        raise ValueError("Entry content does not contain expected keys.")
-    # For some reason, the `version` in the globus response is just an integer and not
-    # what is used in the file path so I have to parse it out of the `dataset_id`
-    content["version"] = [content["dataset_id"].split("|")[0].split(".")[-1]]
-    # Format the file path using the template in the response
-    file_path = content["directory_format_template_"][0]
-    file_path = Path(
-        file_path.replace("%(root)s/", "")
-        .replace("%(", "{")
-        .replace(")s", "[0]}")
-        .format(**content)
-    )
-    return file_path
-
-
-def combine_file_info(indices, dataset_ids: list[str]) -> dict[str, Any]:
-    """Combine file information for the given datasets from all indices.
-
-    Parameters
-    ----------
-    indices
-        A list of index classes, see `intake_esgf.core`.
-    dataset_ids
-        The dataset_ids for which we are seeking file information.
-    """
-    merged_info = {}
-    for ind in indices:
-        try:
-            infos = ind.get_file_info(dataset_ids)
-        except requests.exceptions.RequestException:
-            continue
-        # loop thru all the infos and uniquely add by path
-        for info in infos:
-            path = info["path"]
-            if path not in merged_info:
-                merged_info[path] = {}
-            for key, val in info.items():
-                if isinstance(val, list):
-                    if key not in merged_info[path]:
-                        merged_info[path][key] = val
-                    else:
-                        merged_info[path][key] += val
-                else:
-                    if key not in merged_info[path]:
-                        merged_info[path][key] = val
-    return [info for key, info in merged_info.items()]
-
-
 def check_for_esgf_dataroot() -> Union[Path, None]:
     """Return a direct path to the ESGF data is it exists."""
     to_check = [
-        "/gpfs/alpine/cli137/proj-shared/ESGF/esg_dataroot/css03_data/",  # OLCF
         "/p/css03/esgf_publish",  # Nimbus
         "/eagle/projects/ESGF2/esg_dataroot",  # ALCF
         "/global/cfs/projectdirs/m3522/cmip6/",  # NERSC data lake
