@@ -66,6 +66,30 @@ def test_add_cell_measures():
     assert "areacella" in ds
 
 
+def test_modelgroups():
+    cat = ESGFCatalog().search(
+        experiment_id="historical",
+        source_id=["CanESM5", "GFDL-CM4"],
+        variable_id=["tas", "pr"],
+        variant_label=["r1i1p1f1", "r2i1p1f1"],
+        table_id="day",
+    )
+    assert len(cat.model_groups()) == 4
+
+
+def test_remove_ensemble():
+    cat = ESGFCatalog().search(
+        experiment_id="historical",
+        source_id=["UKESM1-0-LL"],
+        variable_id=["tas"],
+        table_id="Amon",
+    )
+    assert len(cat.model_groups()) > 1
+    cat.remove_ensembles()
+    assert len(cat.df) == 1
+    assert cat.df.iloc[0]["member_id"] == "r1i1p1f2"
+
+
 def test_log():
     cat = ESGFCatalog().search(
         experiment_id="historical",
