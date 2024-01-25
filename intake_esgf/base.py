@@ -182,29 +182,6 @@ def parallel_download(
     return None, None
 
 
-def get_relative_esgf_path(entry: dict[str, Any]) -> Path:
-    """Return the relative ESGF path from the Globus entry."""
-    if "content" not in entry:
-        raise ValueError("'content' not part of the entry.")
-    content = entry["content"]
-    if set(["version", "dataset_id", "directory_format_template_"]).difference(
-        content.keys()
-    ):
-        raise ValueError("Entry content does not contain expected keys.")
-    # For some reason, the `version` in the globus response is just an integer and not
-    # what is used in the file path so I have to parse it out of the `dataset_id`
-    content["version"] = [content["dataset_id"].split("|")[0].split(".")[-1]]
-    # Format the file path using the template in the response
-    file_path = content["directory_format_template_"][0]
-    file_path = Path(
-        file_path.replace("%(root)s/", "")
-        .replace("%(", "{")
-        .replace(")s", "[0]}")
-        .format(**content)
-    )
-    return file_path
-
-
 def combine_file_info(indices, dataset_ids: list[str]) -> dict[str, Any]:
     """Combine file information for the given datasets from all indices.
 
@@ -241,7 +218,6 @@ def combine_file_info(indices, dataset_ids: list[str]) -> dict[str, Any]:
 def check_for_esgf_dataroot() -> Union[Path, None]:
     """Return a direct path to the ESGF data is it exists."""
     to_check = [
-        "/gpfs/alpine/cli137/proj-shared/ESGF/esg_dataroot/css03_data/",  # OLCF
         "/p/css03/esgf_publish",  # Nimbus
         "/eagle/projects/ESGF2/esg_dataroot",  # ALCF
         "/global/cfs/projectdirs/m3522/cmip6/",  # NERSC data lake
