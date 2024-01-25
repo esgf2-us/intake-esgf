@@ -7,6 +7,10 @@ build-backend = "setuptools.build_meta"
 [tool.setuptools_scm]
 version_scheme = "no-guess-dev"
 
+[tool.pytest.ini_options]
+console_output_style = "count"
+addopts = "--cov=intake_esgf --cov-report=xml --verbose"
+
 [tool.coverage.run]
 omit = ["*/intake_esgf/tests/*"]
 
