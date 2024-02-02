@@ -80,7 +80,7 @@ class ESGFCatalog:
         self,
         esgf1_indices: Union[bool, str, list[str]] = False,
     ):
-        self.indices = [GlobusESGFIndex()]
+        self.indices = [GlobusESGFIndex("anl-dev"), GlobusESGFIndex("ornl-dev")]
         if isinstance(esgf1_indices, bool) and esgf1_indices:
             self.indices += [
                 SolrESGFIndex(node, distrib=False)

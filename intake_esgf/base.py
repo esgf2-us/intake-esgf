@@ -60,7 +60,7 @@ def combine_results(dfs: list[pd.DataFrame]) -> pd.DataFrame:
     df = pd.concat(dfs).drop_duplicates(subset="id").reset_index(drop=True)
     if len(df) == 0:
         logger.info("\x1b[36;32msearch end \x1b[91;20mno results\033[0m")
-        raise ValueError("Search returned no results.")
+        raise NoSearchResults()
     # now convert groups to list
     for _, grp in df.groupby(list(df.columns[:-3])):
         df = df.drop(grp.iloc[1:].index)
