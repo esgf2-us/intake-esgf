@@ -64,7 +64,6 @@ class GlobusESGFIndex:
 
         # build up the query and search
         query_data = SearchQuery("")
-        search = {k: v for k, v in search.items() if len(v) > 0}
         for key, val in search.items():
             query_data.add_filter(
                 key, val if isinstance(val, list) else [val], type="match_any"
