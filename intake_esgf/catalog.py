@@ -190,6 +190,13 @@ class ESGFCatalog:
                 return pd.DataFrame([])
             return df
 
+        # drop empty search fields
+        search = {
+            k: v
+            for k, v in search.items()
+            if (isinstance(v, str) and len(v) > 0) or not isinstance(v, str)
+        }
+
         # log what is being searched for
         search_str = ", ".join(
             [
