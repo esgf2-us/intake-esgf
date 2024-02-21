@@ -29,9 +29,13 @@ package should be straightforward.
 Installing
 ----------
 
-``intake-esgf`` can be installed using ``pip``
+``intake-esgf`` can be installed using ``pip``:
 
-    >>> pip install git+https://github.com/esgf2-us/intake-esgf
+    >>> pip install intake-esgf
+
+or through ``conda-forge``
+
+    >>> conda install -c conda-forge intake-esgf
 
 .. toctree::
    :maxdepth: 2
