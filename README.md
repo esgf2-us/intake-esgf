@@ -21,6 +21,11 @@ You may install `intake-esgf` using [pip](https://pypi.org/project/pip/):
 python -m pip install intake-esgf
 ```
 
+or [conda-forge](https://conda-forge.org/):
+
+```bash
+conda install -c conda-forge intake-esgf
+```
 ## Features
 
 For a full listing of features with code examples, please consult the [documentation](https://intake-esgf.readthedocs.io/en/latest/?badge=latest). In brief, `intake-esgf` aims to hide some of the complexity of obtaining ESGF data and get the user the data as fast as we can.

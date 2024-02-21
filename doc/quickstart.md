@@ -15,6 +15,12 @@ To get started, you will need to install `intake-esgf` using [pip](https://pypi.
 python -m pip install intake-esgf
 ```
 
+or [conda-forge](https://conda-forge.org/):
+
+```bash
+conda install -c conda-forge intake-esgf
+```
+
 Next you will need to import the `ESGFCatalog` and `matplotlib` for plotting later in the document.
 
 ```{code-cell}
