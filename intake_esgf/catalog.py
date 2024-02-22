@@ -1,4 +1,5 @@
 """The primary object in intake-esgf."""
+
 import re
 import time
 import warnings
@@ -28,6 +29,32 @@ if IN_NOTEBOOK:
     from tqdm import tqdm_notebook as tqdm
 else:
     from tqdm import tqdm
+
+
+def _get_facet_by_type(
+    df: pd.DataFrame, ftype: Literal["variable", "model", "variant", "grid"]
+) -> str:
+    """Get the facet name by the type.
+
+    Across projects, facets may have different names but serve similar functions. Here
+    we provide a method of defining equivalence so functions like `model_groups()` can
+    work for all projects. We may have to expand this collection or make this a more
+    general and public function.
+    """
+    possible = {
+        "variable": ["variable", "variable_id"],
+        "model": ["model", "source_id"],
+        "variant": ["ensemble", "ensemble_member", "member_id", "variant_label"],
+        "grid": ["grid", "grid_label", "grid_resolution"],
+    }
+    facet = [col for col in df.columns if col in possible[ftype]]
+    if not facet:
+        raise ValueError(f"Could not find a '{ftype}' facet in {list(df.columns)}")
+    if len(facet) > 1:  # relax this to handle multi-project searches
+        raise ValueError(
+            f"Ambiguous '{ftype}' facet in {list(df.columns)}, found {facet}"
+        )
+    return facet[0]
 
 
 class ESGFCatalog:
@@ -146,23 +173,51 @@ class ESGFCatalog:
 
     def model_groups(self) -> pd.Series:
         """Return counts for unique combinations of (source_id,member_id,grid_label)."""
-        lower = self.df.source_id.str.lower()
+
+        def _extract_int_pattern(sample: str) -> str:
+            ints = re.findall(r"\d+", sample)
+            match = re.match("".join([rf"(\S+){i}" for i in ints]), sample)
+            if not match:
+                raise ValueError("Failed to find the pattern")
+            return "".join([rf"{s}(\d+)" for s in match.groups()])
+
+        # sort by the lower-case version of the 'model' name
+        model_facet = _get_facet_by_type(self.df, "model")
+        lower = self.df[model_facet].str.lower()
         lower.name = "lower"
+
+        # sort the variants but extract out the integer values, assume the first result
+        # is representative of the whole
+        variant_facet = _get_facet_by_type(self.df, "variant")
+        int_pattern = _extract_int_pattern(self.df.iloc[0][variant_facet])
+
+        # add in these new data to a temporary dataframe
+        df = pd.concat(
+            [
+                self.df,
+                lower,
+                self.df[variant_facet].str.extract(int_pattern).astype(int),
+            ],
+            axis=1,
+        )
+
+        # what columns will we sort/drop/groupby
+        added_columns = list(df.columns[len(self.df.columns) :])
+        sort_columns = list(df.columns[len(self.df.columns) :])
+        group_columns = [model_facet, variant_facet]
+        try:
+            grid_facet = _get_facet_by_type(self.df, "grid")
+            sort_columns.append(grid_facet)
+            group_columns.append(grid_facet)
+        except ValueError:
+            pass
+
         return (
-            pd.concat(
-                [
-                    self.df,
-                    self.df.member_id.str.extract(r"r(\d+)i(\d+)p(\d+)f(\d+)").astype(
-                        int
-                    ),
-                    lower,
-                ],
-                axis=1,
-            )
-            .sort_values(["lower", 0, 1, 2, 3, "grid_label"])
-            .drop(columns=["lower", 0, 1, 2, 3])
-            .groupby(["source_id", "member_id", "grid_label"], sort=False)
-            .count()["variable_id"]
+            df.sort_values(sort_columns)
+            .drop(columns=added_columns)
+            .groupby(group_columns, sort=False)
+            .count()
+            .iloc[:, 0]
         )
 
     def search(self, quiet: bool = False, **search: Union[str, list[str]]):
@@ -364,7 +419,7 @@ class ESGFCatalog:
             else:
                 output_key_format.append(col)
         if not output_key_format:  # at minimum we have the variable id as a key
-            output_key_format = ["variable_id"]
+            output_key_format = [_get_facet_by_type(self.df, "variable")]
 
         # Populate a dictionary of dataset_ids in this search and which keys they will
         # map to in the output dictionary.
@@ -511,7 +566,15 @@ class ESGFCatalog:
         deemed incomplete.
 
         """
-        for lbl, grp in self.df.groupby(["source_id", "member_id", "grid_label"]):
+        group = [
+            _get_facet_by_type(self.df, "model"),
+            _get_facet_by_type(self.df, "variant"),
+        ]
+        try:
+            group.append(_get_facet_by_type(self.df, "grid"))
+        except ValueError:
+            pass
+        for _, grp in self.df.groupby(group):
             if not complete(grp):
                 self.df = self.df.drop(grp.index)
         return self
@@ -526,16 +589,14 @@ class ESGFCatalog:
         integer values) for each `source_id` in your search and remove all others.
 
         """
-        for source_id, grp in self.df.groupby("source_id"):
-            member_id = "r{}i{}p{}f{}".format(
-                *(
-                    grp.member_id.str.extract(r"r(\d+)i(\d+)p(\d+)f(\d+)")
-                    .astype(int)
-                    .sort_values([0, 1, 2, 3])
-                    .iloc[0]
-                )
-            )
-            self.df = self.df.drop(grp[grp.member_id != member_id].index)
+        df = self.model_groups()
+        variant_facet = _get_facet_by_type(self.df, "variant")
+        names = [name for name in df.index.names if name != variant_facet]
+        for lbl, grp in df.to_frame().reset_index().groupby(names):
+            variant = grp.iloc[0][variant_facet]
+            q = " & ".join([f"({n} == '{v}')" for n, v in zip(names, lbl)])
+            q += f" & ({variant_facet} != '{variant}')"
+            self.df = self.df.drop(self.df.query(q).index)
         return self
 
     def session_log(self) -> str:
