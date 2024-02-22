@@ -1,4 +1,5 @@
 """A ESGF1 Solr index class."""
+
 import re
 import time
 from pathlib import Path
@@ -7,7 +8,27 @@ from typing import Any, Union
 import pandas as pd
 import requests
 
-from intake_esgf.base import get_dataset_pattern
+
+def _get_columns(doc):
+    # CMIP5 is a disaster so...
+    if "project" in doc and doc["project"] == "CMIP5":
+        return [
+            "product",
+            "institute",
+            "model",
+            "experiment",
+            "time_frequency",
+            "realm",
+            "cmor_table",
+            "ensemble",
+        ]
+    # everything else (so far) behaves nicely so...
+    if "dataset_id_template_" not in doc:
+        raise ValueError(f"No `dataset_id_template_` in {doc[id]}")
+    return re.findall(
+        r"%\((\w+)\)s",
+        doc["dataset_id_template_"][0],
+    )
 
 
 class SolrESGFIndex:
@@ -42,14 +63,15 @@ class SolrESGFIndex:
                 self.logger.info(f"└─{self} no results")
             raise ValueError("Search returned no results.")
         assert response["numFound"] == len(response["docs"])
-        pattern = get_dataset_pattern()
         df = []
         process_time = time.time()
         for doc in response["docs"]:
-            m = re.search(pattern, doc["id"])
-            if m:
-                df.append(m.groupdict())
-                df[-1]["id"] = doc["id"]
+            record = {
+                facet: doc[facet][0] for facet in _get_columns(doc) if facet in doc
+            }
+            record["project"] = doc["project"][0]
+            record["id"] = doc["id"]
+            df.append(record)
         process_time = time.time() - process_time
         df = pd.DataFrame(df)
         total_time = time.time() - total_time

@@ -1,4 +1,5 @@
 """General functions used in various parts of intake-esgf."""
+
 import hashlib
 import logging
 import re
@@ -28,30 +29,6 @@ else:
 bar_format = "{desc:>20}: {percentage:3.0f}%|{bar}|{n_fmt}/{total_fmt} [{rate_fmt:>15s}{postfix}]"
 
 
-def get_dataset_pattern() -> str:
-    """Return the dataset id regular expression pattern.
-
-    This function is used to get facet information in a dictionary from the dataset_id.
-
-    """
-    COLUMNS = [
-        "mip_era",
-        "activity_id",
-        "institution_id",
-        "source_id",
-        "experiment_id",
-        "member_id",
-        "table_id",
-        "variable_id",
-        "grid_label",
-        "version",
-        "data_node",
-    ]
-    pattern = r"\.".join([rf"(?P<{c}>\S[^.|]+)" for c in COLUMNS[:-1]])
-    pattern += rf"\|(?P<{COLUMNS[-1]}>\S+)"
-    return pattern
-
-
 def combine_results(dfs: list[pd.DataFrame]) -> pd.DataFrame:
     """Return a combined dataframe where ids are now a list."""
     # combine and remove duplicate entries
@@ -62,7 +39,10 @@ def combine_results(dfs: list[pd.DataFrame]) -> pd.DataFrame:
         logger.info("\x1b[36;32msearch end \x1b[91;20mno results\033[0m")
         raise NoSearchResults()
     # now convert groups to list
-    for _, grp in df.groupby(list(df.columns[:-3])):
+    group_cols = [
+        col for col in df.columns if col not in ["version", "data_node", "id"]
+    ]
+    for _, grp in df.groupby(group_cols):
         df = df.drop(grp.iloc[1:].index)
         df.loc[grp.index[0], "id"] = grp.id.to_list()
     df = df.drop(columns="data_node")

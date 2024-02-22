@@ -1,4 +1,5 @@
 """A Globus-based ESGF1 style index."""
+
 import re
 import time
 from pathlib import Path
@@ -6,8 +7,6 @@ from typing import Any, Union
 
 import pandas as pd
 from globus_sdk import SearchClient, SearchQuery
-
-from intake_esgf.base import get_dataset_pattern
 
 
 def _form_path(content):
@@ -22,6 +21,32 @@ def _form_path(content):
         )
         / content["title"]
     )
+
+
+def _get_columns(content):
+    # CMIP5 is a disaster so...
+    if "project" in content and content["project"] == "CMIP5":
+        return [
+            "product",
+            "institute",
+            "model",
+            "experiment",
+            "time_frequency",
+            "realm",
+            "cmor_table",
+            "ensemble",
+            "version",
+            "data_node",
+        ]
+    # everything else (so far) behaves nicely so...
+    if "dataset_id_template_" not in content:
+        raise ValueError(f"No `dataset_id_template_` in {content[id]}")
+    columns = re.findall(
+        r"%\((\w+)\)s",
+        content["dataset_id_template_"][0],
+    )
+    columns = list(set(columns).union(["version", "data_node"]))
+    return columns
 
 
 class GlobusESGFIndex:
@@ -72,14 +97,18 @@ class GlobusESGFIndex:
         sc = SearchClient()
         paginator = sc.paginated.post_search(self.index_id, query_data)
         paginator.limit = 1000
-        pattern = get_dataset_pattern()
         df = []
         for response in paginator:
             for g in response["gmeta"]:
-                m = re.search(pattern, g["subject"])
-                if m:
-                    df.append(m.groupdict())
-                    df[-1]["id"] = g["subject"]
+                content = g["entries"][0]["content"]
+                record = {
+                    facet: content[facet][0]
+                    for facet in _get_columns(content)
+                    if facet in content
+                }
+                record["project"] = content["project"][0]
+                record["id"] = g["subject"]
+                df.append(record)
         df = pd.DataFrame(df)
         response_time = time.time() - response_time
 
@@ -89,7 +118,7 @@ class GlobusESGFIndex:
         return df
 
     def get_file_info(self, dataset_ids: list[str]) -> dict[str, Any]:
-        """"""
+        """Get file information for the given datasets."""
         response_time = time.time()
         sc = SearchClient()
         paginator = sc.paginated.post_search(
@@ -133,16 +162,16 @@ class GlobusESGFIndex:
             self.index_id,
             SearchQuery("").add_filter("tracking_id", tracking_ids, type="match_any"),
         )
-        pattern = get_dataset_pattern()
         df = []
         for g in response["gmeta"]:
-            try:
-                dataset_id = g["entries"][0]["content"]["dataset_id"]
-            except Exception:
-                continue
-            m = re.search(pattern, dataset_id)
-            if m:
-                df.append(m.groupdict())
-                df[-1]["id"] = dataset_id
+            content = g["entries"][0]["content"]
+            record = {
+                facet: content[facet][0]
+                for facet in _get_columns(content)
+                if facet in content
+            }
+            record["project"] = content["project"][0]
+            record["id"] = content["dataset_id"]
+            df.append(record)
         df = pd.DataFrame(df)
         return df
