@@ -72,7 +72,11 @@ class GlobusESGFIndex:
             for g in response["gmeta"]:
                 content = g["entries"][0]["content"]
                 record = {
-                    facet: content[facet][0]
+                    facet: (
+                        content[facet][0]
+                        if isinstance(content[facet], list)
+                        else content[facet]
+                    )
                     for facet in get_dataframe_columns(content)
                     if facet in content
                 }
@@ -136,7 +140,11 @@ class GlobusESGFIndex:
         for g in response["gmeta"]:
             content = g["entries"][0]["content"]
             record = {
-                facet: content[facet][0]
+                facet: (
+                    content[facet][0]
+                    if isinstance(content[facet], list)
+                    else content[facet]
+                )
                 for facet in get_dataframe_columns(content)
                 if facet in content
             }

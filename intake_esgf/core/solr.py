@@ -42,7 +42,7 @@ class SolrESGFIndex:
         df = []
         for doc in response["docs"]:
             record = {
-                facet: doc[facet][0]
+                facet: doc[facet][0] if isinstance(doc[facet], list) else doc[facet]
                 for facet in get_dataframe_columns(doc)
                 if facet in doc
             }
@@ -67,7 +67,7 @@ class SolrESGFIndex:
         df = []
         for doc in response["docs"]:
             record = {
-                facet: doc[facet][0]
+                facet: doc[facet][0] if isinstance(doc[facet], list) else doc[facet]
                 for facet in get_dataframe_columns(doc)
                 if facet in doc
             }

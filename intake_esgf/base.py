@@ -42,7 +42,7 @@ def combine_results(dfs: list[pd.DataFrame]) -> pd.DataFrame:
     group_cols = [
         col for col in df.columns if col not in ["version", "data_node", "id"]
     ]
-    for _, grp in df.groupby(group_cols):
+    for _, grp in df.groupby(group_cols, dropna=False):
         df = df.drop(grp.iloc[1:].index)
         df.loc[grp.index[0], "id"] = grp.id.to_list()
     df = df.drop(columns="data_node")
@@ -348,7 +348,6 @@ def get_dataframe_columns(content: dict[str, Any]) -> list[str]:
     # CMIP5 is a disaster so...
     if "project" in content and content["project"] == "CMIP5":
         return [
-            "product",
             "institute",
             "model",
             "experiment",
