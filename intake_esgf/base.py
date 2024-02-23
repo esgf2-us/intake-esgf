@@ -346,7 +346,7 @@ def get_dataframe_columns(content: dict[str, Any]) -> list[str]:
     """
 
     # CMIP5 is a disaster so...
-    if "project" in content and content["project"] == "CMIP5":
+    if "project" in content and content["project"][0] == "CMIP5":
         return [
             "institute",
             "model",
