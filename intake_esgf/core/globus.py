@@ -1,12 +1,13 @@
 """A Globus-based ESGF1 style index."""
 
-import re
 import time
 from pathlib import Path
 from typing import Any, Union
 
 import pandas as pd
 from globus_sdk import SearchClient, SearchQuery
+
+from intake_esgf.base import get_dataframe_columns
 
 
 def _form_path(content):
@@ -21,32 +22,6 @@ def _form_path(content):
         )
         / content["title"]
     )
-
-
-def _get_columns(content):
-    # CMIP5 is a disaster so...
-    if "project" in content and content["project"] == "CMIP5":
-        return [
-            "product",
-            "institute",
-            "model",
-            "experiment",
-            "time_frequency",
-            "realm",
-            "cmor_table",
-            "ensemble",
-            "version",
-            "data_node",
-        ]
-    # everything else (so far) behaves nicely so...
-    if "dataset_id_template_" not in content:
-        raise ValueError(f"No `dataset_id_template_` in {content[id]}")
-    columns = re.findall(
-        r"%\((\w+)\)s",
-        content["dataset_id_template_"][0],
-    )
-    columns = list(set(columns).union(["version", "data_node"]))
-    return columns
 
 
 class GlobusESGFIndex:
@@ -76,11 +51,6 @@ class GlobusESGFIndex:
         entries.
 
         """
-        # process inputs
-        search["type"] = "Dataset"
-        if "latest" not in search:
-            search["latest"] = True
-
         # the ALCF index encodes booleans as strings
         if "anl-dev" in self.repr:
             for key, val in search.items():
@@ -103,7 +73,7 @@ class GlobusESGFIndex:
                 content = g["entries"][0]["content"]
                 record = {
                     facet: content[facet][0]
-                    for facet in _get_columns(content)
+                    for facet in get_dataframe_columns(content)
                     if facet in content
                 }
                 record["project"] = content["project"][0]
@@ -167,7 +137,7 @@ class GlobusESGFIndex:
             content = g["entries"][0]["content"]
             record = {
                 facet: content[facet][0]
-                for facet in _get_columns(content)
+                for facet in get_dataframe_columns(content)
                 if facet in content
             }
             record["project"] = content["project"][0]

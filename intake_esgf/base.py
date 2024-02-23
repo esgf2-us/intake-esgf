@@ -327,3 +327,44 @@ def get_cell_measure(var: str, ds: xr.Dataset) -> Union[xr.DataArray, None]:
                 ds[vid] *= 0.01
             measure *= ds[vid]
     return measure
+
+
+def get_dataframe_columns(content: dict[str, Any]) -> list[str]:
+    """Get the columns to be populated in a pandas dataframe.
+
+    We determine the columns that will be part of the search dataframe by parsing out
+    facets from the `dataset_id_template_` found in the query response. We look for
+    facets between the sentinels `%(...)s` and then assume that they will have values in
+    the response. CMIP5 has many inconsistencies and so we hard code it here. We also
+    postpend `version` and `data_node` to the facets. Any facets that do not appear in
+    the content will show up as `nan` in the dataframe.
+
+    Parameters
+    ----------
+    content
+        The content (Globus) or document (Solr) returned from the query.
+    """
+
+    # CMIP5 is a disaster so...
+    if "project" in content and content["project"] == "CMIP5":
+        return [
+            "product",
+            "institute",
+            "model",
+            "experiment",
+            "time_frequency",
+            "realm",
+            "cmor_table",
+            "ensemble",
+            "version",
+            "data_node",
+        ]
+    # ...everything else (so far) behaves nicely so...
+    if "dataset_id_template_" not in content:
+        raise ValueError(f"No `dataset_id_template_` in {content[id]}")
+    columns = re.findall(
+        r"%\((\w+)\)s",
+        content["dataset_id_template_"][0],
+    )
+    columns = list(set(columns).union(["version", "data_node"]))
+    return columns

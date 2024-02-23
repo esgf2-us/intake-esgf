@@ -23,6 +23,7 @@ from intake_esgf.base import (
 )
 from intake_esgf.core import GlobusESGFIndex, SolrESGFIndex
 from intake_esgf.database import create_download_database, get_download_rate_dataframe
+from intake_esgf.exceptions import NoSearchResults
 from intake_esgf.logging import setup_logging
 
 if IN_NOTEBOOK:
@@ -235,7 +236,7 @@ class ESGFCatalog:
         def _search(index):
             try:
                 df = index.search(**search)
-            except ValueError:
+            except NoSearchResults:
                 return pd.DataFrame([])
             except requests.exceptions.RequestException:
                 self.logger.info(f"└─{index} \x1b[91;20mno response\033[0m")
@@ -251,6 +252,19 @@ class ESGFCatalog:
             for k, v in search.items()
             if (isinstance(v, str) and len(v) > 0) or not isinstance(v, str)
         }
+
+        # apply defaults
+        search.update(
+            dict(
+                type="Dataset",
+                project=search["project"] if "project" in search else "CMIP6",
+                latest=search["latest"] if "latest" in search else True,
+                retracted=search["retracted"] if "retracted" in search else False,
+            )
+        )
+        if isinstance(search["project"], list):
+            if len(search["project"]) > 1:
+                raise ValueError("For now, projects may only be searched one at a time")
 
         # log what is being searched for
         search_str = ", ".join(
@@ -309,13 +323,7 @@ class ESGFCatalog:
         def _from_tracking_ids(index):
             try:
                 df = index.from_tracking_ids(tracking_ids)
-            except ValueError:
-                return pd.DataFrame([])
-            except NotImplementedError:
-                self.logger.info(f"└─{index} function not implemented")
-                warnings.warn(
-                    f"{index} function not implemented for this index, results may be incomplete"
-                )
+            except NoSearchResults:
                 return pd.DataFrame([])
             except requests.exceptions.RequestException:
                 self.logger.info(f"└─{index} \x1b[91;20mno response\033[0m")

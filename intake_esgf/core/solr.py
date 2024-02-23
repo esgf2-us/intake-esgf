@@ -1,6 +1,5 @@
 """A ESGF1 Solr index class."""
 
-import re
 import time
 from pathlib import Path
 from typing import Any, Union
@@ -8,33 +7,23 @@ from typing import Any, Union
 import pandas as pd
 import requests
 
+from intake_esgf.base import get_dataframe_columns
+from intake_esgf.exceptions import NoSearchResults
 
-def _get_columns(doc):
-    # CMIP5 is a disaster so...
-    if "project" in doc and doc["project"] == "CMIP5":
-        return [
-            "product",
-            "institute",
-            "model",
-            "experiment",
-            "time_frequency",
-            "realm",
-            "cmor_table",
-            "ensemble",
-        ]
-    # everything else (so far) behaves nicely so...
-    if "dataset_id_template_" not in doc:
-        raise ValueError(f"No `dataset_id_template_` in {doc[id]}")
-    return re.findall(
-        r"%\((\w+)\)s",
-        doc["dataset_id_template_"][0],
-    )
+
+def esg_search(base_url, **search):
+    """Return an esg-search response as a dictionary."""
+    if "format" not in search:
+        search["format"] = "application/solr+json"
+    response = requests.get(f"{base_url}/esg-search/search", params=search)
+    response.raise_for_status()
+    return response.json()
 
 
 class SolrESGFIndex:
-    def __init__(self, index_node: str = "esgf-node.llnl.gov", distrib: bool = True):
+    def __init__(self, index_node: str = "esgf-node.llnl.gov", distrib: bool = False):
         self.repr = f"SolrESGFIndex('{index_node}'{',distrib=True' if distrib else ''})"
-        self.url = f"https://{index_node}/esg-search/search"
+        self.url = f"https://{index_node}"
         self.distrib = distrib
         self.logger = None
 
@@ -42,58 +31,57 @@ class SolrESGFIndex:
         return self.repr
 
     def search(self, **search: Union[str, list[str]]) -> pd.DataFrame:
+        search["distrib"] = search["distrib"] if "distrib" in search else self.distrib
         total_time = time.time()
-        search.update(
-            dict(
-                type="Dataset",
-                format="application/solr+json",
-                limit=1000,  # FIX: need to manually paginate
-                latest=search["latest"] if "latest" in search else True,
-                retracted=search["retracted"] if "retracted" in search else False,
-                distrib=search["distrib"] if "distrib" in search else self.distrib,
-            )
-        )
-        response_time = time.time()
-        response = requests.get(self.url, params=search)
-        response.raise_for_status()
-        response = response.json()["response"]
-        response_time = time.time() - response_time
+        response = esg_search(self.url, limit=1000, **search)["response"]
         if not response["numFound"]:
             if self.logger is not None:
                 self.logger.info(f"└─{self} no results")
-            raise ValueError("Search returned no results.")
-        assert response["numFound"] == len(response["docs"])
+            raise NoSearchResults
+        assert response["numFound"] == len(response["docs"])  # FIX: need to paginate
         df = []
-        process_time = time.time()
         for doc in response["docs"]:
             record = {
-                facet: doc[facet][0] for facet in _get_columns(doc) if facet in doc
+                facet: doc[facet][0]
+                for facet in get_dataframe_columns(doc)
+                if facet in doc
             }
             record["project"] = doc["project"][0]
             record["id"] = doc["id"]
             df.append(record)
-        process_time = time.time() - process_time
         df = pd.DataFrame(df)
         total_time = time.time() - total_time
         if self.logger is not None:
-            self.logger.info(f"└─{self} {response_time=:.2f} {total_time=:.2f}")
+            self.logger.info(f"└─{self} results={len(df)} {total_time=:.2f}")
         return df
 
     def from_tracking_ids(self, tracking_ids: Union[str, list[str]]) -> pd.DataFrame:
+        total_time = time.time()
         if isinstance(tracking_ids, str):
             tracking_ids = [tracking_ids]
-        raise NotImplementedError
+        response = esg_search(self.url, tracking_id=tracking_ids)["response"]
+        if not response["numFound"]:
+            if self.logger is not None:
+                self.logger.info(f"└─{self} no results")
+            raise NoSearchResults
+        df = []
+        for doc in response["docs"]:
+            record = {
+                facet: doc[facet][0]
+                for facet in get_dataframe_columns(doc)
+                if facet in doc
+            }
+            record["project"] = doc["project"][0]
+            record["id"] = doc["id"]
+            df.append(record)
+        df = pd.DataFrame(df)
+        total_time = time.time() - total_time
+        if self.logger is not None:
+            self.logger.info(f"└─{self} results={len(df)} {total_time=:.2f}")
+        return df
 
     def get_file_info(self, dataset_ids: list[str]) -> dict[str, Any]:
-        """Return a file information dictionary.
-
-        Parameters
-        ----------
-        dataset_ids
-            A list of datasets IDs which scientifically refer to the same files.
-
-        """
-        response_time = time.time()
+        total_time = time.time()
         search = dict(
             type="File",
             format="application/solr+json",
@@ -103,15 +91,12 @@ class SolrESGFIndex:
             distrib=self.distrib,
             dataset_id=dataset_ids,
         )
-        response = requests.get(self.url, params=search)
-        response.raise_for_status()
-        response = response.json()["response"]
-        response_time = time.time() - response_time
+        response = esg_search(self.url, params=search)["response"]
         if not response["numFound"]:
             if self.logger is not None:
                 self.logger.info(f"└─{self} no results")
-            raise ValueError("Search returned no results.")
-        assert response["numFound"] == len(response["docs"])
+            raise NoSearchResults
+        assert response["numFound"] == len(response["docs"])  # FIX: paginate
         infos = []
         for doc in response["docs"]:
             info = {}
@@ -137,5 +122,5 @@ class SolrESGFIndex:
                 info[link_type].append(link)
             infos.append(info)
         if self.logger is not None:
-            self.logger.info(f"└─{self} results={len(infos)} {response_time=:.2f}")
+            self.logger.info(f"└─{self} results={len(infos)} {total_time=:.2f}")
         return infos
