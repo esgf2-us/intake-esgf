@@ -7,7 +7,7 @@ from typing import Any, Union
 import pandas as pd
 from globus_sdk import SearchClient, SearchQuery
 
-from intake_esgf.base import get_dataframe_columns
+from intake_esgf.base import expand_cmip5_record, get_dataframe_columns
 
 
 def _form_path(content):
@@ -82,7 +82,16 @@ class GlobusESGFIndex:
                 }
                 record["project"] = content["project"][0]
                 record["id"] = g["subject"]
-                df.append(record)
+                if record["project"] == "CMIP5":
+                    variables = search["variable"] if "variable" in search else []
+                    if not isinstance(variables, list):
+                        variables = [variables]
+                    record = expand_cmip5_record(
+                        variables,
+                        content["variable"],
+                        record,
+                    )
+                df += record if isinstance(record, list) else [record]
         df = pd.DataFrame(df)
         response_time = time.time() - response_time
 

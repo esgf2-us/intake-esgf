@@ -19,6 +19,7 @@ from intake_esgf.base import (
     bar_format,
     check_for_esgf_dataroot,
     combine_results,
+    get_facet_by_type,
     parallel_download,
 )
 from intake_esgf.core import GlobusESGFIndex, SolrESGFIndex
@@ -30,32 +31,6 @@ if IN_NOTEBOOK:
     from tqdm import tqdm_notebook as tqdm
 else:
     from tqdm import tqdm
-
-
-def _get_facet_by_type(
-    df: pd.DataFrame, ftype: Literal["variable", "model", "variant", "grid"]
-) -> str:
-    """Get the facet name by the type.
-
-    Across projects, facets may have different names but serve similar functions. Here
-    we provide a method of defining equivalence so functions like `model_groups()` can
-    work for all projects. We may have to expand this collection or make this a more
-    general and public function.
-    """
-    possible = {
-        "variable": ["variable", "variable_id"],
-        "model": ["model", "source_id"],
-        "variant": ["ensemble", "ensemble_member", "member_id", "variant_label"],
-        "grid": ["grid", "grid_label", "grid_resolution"],
-    }
-    facet = [col for col in df.columns if col in possible[ftype]]
-    if not facet:
-        raise ValueError(f"Could not find a '{ftype}' facet in {list(df.columns)}")
-    if len(facet) > 1:  # relax this to handle multi-project searches
-        raise ValueError(
-            f"Ambiguous '{ftype}' facet in {list(df.columns)}, found {facet}"
-        )
-    return facet[0]
 
 
 class ESGFCatalog:
@@ -183,13 +158,13 @@ class ESGFCatalog:
             return "".join([rf"{s}(\d+)" for s in match.groups()])
 
         # sort by the lower-case version of the 'model' name
-        model_facet = _get_facet_by_type(self.df, "model")
+        model_facet = get_facet_by_type(self.df, "model")
         lower = self.df[model_facet].str.lower()
         lower.name = "lower"
 
         # sort the variants but extract out the integer values, assume the first result
         # is representative of the whole
-        variant_facet = _get_facet_by_type(self.df, "variant")
+        variant_facet = get_facet_by_type(self.df, "variant")
         int_pattern = _extract_int_pattern(self.df.iloc[0][variant_facet])
 
         # add in these new data to a temporary dataframe
@@ -207,7 +182,7 @@ class ESGFCatalog:
         sort_columns = list(df.columns[len(self.df.columns) :])
         group_columns = [model_facet, variant_facet]
         try:
-            grid_facet = _get_facet_by_type(self.df, "grid")
+            grid_facet = get_facet_by_type(self.df, "grid")
             sort_columns.append(grid_facet)
             group_columns.append(grid_facet)
         except ValueError:
@@ -427,7 +402,7 @@ class ESGFCatalog:
             else:
                 output_key_format.append(col)
         if not output_key_format:  # at minimum we have the variable id as a key
-            output_key_format = [_get_facet_by_type(self.df, "variable")]
+            output_key_format = [get_facet_by_type(self.df, "variable")]
 
         # Populate a dictionary of dataset_ids in this search and which keys they will
         # map to in the output dictionary.
@@ -575,11 +550,11 @@ class ESGFCatalog:
 
         """
         group = [
-            _get_facet_by_type(self.df, "model"),
-            _get_facet_by_type(self.df, "variant"),
+            get_facet_by_type(self.df, "model"),
+            get_facet_by_type(self.df, "variant"),
         ]
         try:
-            group.append(_get_facet_by_type(self.df, "grid"))
+            group.append(get_facet_by_type(self.df, "grid"))
         except ValueError:
             pass
         for _, grp in self.df.groupby(group):
@@ -598,7 +573,7 @@ class ESGFCatalog:
 
         """
         df = self.model_groups()
-        variant_facet = _get_facet_by_type(self.df, "variant")
+        variant_facet = get_facet_by_type(self.df, "variant")
         names = [name for name in df.index.names if name != variant_facet]
         for lbl, grp in df.to_frame().reset_index().groupby(names):
             variant = grp.iloc[0][variant_facet]

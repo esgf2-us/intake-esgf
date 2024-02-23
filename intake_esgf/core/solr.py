@@ -7,7 +7,7 @@ from typing import Any, Union
 import pandas as pd
 import requests
 
-from intake_esgf.base import get_dataframe_columns
+from intake_esgf.base import expand_cmip5_record, get_dataframe_columns
 from intake_esgf.exceptions import NoSearchResults
 
 
@@ -48,7 +48,16 @@ class SolrESGFIndex:
             }
             record["project"] = doc["project"][0]
             record["id"] = doc["id"]
-            df.append(record)
+            if record["project"] == "CMIP5":
+                variables = search["variable"] if "variable" in search else []
+                if not isinstance(variables, list):
+                    variables = [variables]
+                record = expand_cmip5_record(
+                    variables,
+                    doc["variable"],
+                    record,
+                )
+            df += record if isinstance(record, list) else [record]
         df = pd.DataFrame(df)
         total_time = time.time() - total_time
         if self.logger is not None:

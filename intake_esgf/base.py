@@ -6,7 +6,7 @@ import re
 import time
 from functools import partial
 from pathlib import Path
-from typing import Any, Union
+from typing import Any, Literal, Union
 
 import pandas as pd
 import requests
@@ -33,11 +33,13 @@ def combine_results(dfs: list[pd.DataFrame]) -> pd.DataFrame:
     """Return a combined dataframe where ids are now a list."""
     # combine and remove duplicate entries
     logger = setup_logging()
-    combine_time = time.time()
-    df = pd.concat(dfs).drop_duplicates(subset="id").reset_index(drop=True)
+    df = pd.concat(dfs)
     if len(df) == 0:
         logger.info("\x1b[36;32msearch end \x1b[91;20mno results\033[0m")
         raise NoSearchResults()
+    combine_time = time.time()
+    variable_facet = get_facet_by_type(df, "variable")
+    df = df.drop_duplicates(subset=[variable_facet, "id"]).reset_index(drop=True)
     # now convert groups to list
     group_cols = [
         col for col in df.columns if col not in ["version", "data_node", "id"]
@@ -355,6 +357,7 @@ def get_dataframe_columns(content: dict[str, Any]) -> list[str]:
             "realm",
             "cmor_table",
             "ensemble",
+            "variable",
             "version",
             "data_node",
         ]
@@ -367,3 +370,45 @@ def get_dataframe_columns(content: dict[str, Any]) -> list[str]:
     )
     columns = list(set(columns).union(["version", "data_node"]))
     return columns
+
+
+def expand_cmip5_record(
+    search_vars: list[str], content_vars: list[str], record: dict[str, Any]
+) -> list[dict[str, Any]]:
+    """Expand the CMIP5 record to include variables."""
+    assert record["project"] == "CMIP5"
+    variables = list(set(search_vars).intersection(content_vars))
+    if not variables:
+        variables = content_vars.copy()
+    records = []
+    for var in variables:
+        r = record.copy()
+        r["variable"] = var
+        records.append(r)
+    return records
+
+
+def get_facet_by_type(
+    df: pd.DataFrame, ftype: Literal["variable", "model", "variant", "grid"]
+) -> str:
+    """Get the facet name by the type.
+
+    Across projects, facets may have different names but serve similar functions. Here
+    we provide a method of defining equivalence so functions like `model_groups()` can
+    work for all projects. We may have to expand this collection or make this a more
+    general and public function.
+    """
+    possible = {
+        "variable": ["variable", "variable_id"],
+        "model": ["model", "source_id"],
+        "variant": ["ensemble", "ensemble_member", "member_id", "variant_label"],
+        "grid": ["grid", "grid_label", "grid_resolution"],
+    }
+    facet = [col for col in df.columns if col in possible[ftype]]
+    if not facet:
+        raise ValueError(f"Could not find a '{ftype}' facet in {list(df.columns)}")
+    if len(facet) > 1:  # relax this to handle multi-project searches
+        raise ValueError(
+            f"Ambiguous '{ftype}' facet in {list(df.columns)}, found {facet}"
+        )
+    return facet[0]
