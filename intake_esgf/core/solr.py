@@ -91,7 +91,7 @@ class SolrESGFIndex:
             distrib=self.distrib,
             dataset_id=dataset_ids,
         )
-        response = esg_search(self.url, params=search)["response"]
+        response = esg_search(self.url, **search)["response"]
         if not response["numFound"]:
             if self.logger is not None:
                 self.logger.info(f"└─{self} no results")
