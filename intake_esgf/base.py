@@ -412,3 +412,43 @@ def get_facet_by_type(
             f"Ambiguous '{ftype}' facet in {list(df.columns)}, found {facet}"
         )
     return facet[0]
+
+
+def get_content_path(content: dict[str, Any]) -> Path:
+    """Get the local path where the data is to be stored.
+
+    In CMIP6 we get a directory template, we just fill in values from the content. In
+    older projects we do not, but can search for the project name and grab all the text
+    following it. In the end, as long as we are consistent it does not matter.
+
+    """
+
+    def _form_from_template(content) -> Path:
+        template = re.findall(r"%\((\w+)\)s", content["directory_format_template_"][0])
+        template = [
+            content[t][0] if isinstance(content[t], list) else content[t]
+            for t in template
+            if t in content
+        ]
+        return Path("/".join(template)) / content["title"]
+
+    # the file `_version_` is not the same as the dataset `version` so we parse it out
+    # of the `dataset_id`
+    content["version"] = [content["dataset_id"].split("|")[0].split(".")[-1]]
+    if "directory_format_template_" in content:
+        return _form_from_template(content)
+
+    # otherwise we look for the project text in the url and return everything following
+    # it
+    urls = [url for url in content["url"] if "application/netcdf|HTTPServer"]
+    project = (
+        content["project"][0]
+        if isinstance(content["project"], list)
+        else content["project"]
+    )
+    if not urls:
+        raise ValueError(f"Could not find a http link in {content['url']}")
+    match = re.search(rf".*({project.lower()}.*.nc)|.*", urls[0])
+    if not match:
+        raise ValueError(f"Could not parse out the path from {urls[0]}")
+    return Path(match.group(1))

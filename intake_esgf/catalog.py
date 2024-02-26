@@ -102,6 +102,7 @@ class ESGFCatalog:
         if self.esgf_data_root is not None:
             self.logger.info(f"ESGF dataroot set {self.esgf_data_root}")
         self.session_time = pd.Timestamp.now()
+        self.last_search = {}
 
     def __repr__(self):
         """Return the unique facets and values from the search."""
@@ -274,7 +275,7 @@ class ESGFCatalog:
 
         search_time = time.time() - search_time
         self.logger.info(f"\x1b[36;32msearch end\033[0m total_time={search_time:.2f}")
-
+        self.last_search = search
         return self
 
     def from_tracking_ids(
@@ -414,7 +415,7 @@ class ESGFCatalog:
         def _get_file_info(index, dataset_ids):
             try:
                 info = index.get_file_info(list(dataset_ids.keys()))
-            except ValueError:
+            except NoSearchResults:
                 return []
             except requests.exceptions.RequestException:
                 self.logger.info(f"└─{index} \x1b[91;20mno response\033[0m")

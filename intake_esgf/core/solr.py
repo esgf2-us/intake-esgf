@@ -1,13 +1,16 @@
 """A ESGF1 Solr index class."""
 
 import time
-from pathlib import Path
 from typing import Any, Union
 
 import pandas as pd
 import requests
 
-from intake_esgf.base import expand_cmip5_record, get_dataframe_columns
+from intake_esgf.base import (
+    expand_cmip5_record,
+    get_content_path,
+    get_dataframe_columns,
+)
 from intake_esgf.exceptions import NoSearchResults
 
 
@@ -113,17 +116,7 @@ class SolrESGFIndex:
             info["checksum_type"] = doc["checksum_type"][0]
             info["checksum"] = doc["checksum"][0]
             info["size"] = doc["size"]
-            doc["version"] = [doc["dataset_id"].split("|")[0].split(".")[-1]]
-            file_path = doc["directory_format_template_"][0]
-            info["path"] = (
-                Path(
-                    file_path.replace("%(root)s/", "")
-                    .replace("%(", "{")
-                    .replace(")s", "[0]}")
-                    .format(**doc)
-                )
-                / doc["title"]
-            )
+            info["path"] = get_content_path(doc)
             for entry in doc["url"]:
                 link, _, link_type = entry.split("|")
                 if link_type not in info:

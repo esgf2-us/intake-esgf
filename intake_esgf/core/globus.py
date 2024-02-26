@@ -1,27 +1,16 @@
 """A Globus-based ESGF1 style index."""
 
 import time
-from pathlib import Path
 from typing import Any, Union
 
 import pandas as pd
 from globus_sdk import SearchClient, SearchQuery
 
-from intake_esgf.base import expand_cmip5_record, get_dataframe_columns
-
-
-def _form_path(content):
-    content["version"] = [content["dataset_id"].split("|")[0].split(".")[-1]]
-    file_path = content["directory_format_template_"][0]
-    return (
-        Path(
-            file_path.replace("%(root)s/", "")
-            .replace("%(", "{")
-            .replace(")s", "[0]}")
-            .format(**content)
-        )
-        / content["title"]
-    )
+from intake_esgf.base import (
+    expand_cmip5_record,
+    get_content_path,
+    get_dataframe_columns,
+)
 
 
 class GlobusESGFIndex:
@@ -127,11 +116,7 @@ class GlobusESGFIndex:
                         if "HTTPServer" in url
                     ],
                 }
-                # build the path from the template
-                content["version"] = [
-                    content["dataset_id"].split("|")[0].split(".")[-1]
-                ]
-                info["path"] = _form_path(content)
+                info["path"] = get_content_path(content)
                 infos.append(info)
         response_time = time.time() - response_time
         if self.logger is not None:
