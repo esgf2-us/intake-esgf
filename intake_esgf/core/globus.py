@@ -89,16 +89,20 @@ class GlobusESGFIndex:
             self.logger.info(f"└─{self} results={len(df)} {response_time=:.2f}")
         return df
 
-    def get_file_info(self, dataset_ids: list[str]) -> dict[str, Any]:
+    def get_file_info(self, dataset_ids: list[str], **facets) -> dict[str, Any]:
         """Get file information for the given datasets."""
         response_time = time.time()
         sc = SearchClient()
-        paginator = sc.paginated.post_search(
-            self.index_id,
+        query = (
             SearchQuery("")
             .add_filter("type", ["File"])
-            .add_filter("dataset_id", dataset_ids, type="match_any"),
+            .add_filter("dataset_id", dataset_ids, type="match_any")
         )
+        for facet, val in facets.items():
+            query.add_filter(
+                facet, val if isinstance(val, list) else [val], type="match_any"
+            )
+        paginator = sc.paginated.post_search(self.index_id, query)
         paginator.limit = 1000
         infos = []
         for response in paginator:

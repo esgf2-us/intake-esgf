@@ -412,9 +412,17 @@ class ESGFCatalog:
             key = separator.join([row[k] for k in output_key_format])
             dataset_ids.update({dataset_id: key for dataset_id in row["id"]})
 
-        def _get_file_info(index, dataset_ids):
+        # Some projects use dataset_ids to refer to collections of variables. So we need
+        # to pass the variables to the file info search to make sure we do not get more
+        # than we want.
+        search_facets = {}
+        variable_facet = get_facet_by_type(self.df, "variable")
+        if variable_facet in self.last_search:
+            search_facets[variable_facet] = self.last_search[variable_facet]
+
+        def _get_file_info(index, dataset_ids, **search_facets):
             try:
-                info = index.get_file_info(list(dataset_ids.keys()))
+                info = index.get_file_info(list(dataset_ids.keys()), **search_facets)
             except NoSearchResults:
                 return []
             except requests.exceptions.RequestException:
@@ -430,7 +438,8 @@ class ESGFCatalog:
         # threaded file info over indices and flatten output
         info_time = time.time()
         get_file_info = ThreadPool(len(self.indices)).imap_unordered(
-            partial(_get_file_info, dataset_ids=dataset_ids), self.indices
+            partial(_get_file_info, dataset_ids=dataset_ids, **search_facets),
+            self.indices,
         )
         index_infos = list(
             tqdm(

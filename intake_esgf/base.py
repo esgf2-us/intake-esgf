@@ -451,4 +451,6 @@ def get_content_path(content: dict[str, Any]) -> Path:
     match = re.search(rf".*({project.lower()}.*.nc)|.*", urls[0])
     if not match:
         raise ValueError(f"Could not parse out the path from {urls[0]}")
-    return Path(match.group(1))
+    # try to fix records with case-insensitive paths
+    path = match.group(1).replace(project.lower(), project)
+    return Path(path)

@@ -92,7 +92,7 @@ class SolrESGFIndex:
             self.logger.info(f"└─{self} results={len(df)} {total_time=:.2f}")
         return df
 
-    def get_file_info(self, dataset_ids: list[str]) -> dict[str, Any]:
+    def get_file_info(self, dataset_ids: list[str], **facets) -> dict[str, Any]:
         total_time = time.time()
         search = dict(
             type="File",
@@ -103,6 +103,7 @@ class SolrESGFIndex:
             distrib=self.distrib,
             dataset_id=dataset_ids,
         )
+        search.update(facets)
         response = esg_search(self.url, **search)["response"]
         if not response["numFound"]:
             if self.logger is not None:
