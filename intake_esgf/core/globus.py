@@ -127,9 +127,7 @@ class GlobusESGFIndex:
             self.logger.info(f"└─{self} results={len(infos)} {response_time=:.2f}")
         return infos
 
-    def from_tracking_ids(self, tracking_ids: Union[str, list[str]]) -> pd.DataFrame:
-        if isinstance(tracking_ids, str):
-            tracking_ids = [tracking_ids]
+    def from_tracking_ids(self, tracking_ids: list[str]) -> pd.DataFrame:
         response = SearchClient().post_search(
             self.index_id,
             SearchQuery("").add_filter("tracking_id", tracking_ids, type="match_any"),

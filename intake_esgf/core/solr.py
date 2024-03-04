@@ -67,11 +67,11 @@ class SolrESGFIndex:
             self.logger.info(f"└─{self} results={len(df)} {total_time=:.2f}")
         return df
 
-    def from_tracking_ids(self, tracking_ids: Union[str, list[str]]) -> pd.DataFrame:
+    def from_tracking_ids(self, tracking_ids: list[str]) -> pd.DataFrame:
         total_time = time.time()
-        if isinstance(tracking_ids, str):
-            tracking_ids = [tracking_ids]
-        response = esg_search(self.url, tracking_id=tracking_ids)["response"]
+        response = esg_search(self.url, type="File", tracking_id=tracking_ids)[
+            "response"
+        ]
         if not response["numFound"]:
             if self.logger is not None:
                 self.logger.info(f"└─{self} no results")
@@ -96,7 +96,6 @@ class SolrESGFIndex:
         total_time = time.time()
         search = dict(
             type="File",
-            format="application/solr+json",
             limit=1000,  # FIX: need to manually paginate
             latest=True,
             retracted=False,

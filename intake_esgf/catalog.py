@@ -310,6 +310,9 @@ class ESGFCatalog:
                 return pd.DataFrame([])
             return df
 
+        if isinstance(tracking_ids, str):
+            tracking_ids = [tracking_ids]
+
         # log what is being searched for
         self.logger.info("\x1b[36;32mfrom_tracking_ids begin\033[0m")
 
