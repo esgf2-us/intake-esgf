@@ -12,6 +12,7 @@ import pandas as pd
 import requests
 import xarray as xr
 from datatree import DataTree
+from numpy import argmax
 
 from intake_esgf import IN_NOTEBOOK
 from intake_esgf.base import (
@@ -406,11 +407,18 @@ class ESGFCatalog:
             output_key_format = [get_facet_by_type(self.df, "variable")]
 
         # Populate a dictionary of dataset_ids in this search and which keys they will
-        # map to in the output dictionary.
+        # map to in the output dictionary. This is complicated by CMIP5 where the
+        # dataset_id -> variable mapping is not unique.
         dataset_ids = {}
         for _, row in self.df.iterrows():
             key = separator.join([row[k] for k in output_key_format])
-            dataset_ids.update({dataset_id: key for dataset_id in row["id"]})
+            for dataset_id in row["id"]:
+                if dataset_id in dataset_ids:
+                    if isinstance(dataset_ids[dataset_id], str):
+                        dataset_ids[dataset_id] = [dataset_ids[dataset_id]]
+                    dataset_ids[dataset_id].append(key)
+                else:
+                    dataset_ids[dataset_id] = key
 
         # Some projects use dataset_ids to refer to collections of variables. So we need
         # to pass the variables to the file info search to make sure we do not get more
@@ -456,11 +464,26 @@ class ESGFCatalog:
         index_infos = [info for index_info in index_infos for info in index_info]
 
         # now we merge this info together.
+        def _which_key(path, keys):
+            """Return the key that is likely correct based on counts in the path."""
+            counts = []
+            for key in keys:
+                counts.append(sum([str(path).count(k) for k in key.split(separator)]))
+            return keys[argmax(counts)]
+
         merged_info = {}
         for info in index_infos:
             path = info["path"]
             if path not in merged_info:
-                merged_info[path] = {"key": dataset_ids[info["dataset_id"]]}
+                # Because CMIP5 is annoying, we may have multiple dataset_ids for each
+                # path (file). So here we choose which key is more likely correct.
+                if isinstance(dataset_ids[info["dataset_id"]], list):
+                    merged_info[path] = {
+                        "key": _which_key(path, dataset_ids[info["dataset_id"]])
+                    }
+                else:
+                    merged_info[path] = {"key": dataset_ids[info["dataset_id"]]}
+
             for key, val in info.items():
                 if isinstance(val, list):
                     if key not in merged_info[path]:
@@ -471,7 +494,6 @@ class ESGFCatalog:
                     if key not in merged_info[path]:
                         merged_info[path][key] = val
         infos = [info for _, info in merged_info.items()]
-
         info_time = time.time() - info_time
         self.logger.info(f"\x1b[36;32mfile info end\033[0m total_time={info_time:.2f}")
 
