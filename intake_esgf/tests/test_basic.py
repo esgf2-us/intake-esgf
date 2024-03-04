@@ -1,11 +1,13 @@
 from intake_esgf import ESGFCatalog
 from intake_esgf.exceptions import NoSearchResults
 
+SOLR_TEST = "esgf-node.ornl.gov"
+
 
 def test_search():
-    cat = ESGFCatalog(esgf1_indices="esgf-node.llnl.gov")
+    cat = ESGFCatalog(esgf1_indices=SOLR_TEST)
     print(cat)
-    cat = ESGFCatalog(esgf1_indices=["esgf-node.llnl.gov"]).search(
+    cat = ESGFCatalog(esgf1_indices=[SOLR_TEST]).search(
         experiment_id="historical",
         source_id="CanESM5",
         variable_id=["gpp"],
@@ -42,7 +44,7 @@ def test_noresults():
 
 
 def test_tracking_ids():
-    cat = ESGFCatalog().from_tracking_ids(
+    cat = ESGFCatalog(esgf1_indices=SOLR_TEST).from_tracking_ids(
         "hdl:21.14100/0577d84f-9954-494f-8cc8-465aa4fd910e"
     )
     assert len(cat.df) == 1

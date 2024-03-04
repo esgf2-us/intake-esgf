@@ -1,4 +1,5 @@
 """The primary object in intake-esgf."""
+
 import re
 import time
 import warnings
@@ -11,6 +12,7 @@ import pandas as pd
 import requests
 import xarray as xr
 from datatree import DataTree
+from numpy import argmax
 
 from intake_esgf import IN_NOTEBOOK
 from intake_esgf.base import (
@@ -18,10 +20,12 @@ from intake_esgf.base import (
     bar_format,
     check_for_esgf_dataroot,
     combine_results,
+    get_facet_by_type,
     parallel_download,
 )
 from intake_esgf.core import GlobusESGFIndex, SolrESGFIndex
 from intake_esgf.database import create_download_database, get_download_rate_dataframe
+from intake_esgf.exceptions import NoSearchResults
 from intake_esgf.logging import setup_logging
 
 if IN_NOTEBOOK:
@@ -99,6 +103,7 @@ class ESGFCatalog:
         if self.esgf_data_root is not None:
             self.logger.info(f"ESGF dataroot set {self.esgf_data_root}")
         self.session_time = pd.Timestamp.now()
+        self.last_search = {}
 
     def __repr__(self):
         """Return the unique facets and values from the search."""
@@ -146,23 +151,51 @@ class ESGFCatalog:
 
     def model_groups(self) -> pd.Series:
         """Return counts for unique combinations of (source_id,member_id,grid_label)."""
-        lower = self.df.source_id.str.lower()
+
+        def _extract_int_pattern(sample: str) -> str:
+            ints = re.findall(r"\d+", sample)
+            match = re.match("".join([rf"(\S+){i}" for i in ints]), sample)
+            if not match:
+                raise ValueError("Failed to find the pattern")
+            return "".join([rf"{s}(\d+)" for s in match.groups()])
+
+        # sort by the lower-case version of the 'model' name
+        model_facet = get_facet_by_type(self.df, "model")
+        lower = self.df[model_facet].str.lower()
         lower.name = "lower"
+
+        # sort the variants but extract out the integer values, assume the first result
+        # is representative of the whole
+        variant_facet = get_facet_by_type(self.df, "variant")
+        int_pattern = _extract_int_pattern(self.df.iloc[0][variant_facet])
+
+        # add in these new data to a temporary dataframe
+        df = pd.concat(
+            [
+                self.df,
+                lower,
+                self.df[variant_facet].str.extract(int_pattern).astype(int),
+            ],
+            axis=1,
+        )
+
+        # what columns will we sort/drop/groupby
+        added_columns = list(df.columns[len(self.df.columns) :])
+        sort_columns = list(df.columns[len(self.df.columns) :])
+        group_columns = [model_facet, variant_facet]
+        try:
+            grid_facet = get_facet_by_type(self.df, "grid")
+            sort_columns.append(grid_facet)
+            group_columns.append(grid_facet)
+        except ValueError:
+            pass
+
         return (
-            pd.concat(
-                [
-                    self.df,
-                    self.df.member_id.str.extract(r"r(\d+)i(\d+)p(\d+)f(\d+)").astype(
-                        int
-                    ),
-                    lower,
-                ],
-                axis=1,
-            )
-            .sort_values(["lower", 0, 1, 2, 3, "grid_label"])
-            .drop(columns=["lower", 0, 1, 2, 3])
-            .groupby(["source_id", "member_id", "grid_label"], sort=False)
-            .count()["variable_id"]
+            df.sort_values(sort_columns)
+            .drop(columns=added_columns)
+            .groupby(group_columns, sort=False)
+            .count()
+            .iloc[:, 0]
         )
 
     def search(self, quiet: bool = False, **search: Union[str, list[str]]):
@@ -180,7 +213,7 @@ class ESGFCatalog:
         def _search(index):
             try:
                 df = index.search(**search)
-            except ValueError:
+            except NoSearchResults:
                 return pd.DataFrame([])
             except requests.exceptions.RequestException:
                 self.logger.info(f"└─{index} \x1b[91;20mno response\033[0m")
@@ -196,6 +229,19 @@ class ESGFCatalog:
             for k, v in search.items()
             if (isinstance(v, str) and len(v) > 0) or not isinstance(v, str)
         }
+
+        # apply defaults
+        search.update(
+            dict(
+                type="Dataset",
+                project=search["project"] if "project" in search else "CMIP6",
+                latest=search["latest"] if "latest" in search else True,
+                retracted=search["retracted"] if "retracted" in search else False,
+            )
+        )
+        if isinstance(search["project"], list):
+            if len(search["project"]) > 1:
+                raise ValueError("For now, projects may only be searched one at a time")
 
         # log what is being searched for
         search_str = ", ".join(
@@ -230,7 +276,7 @@ class ESGFCatalog:
 
         search_time = time.time() - search_time
         self.logger.info(f"\x1b[36;32msearch end\033[0m total_time={search_time:.2f}")
-
+        self.last_search = search
         return self
 
     def from_tracking_ids(
@@ -254,13 +300,7 @@ class ESGFCatalog:
         def _from_tracking_ids(index):
             try:
                 df = index.from_tracking_ids(tracking_ids)
-            except ValueError:
-                return pd.DataFrame([])
-            except NotImplementedError:
-                self.logger.info(f"└─{index} function not implemented")
-                warnings.warn(
-                    f"{index} function not implemented for this index, results may be incomplete"
-                )
+            except NoSearchResults:
                 return pd.DataFrame([])
             except requests.exceptions.RequestException:
                 self.logger.info(f"└─{index} \x1b[91;20mno response\033[0m")
@@ -269,6 +309,9 @@ class ESGFCatalog:
                 )
                 return pd.DataFrame([])
             return df
+
+        if isinstance(tracking_ids, str):
+            tracking_ids = [tracking_ids]
 
         # log what is being searched for
         self.logger.info("\x1b[36;32mfrom_tracking_ids begin\033[0m")
@@ -364,19 +407,34 @@ class ESGFCatalog:
             else:
                 output_key_format.append(col)
         if not output_key_format:  # at minimum we have the variable id as a key
-            output_key_format = ["variable_id"]
+            output_key_format = [get_facet_by_type(self.df, "variable")]
 
         # Populate a dictionary of dataset_ids in this search and which keys they will
-        # map to in the output dictionary.
+        # map to in the output dictionary. This is complicated by CMIP5 where the
+        # dataset_id -> variable mapping is not unique.
         dataset_ids = {}
         for _, row in self.df.iterrows():
             key = separator.join([row[k] for k in output_key_format])
-            dataset_ids.update({dataset_id: key for dataset_id in row["id"]})
+            for dataset_id in row["id"]:
+                if dataset_id in dataset_ids:
+                    if isinstance(dataset_ids[dataset_id], str):
+                        dataset_ids[dataset_id] = [dataset_ids[dataset_id]]
+                    dataset_ids[dataset_id].append(key)
+                else:
+                    dataset_ids[dataset_id] = key
 
-        def _get_file_info(index, dataset_ids):
+        # Some projects use dataset_ids to refer to collections of variables. So we need
+        # to pass the variables to the file info search to make sure we do not get more
+        # than we want.
+        search_facets = {}
+        variable_facet = get_facet_by_type(self.df, "variable")
+        if variable_facet in self.last_search:
+            search_facets[variable_facet] = self.last_search[variable_facet]
+
+        def _get_file_info(index, dataset_ids, **search_facets):
             try:
-                info = index.get_file_info(list(dataset_ids.keys()))
-            except ValueError:
+                info = index.get_file_info(list(dataset_ids.keys()), **search_facets)
+            except NoSearchResults:
                 return []
             except requests.exceptions.RequestException:
                 self.logger.info(f"└─{index} \x1b[91;20mno response\033[0m")
@@ -391,7 +449,8 @@ class ESGFCatalog:
         # threaded file info over indices and flatten output
         info_time = time.time()
         get_file_info = ThreadPool(len(self.indices)).imap_unordered(
-            partial(_get_file_info, dataset_ids=dataset_ids), self.indices
+            partial(_get_file_info, dataset_ids=dataset_ids, **search_facets),
+            self.indices,
         )
         index_infos = list(
             tqdm(
@@ -408,11 +467,26 @@ class ESGFCatalog:
         index_infos = [info for index_info in index_infos for info in index_info]
 
         # now we merge this info together.
+        def _which_key(path, keys):
+            """Return the key that is likely correct based on counts in the path."""
+            counts = []
+            for key in keys:
+                counts.append(sum([str(path).count(k) for k in key.split(separator)]))
+            return keys[argmax(counts)]
+
         merged_info = {}
         for info in index_infos:
             path = info["path"]
             if path not in merged_info:
-                merged_info[path] = {"key": dataset_ids[info["dataset_id"]]}
+                # Because CMIP5 is annoying, we may have multiple dataset_ids for each
+                # path (file). So here we choose which key is more likely correct.
+                if isinstance(dataset_ids[info["dataset_id"]], list):
+                    merged_info[path] = {
+                        "key": _which_key(path, dataset_ids[info["dataset_id"]])
+                    }
+                else:
+                    merged_info[path] = {"key": dataset_ids[info["dataset_id"]]}
+
             for key, val in info.items():
                 if isinstance(val, list):
                     if key not in merged_info[path]:
@@ -423,7 +497,6 @@ class ESGFCatalog:
                     if key not in merged_info[path]:
                         merged_info[path][key] = val
         infos = [info for _, info in merged_info.items()]
-
         info_time = time.time() - info_time
         self.logger.info(f"\x1b[36;32mfile info end\033[0m total_time={info_time:.2f}")
 
@@ -511,7 +584,15 @@ class ESGFCatalog:
         deemed incomplete.
 
         """
-        for lbl, grp in self.df.groupby(["source_id", "member_id", "grid_label"]):
+        group = [
+            get_facet_by_type(self.df, "model"),
+            get_facet_by_type(self.df, "variant"),
+        ]
+        try:
+            group.append(get_facet_by_type(self.df, "grid"))
+        except ValueError:
+            pass
+        for _, grp in self.df.groupby(group):
             if not complete(grp):
                 self.df = self.df.drop(grp.index)
         return self
@@ -526,16 +607,14 @@ class ESGFCatalog:
         integer values) for each `source_id` in your search and remove all others.
 
         """
-        for source_id, grp in self.df.groupby("source_id"):
-            member_id = "r{}i{}p{}f{}".format(
-                *(
-                    grp.member_id.str.extract(r"r(\d+)i(\d+)p(\d+)f(\d+)")
-                    .astype(int)
-                    .sort_values([0, 1, 2, 3])
-                    .iloc[0]
-                )
-            )
-            self.df = self.df.drop(grp[grp.member_id != member_id].index)
+        df = self.model_groups()
+        variant_facet = get_facet_by_type(self.df, "variant")
+        names = [name for name in df.index.names if name != variant_facet]
+        for lbl, grp in df.to_frame().reset_index().groupby(names):
+            variant = grp.iloc[0][variant_facet]
+            q = " & ".join([f"({n} == '{v}')" for n, v in zip(names, lbl)])
+            q += f" & ({variant_facet} != '{variant}')"
+            self.df = self.df.drop(self.df.query(q).index)
         return self
 
     def session_log(self) -> str:

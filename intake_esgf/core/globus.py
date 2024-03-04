@@ -1,27 +1,16 @@
 """A Globus-based ESGF1 style index."""
-import re
+
 import time
-from pathlib import Path
 from typing import Any, Union
 
 import pandas as pd
 from globus_sdk import SearchClient, SearchQuery
 
-from intake_esgf.base import get_dataset_pattern
-
-
-def _form_path(content):
-    content["version"] = [content["dataset_id"].split("|")[0].split(".")[-1]]
-    file_path = content["directory_format_template_"][0]
-    return (
-        Path(
-            file_path.replace("%(root)s/", "")
-            .replace("%(", "{")
-            .replace(")s", "[0]}")
-            .format(**content)
-        )
-        / content["title"]
-    )
+from intake_esgf.base import (
+    expand_cmip5_record,
+    get_content_path,
+    get_dataframe_columns,
+)
 
 
 class GlobusESGFIndex:
@@ -51,11 +40,6 @@ class GlobusESGFIndex:
         entries.
 
         """
-        # process inputs
-        search["type"] = "Dataset"
-        if "latest" not in search:
-            search["latest"] = True
-
         # the ALCF index encodes booleans as strings
         if "anl-dev" in self.repr:
             for key, val in search.items():
@@ -72,14 +56,31 @@ class GlobusESGFIndex:
         sc = SearchClient()
         paginator = sc.paginated.post_search(self.index_id, query_data)
         paginator.limit = 1000
-        pattern = get_dataset_pattern()
         df = []
         for response in paginator:
             for g in response["gmeta"]:
-                m = re.search(pattern, g["subject"])
-                if m:
-                    df.append(m.groupdict())
-                    df[-1]["id"] = g["subject"]
+                content = g["entries"][0]["content"]
+                record = {
+                    facet: (
+                        content[facet][0]
+                        if isinstance(content[facet], list)
+                        else content[facet]
+                    )
+                    for facet in get_dataframe_columns(content)
+                    if facet in content
+                }
+                record["project"] = content["project"][0]
+                record["id"] = g["subject"]
+                if record["project"] == "CMIP5":
+                    variables = search["variable"] if "variable" in search else []
+                    if not isinstance(variables, list):
+                        variables = [variables]
+                    record = expand_cmip5_record(
+                        variables,
+                        content["variable"],
+                        record,
+                    )
+                df += record if isinstance(record, list) else [record]
         df = pd.DataFrame(df)
         response_time = time.time() - response_time
 
@@ -88,16 +89,20 @@ class GlobusESGFIndex:
             self.logger.info(f"└─{self} results={len(df)} {response_time=:.2f}")
         return df
 
-    def get_file_info(self, dataset_ids: list[str]) -> dict[str, Any]:
-        """"""
+    def get_file_info(self, dataset_ids: list[str], **facets) -> dict[str, Any]:
+        """Get file information for the given datasets."""
         response_time = time.time()
         sc = SearchClient()
-        paginator = sc.paginated.post_search(
-            self.index_id,
+        query = (
             SearchQuery("")
             .add_filter("type", ["File"])
-            .add_filter("dataset_id", dataset_ids, type="match_any"),
+            .add_filter("dataset_id", dataset_ids, type="match_any")
         )
+        for facet, val in facets.items():
+            query.add_filter(
+                facet, val if isinstance(val, list) else [val], type="match_any"
+            )
+        paginator = sc.paginated.post_search(self.index_id, query)
         paginator.limit = 1000
         infos = []
         for response in paginator:
@@ -115,34 +120,32 @@ class GlobusESGFIndex:
                         if "HTTPServer" in url
                     ],
                 }
-                # build the path from the template
-                content["version"] = [
-                    content["dataset_id"].split("|")[0].split(".")[-1]
-                ]
-                info["path"] = _form_path(content)
+                info["path"] = get_content_path(content)
                 infos.append(info)
         response_time = time.time() - response_time
         if self.logger is not None:
             self.logger.info(f"└─{self} results={len(infos)} {response_time=:.2f}")
         return infos
 
-    def from_tracking_ids(self, tracking_ids: Union[str, list[str]]) -> pd.DataFrame:
-        if isinstance(tracking_ids, str):
-            tracking_ids = [tracking_ids]
+    def from_tracking_ids(self, tracking_ids: list[str]) -> pd.DataFrame:
         response = SearchClient().post_search(
             self.index_id,
             SearchQuery("").add_filter("tracking_id", tracking_ids, type="match_any"),
         )
-        pattern = get_dataset_pattern()
         df = []
         for g in response["gmeta"]:
-            try:
-                dataset_id = g["entries"][0]["content"]["dataset_id"]
-            except Exception:
-                continue
-            m = re.search(pattern, dataset_id)
-            if m:
-                df.append(m.groupdict())
-                df[-1]["id"] = dataset_id
+            content = g["entries"][0]["content"]
+            record = {
+                facet: (
+                    content[facet][0]
+                    if isinstance(content[facet], list)
+                    else content[facet]
+                )
+                for facet in get_dataframe_columns(content)
+                if facet in content
+            }
+            record["project"] = content["project"][0]
+            record["id"] = content["dataset_id"]
+            df.append(record)
         df = pd.DataFrame(df)
         return df
