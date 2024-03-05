@@ -48,6 +48,7 @@ source_suffix = ".rst"
 
 # Disable cell timeout
 nbsphinx_timeout = -1
+nb_execution_timeout = -1
 nbsphinx_prolog = ""
 
 # The encoding of source files.
