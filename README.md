@@ -8,6 +8,7 @@
 [![Documentation Status][rtd-badge]][rtd-link]
 [![Code Coverage Status][codecov-badge]][codecov-link]
 [![PyPI][pypi-badge]][pypi-link]
+[![Conda][conda-badge]][conda-link]
 
 ## Overview
 
@@ -45,3 +46,5 @@ For a full listing of features with code examples, please consult the [documenta
 [codecov-link]: https://codecov.io/gh/esgf2-us/intake-esgf
 [pypi-badge]: https://img.shields.io/pypi/v/intake-esgf?logo=pypi
 [pypi-link]: https://pypi.org/project/intake-esgf
+[conda-badge]: https://img.shields.io/conda/vn/conda-forge/intake-esgf?logo=anaconda
+[conda-link]: https://anaconda.org/conda-forge/intake-esgf
