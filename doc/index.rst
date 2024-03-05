@@ -50,13 +50,12 @@ or through ``conda-forge``
    :hidden:
    :caption: Features
 
-   configure
    measures
+   modelgroups
+   configure
+   reproduce
    dictkeys
    logging
-   modelgroups
-   operators
-   reproduce
 
 .. toctree::
    :maxdepth: 2
