@@ -24,6 +24,7 @@ from intake_esgf.base import (
     parallel_download,
 )
 from intake_esgf.core import GlobusESGFIndex, SolrESGFIndex
+from intake_esgf.core.globus import variable_info
 from intake_esgf.database import create_download_database, get_download_rate_dataframe
 from intake_esgf.exceptions import NoSearchResults
 from intake_esgf.logging import setup_logging
@@ -658,3 +659,25 @@ class ESGFCatalog:
             )
         )
         return df
+
+    def variable_info(self, query: str, project: str = "CMIP6") -> pd.DataFrame:
+        """Return a dataframe with variable information from a query.
+
+        If you are new to searching for data in ESGF, you may not know how to figure out
+        what variables you need for your purpose.
+
+        Parameters
+        ----------
+        query
+            A search string whose contents we will use to search all record fields.
+        project
+            The project whose records we will search, defaults to `CMIP6`.
+
+        Returns
+        -------
+        df
+            A dataframe with the possibly relevant variables, their units, and various
+            name and description fields.
+
+        """
+        return variable_info(query, project)
