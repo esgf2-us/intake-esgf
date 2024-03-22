@@ -149,3 +149,49 @@ class GlobusESGFIndex:
             df.append(record)
         df = pd.DataFrame(df)
         return df
+
+
+def variable_info(query: str, project: str = "CMIP6") -> pd.DataFrame:
+    """Return a dataframe with variable information from a query."""
+    # first we populate a list of related veriables
+    q = (
+        SearchQuery(query)
+        .add_filter("type", ["Dataset"])
+        .add_filter("project", [project])
+        .add_facet("variable_id", "variable_id")
+        .add_facet("variable", "variable")
+        .set_limit(0)
+    )
+    response = SearchClient().post_search("ea4595f4-7b71-4da7-a1f0-e3f5d8f7f062", q)
+    variables = list(
+        set(
+            [
+                bucket["value"]
+                for fr in response.data["facet_results"]
+                for bucket in fr["buckets"]
+            ]
+        )
+    )
+    # which facet do we use for variables?
+    var_facet = [fr["name"] for fr in response.data["facet_results"] if fr["buckets"]]
+    assert var_facet
+    var_facet = var_facet[0]
+    # then we loop through them and extract information for the user
+    df = []
+    for v in variables:
+        q = (
+            SearchQuery("")
+            .add_filter("type", ["Dataset"])
+            .add_filter("project", [project])
+            .add_filter(var_facet, [v])  # need to abstract this
+            .set_limit(1)
+        )
+        response = SearchClient().post_search("ea4595f4-7b71-4da7-a1f0-e3f5d8f7f062", q)
+        for doc in response.get("gmeta"):
+            content = doc["entries"][0]["content"]
+            columns = [var_facet]
+            columns += [key for key in content if "variable_" in key]
+            columns += [key for key in content if "name" in key]
+            df.append({key: content[key][0] for key in set(columns)})
+    df = pd.DataFrame(df).sort_values(var_facet).set_index(var_facet)
+    return df

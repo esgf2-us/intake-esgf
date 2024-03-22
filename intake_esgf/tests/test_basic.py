@@ -98,3 +98,22 @@ def test_remove_ensemble():
 def test_download_dbase():
     cat = ESGFCatalog()
     assert len(cat.download_summary().columns)
+
+
+def test_variable_info():
+    cat = ESGFCatalog()
+    df = cat.variable_info("temperature")
+    assert df.index.isin(
+        [
+            "sitemptop",
+            "ta",
+            "ta850",
+            "tas",
+            "tasmax",
+            "tasmin",
+            "thetao",
+            "tos",
+            "ts",
+            "tsl",
+        ]
+    ).all()
