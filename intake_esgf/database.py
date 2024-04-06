@@ -1,4 +1,5 @@
 """Database functions which interact with SQLite."""
+
 import sqlite3
 from pathlib import Path
 from typing import Literal
@@ -102,3 +103,26 @@ def sort_download_links(link: str, df_rate: pd.DataFrame) -> float:
     if host not in df_rate.index:
         return df_rate["rate"].max() + np.random.rand(1)[0]
     return df_rate.loc[host, "rate"]
+
+
+def sort_globus_endpoints(uuid: str, df_rate: pd.DataFrame) -> float:
+    """Return the average download rate for the given endpoint uuid.
+
+    This function is to be used to sort the list of endpoints in terms of what is fastest
+    for the user. If a endpoint is not part of the dataframe, we return a random number
+    larger than the fastest server. This is so that future downloads from this host will
+    have entries in the database.
+
+    Parameters
+    ----------
+    uuid
+        The endpoint where the file(s) may be accessed download.
+    df_rate
+        The dataframe whose indices are hosts and contains a `rate` column.
+
+    """
+    if not len(df_rate):
+        return np.random.rand(1)[0]
+    if uuid not in df_rate.index:
+        return df_rate["rate"].max() + np.random.rand(1)[0]
+    return df_rate.loc[uuid, "rate"]

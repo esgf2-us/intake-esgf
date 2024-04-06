@@ -119,6 +119,9 @@ class GlobusESGFIndex:
                         for url in content["url"]
                         if "HTTPServer" in url
                     ],
+                    "Globus": [
+                        url.split("|")[0] for url in content["url"] if "Globus" in url
+                    ],
                 }
                 info["path"] = get_content_path(content)
                 infos.append(info)
