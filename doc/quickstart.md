@@ -100,7 +100,7 @@ quickly as we can.
    `xarray` containers.
 
 ```{code-cell}
-dsd = cat.to_dataset_dict()
+dsd = cat.to_dataset_dict(ignore_facets='table_id')
 ```
 
 You will notice that progress bars inform you that file information is being
@@ -132,15 +132,15 @@ needed.
 fig, axs = plt.subplots(figsize=(6, 12), nrows=3)
 
 # temperature
-ds = dsd["Amon.tas"]["tas"].mean(dim="time") - 273.15  # to [C]
+ds = dsd["tas"]["tas"].mean(dim="time") - 273.15  # to [C]
 ds.plot(ax=axs[0], cmap="bwr", vmin=-40, vmax=40, cbar_kwargs={"label": "tas [C]"})
 
 # precipitation
-ds = dsd["Amon.pr"]["pr"].mean(dim="time") * 86400 / 999.8 * 1000  # to [mm d-1]
+ds = dsd["pr"]["pr"].mean(dim="time") * 86400 / 999.8 * 1000  # to [mm d-1]
 ds.plot(ax=axs[1], cmap="Blues", vmax=10, cbar_kwargs={"label": "pr [mm d-1]"})
 
 # gross primary productivty
-ds = dsd["Lmon.gpp"]["gpp"].mean(dim="time") * 86400 * 1000  # to [g m-2 d-1]
+ds = dsd["gpp"]["gpp"].mean(dim="time") * 86400 * 1000  # to [g m-2 d-1]
 ds.plot(ax=axs[2], cmap="Greens", cbar_kwargs={"label": "gpp [g m-2 d-1]"})
 plt.tight_layout()
 ```
