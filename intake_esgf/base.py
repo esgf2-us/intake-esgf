@@ -1,7 +1,6 @@
 """General functions used in various parts of intake-esgf."""
 
 import hashlib
-import logging
 import re
 import time
 from functools import partial
@@ -12,16 +11,15 @@ import pandas as pd
 import requests
 import xarray as xr
 
-from intake_esgf import IN_NOTEBOOK
+import intake_esgf
 from intake_esgf.database import (
     get_download_rate_dataframe,
     log_download_information,
     sort_download_links,
 )
 from intake_esgf.exceptions import NoSearchResults
-from intake_esgf.logging import setup_logging
 
-if IN_NOTEBOOK:
+if intake_esgf.IN_NOTEBOOK:
     from tqdm import tqdm_notebook as tqdm
 else:
     from tqdm import tqdm
@@ -32,7 +30,7 @@ bar_format = "{desc:>20}: {percentage:3.0f}%|{bar}|{n_fmt}/{total_fmt} [{rate_fm
 def combine_results(dfs: list[pd.DataFrame]) -> pd.DataFrame:
     """Return a combined dataframe where ids are now a list."""
     # combine and remove duplicate entries
-    logger = setup_logging()
+    logger = intake_esgf.conf.get_logger()
     df = pd.concat(dfs)
     if len(df) == 0:
         logger.info("\x1b[36;32msearch end \x1b[91;20mno results\033[0m")
@@ -75,9 +73,9 @@ def download_and_verify(
     content_length: int,
     download_db: Path,
     quiet: bool = False,
-    logger: Union[logging.Logger, None] = None,
 ) -> None:
     """Download the url to a local file and check for validity, removing if not."""
+    logger = intake_esgf.conf.get_logger()
     if not isinstance(local_file, Path):
         local_file = Path(local_file)
     max_file_length = 40
@@ -107,12 +105,10 @@ def download_and_verify(
     transfer_time = time.time() - transfer_time
     rate = content_length * 1e-6 / transfer_time
     if get_file_hash(local_file, hash_algorithm) != hash:
-        if logger is not None:
-            logger.info(f"\x1b[91;20mHash error\033[0m {url}")
+        logger.info(f"\x1b[91;20mHash error\033[0m {url}")
         local_file.unlink()
         raise ValueError("Hash does not match")
-    if logger is not None:
-        logger.info(f"{transfer_time=:.2f} [s] at {rate:.2f} [Mb s-1] {url}")
+    logger.info(f"{transfer_time=:.2f} [s] at {rate:.2f} [Mb s-1] {url}")
     host = url[: url.index("/", 10)].replace("http://", "").replace("https://", "")
     log_download_information(download_db, host, transfer_time, content_length * 1e-6)
 
@@ -124,19 +120,17 @@ def parallel_download(
     esg_dataroot: Union[None, Path] = None,
 ):
     """."""
-    logger = setup_logging()
+    logger = intake_esgf.conf.get_logger()
     # does this exist on a copy we have access to?
     if esg_dataroot is not None:
         local_file = esg_dataroot / info["path"]
         if local_file.exists():
-            if logger is not None:
-                logger.info(f"accessed {local_file}")
+            logger.info(f"accessed {local_file}")
             return info["key"], local_file
     # have we already downloaded this?
     local_file = local_cache / info["path"]
     if local_file.exists():
-        if logger is not None:
-            logger.info(f"accessed {local_file}")
+        logger.info(f"accessed {local_file}")
         return info["key"], local_file
     # else we try to download it, first we sort links by the fastest host to you
     df_rate = get_download_rate_dataframe(download_db)
@@ -153,28 +147,13 @@ def parallel_download(
                 info["checksum_type"],
                 info["size"],
                 download_db=download_db,
-                logger=logger,
             )
-        except Exception as exc:
-            print(exc)
+        except Exception:
             logger.info(f"\x1b[91;20mdownload failed\033[0m {url}")
             continue
         if local_file.exists():
             return info["key"], local_file
     return None, None
-
-
-def check_for_esgf_dataroot() -> Union[Path, None]:
-    """Return a direct path to the ESGF data is it exists."""
-    to_check = [
-        "/p/css03/esgf_publish",  # Nimbus
-        "/eagle/projects/ESGF2/esg_dataroot",  # ALCF
-        "/global/cfs/projectdirs/m3522/cmip6/",  # NERSC data lake
-    ]
-    for check in to_check:
-        if Path(check).is_dir():
-            return check
-    return None
 
 
 def get_search_criteria(ds: xr.Dataset) -> dict[str, str]:
