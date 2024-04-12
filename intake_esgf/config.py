@@ -154,6 +154,8 @@ class Config(dict):
         # Where will the log be written?
         log_file = Path(self["logfile"]).expanduser()
         log_file.parent.mkdir(parents=True, exist_ok=True)
+        if not log_file.exists():
+            log_file.touch()
 
         # We need a named logger to avoid other packages that use the root logger
         logger = logging.getLogger("intake-esgf")

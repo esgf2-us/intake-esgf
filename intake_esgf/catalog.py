@@ -75,7 +75,9 @@ class ESGFCatalog:
         self.df = None
         self.session_time = pd.Timestamp.now()
         self.last_search = {}
-        self._initialize_cache()
+        self.local_cache = []
+        self.esg_dataroot = []
+        self._initialize()
 
     def __repr__(self):
         """Return the unique facets and values from the search."""
@@ -84,15 +86,28 @@ class ESGFCatalog:
         repr = f"Summary information for {len(self.df)} results:\n"
         return repr + self.unique().__repr__()
 
-    def _initialize_cache(self):
-        """"""
-        # ensure the local_cache directories exist
+    def _initialize(self):
+        """Ensure that directories and pertinent files are created."""
+        # ensure the local_cache directories exist, we will use the first one that is
+        # writeable
+        owner_write = 0b010000000
         for path in intake_esgf.conf["local_cache"]:
             path = Path(path).expanduser()
-            path.mkdir(parents=True, exist_ok=True)
+            try:
+                path.mkdir(parents=True, exist_ok=True)
+            except Exception:
+                continue
+            if not path.is_dir():
+                continue
+            if not path.stat().st_mode & owner_write:
+                continue
+            self.local_cache.append(path)
+        for path in intake_esgf.conf["esg_dataroot"]:
+            path = Path(path).expanduser()
+
         # initialize the local database
-        download_db = Path(intake_esgf.conf["download_db"])
-        download_db.mkdir(parents=True, exist_ok=True)
+        download_db = Path(intake_esgf.conf["download_db"]).expanduser()
+        download_db.parent.mkdir(parents=True, exist_ok=True)
         if not download_db.is_file():
             create_download_database(download_db)
 
@@ -455,9 +470,9 @@ class ESGFCatalog:
         # Download in parallel using threads
         fetch = partial(
             parallel_download,
-            local_cache=self.local_cache,
-            download_db=self.download_db,
-            esg_dataroot=self.esgf_data_root,
+            local_cache=intake_esgf.conf["local_cache"],
+            download_db=intake_esgf.conf["download_db"],
+            esg_dataroot=intake_esgf.conf["esg_dataroot"],
         )
         results = ThreadPool(min(num_threads, len(infos))).imap_unordered(fetch, infos)
         ds = {}
@@ -571,7 +586,7 @@ class ESGFCatalog:
 
     def session_log(self) -> str:
         """Return the log since the instantiation of `ESGFCatalog()`."""
-        log = open(self.local_cache / "esgf.log").readlines()[::-1]
+        log = open(Path(intake_esgf.conf["logfile"]).expanduser()).readlines()[::-1]
         for n, line in enumerate(log):
             m = re.search(r"\x1b\[36;20m(.*)\s\033\[0m", line)
             if not m:
