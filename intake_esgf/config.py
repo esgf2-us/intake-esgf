@@ -53,7 +53,7 @@ class Config(dict):
     def reset(self):
         """Return to defaults."""
         self.clear()
-        self.update(defaults)
+        self.update(copy.deepcopy(defaults))
 
     def save(self, filename: Path | None = None):
         """Save current configuration to file as YAML."""
@@ -116,9 +116,13 @@ class Config(dict):
             for key in self["solr_indices"]:
                 self["solr_indices"][key] = True
         if esg_dataroot is not None:
-            self["esg_dataroot"] = esg_dataroot
+            self["esg_dataroot"] = (
+                esg_dataroot if isinstance(esg_dataroot, list) else [esg_dataroot]
+            )
         if local_cache is not None:
-            self["local_cache"] = local_cache
+            self["local_cache"] = (
+                local_cache if isinstance(local_cache, list) else [local_cache]
+            )
         return self._unset(temp)
 
     def __getitem__(self, item):
