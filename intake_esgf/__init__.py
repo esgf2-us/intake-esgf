@@ -25,8 +25,9 @@ def in_notebook() -> bool:
 IN_NOTEBOOK = in_notebook()
 
 from intake_esgf.catalog import ESGFCatalog  # noqa
+from intake_esgf.config import conf  # noqa
 
-__all__ = ["ESGFCatalog", "IN_NOTEBOOK"]
+__all__ = ["ESGFCatalog", "conf", "IN_NOTEBOOK"]
 
 try:
     __version__ = get_distribution(__name__).version

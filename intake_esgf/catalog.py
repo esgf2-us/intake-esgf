@@ -14,11 +14,11 @@ import xarray as xr
 from datatree import DataTree
 from numpy import argmax
 
+import intake_esgf
 from intake_esgf import IN_NOTEBOOK
 from intake_esgf.base import (
     add_cell_measures,
     bar_format,
-    check_for_esgf_dataroot,
     combine_results,
     get_facet_by_type,
     parallel_download,
@@ -26,8 +26,7 @@ from intake_esgf.base import (
 from intake_esgf.core import GlobusESGFIndex, SolrESGFIndex
 from intake_esgf.core.globus import variable_info
 from intake_esgf.database import create_download_database, get_download_rate_dataframe
-from intake_esgf.exceptions import NoSearchResults
-from intake_esgf.logging import setup_logging
+from intake_esgf.exceptions import LocalCacheNotWritable, NoSearchResults
 
 if IN_NOTEBOOK:
     from tqdm import tqdm_notebook as tqdm
@@ -42,12 +41,6 @@ class ESGFCatalog:
     understand consequences of index design. Please feel free to use it but understand
     that the API will likely change.
 
-    Parameters
-    ----------
-    esgf1_indices
-        Set to True (defaults to False) to use all ESGF1 nodes in the federation or
-        specify a node or list of nodes.
-
     Attributes
     ----------
     indices : list[Union[SolrESGFIndex, GlobusESGFIndex]]
@@ -58,53 +51,34 @@ class ESGFCatalog:
         are satisfied with the datasets listed in this dataframe, calling
         `to_dataset_dict()` will then requery the indices to obtain file information and
         then download files in parallel.
-    local_cache : pathlib.Path
-        The location to which this package will download files if necessary, mirroring
-        the directory structure of the ESGF node.
-    esgf_data_root : Union[pathlib.Path, None]
-        The location where a portion of the ESGF holdings are available locally. This
-        allows for the same search interface to be used in a Jupyter notebook. Once the
-        file information is obtained for the datasets in a search, we check this
-        location for existence before downloading the files to `local_cache`.
+    last_search: dict
+        The keywords and values used in the previous call to `search()`.
     session_time : pd.Timestamp
         The time that the class instance was initialized. Used in `session_log()` to
         parse out only the portion of the log used in this session.
     """
 
-    _esgf1_indices = [
-        "esgf.ceda.ac.uk",
-        "esgf-data.dkrz.de",
-        "esgf-node.ipsl.upmc.fr",
-        "esg-dn1.nsc.liu.se",
-        "esgf-node.llnl.gov",
-        "esgf.nci.org.au",
-        "esgf-node.ornl.gov",
-    ]
-
-    def __init__(
-        self,
-        esgf1_indices: Union[bool, str, list[str]] = False,
-    ):
-        self.indices = [GlobusESGFIndex("anl-dev"), GlobusESGFIndex("ornl-dev")]
-        if isinstance(esgf1_indices, bool) and esgf1_indices:
-            self.indices += [
-                SolrESGFIndex(node, distrib=False)
-                for node in ESGFCatalog._esgf1_indices
-            ]
-        elif isinstance(esgf1_indices, list):
-            self.indices += [
-                SolrESGFIndex(node, distrib=False) for node in esgf1_indices
-            ]
-        elif isinstance(esgf1_indices, str):
-            self.indices.append(SolrESGFIndex(esgf1_indices, distrib=False))
+    def __init__(self):
+        self.indices = []
+        self.indices += [
+            GlobusESGFIndex(ind)
+            for ind in intake_esgf.conf["globus_indices"]
+            if intake_esgf.conf["globus_indices"][ind]
+        ]
+        self.indices += [
+            SolrESGFIndex(ind)
+            for ind in intake_esgf.conf["solr_indices"]
+            if intake_esgf.conf["solr_indices"][ind]
+        ]
+        if not self.indices:
+            raise ValueError("You must have at least 1 search index configured")
         self.df = None
-        self.local_cache = None
-        self.set_local_cache_directory()
-        self.esgf_data_root = check_for_esgf_dataroot()
-        if self.esgf_data_root is not None:
-            self.logger.info(f"ESGF dataroot set {self.esgf_data_root}")
         self.session_time = pd.Timestamp.now()
         self.last_search = {}
+        self.local_cache = []
+        self.esg_dataroot = []
+        self.download_db = None
+        self._initialize()
 
     def __repr__(self):
         """Return the unique facets and values from the search."""
@@ -113,22 +87,46 @@ class ESGFCatalog:
         repr = f"Summary information for {len(self.df)} results:\n"
         return repr + self.unique().__repr__()
 
-    def set_local_cache_directory(self, path: Union[str, Path, None] = None):
-        """Set the local cache directory and create it if it does not exist."""
-        if path is None:
-            path = Path.home() / ".esgf"
-        if not isinstance(path, Path):
-            path = Path(path)
-        path.mkdir(parents=True, exist_ok=True)
-        # a change to the local cache means a change to logging
-        self.local_cache = path
-        self.logger = setup_logging(self.local_cache)
-        for index in self.indices:
-            index.logger = self.logger
+    def _initialize(self):
+        """Ensure that directories and pertinent files are created."""
+
+        def is_writable(dir: Path) -> bool:
+            test = dir / "tmp.txt"
+            try:
+                test.touch()
+                test.unlink()
+                return True
+            except Exception:
+                pass
+            return False
+
+        # ensure the local_cache directories exist, we will use the first one that is
+        # writeable
+        for path in intake_esgf.conf["local_cache"]:
+            path = Path(path).expanduser()
+            try:
+                path.mkdir(parents=True, exist_ok=True)
+            except Exception:
+                continue
+            if not path.is_dir():
+                continue
+            if is_writable(path):
+                self.local_cache.append(path)
+        if not self.local_cache:
+            raise LocalCacheNotWritable(intake_esgf.conf["local_cache"])
+
+        # check which esg_dataroot's exist and store with catalog
+        for path in intake_esgf.conf["esg_dataroot"]:
+            path = Path(path).expanduser()
+            if path.is_dir():
+                self.esg_dataroot.append(path)
+
         # initialize the local database
-        self.download_db = path / "download.db"
-        if not self.download_db.is_file():
-            create_download_database(self.download_db)
+        download_db = Path(intake_esgf.conf["download_db"]).expanduser()
+        download_db.parent.mkdir(parents=True, exist_ok=True)
+        if not download_db.is_file():
+            create_download_database(download_db)
+        self.download_db = download_db
 
     def clone(self):
         """Return a new instance of a catalog with the same indices and settings.
@@ -139,8 +137,8 @@ class ESGFCatalog:
         """
         cat = ESGFCatalog()
         cat.indices = self.indices
-        cat.esgf_data_root = self.esgf_data_root
         cat.local_cache = self.local_cache
+        cat.esg_dataroot = self.esg_dataroot
         return cat
 
     def unique(self) -> pd.Series:
@@ -210,6 +208,7 @@ class ESGFCatalog:
             Any number of facet keywords and values.
 
         """
+        logger = intake_esgf.conf.get_logger()
 
         def _search(index):
             try:
@@ -217,7 +216,7 @@ class ESGFCatalog:
             except NoSearchResults:
                 return pd.DataFrame([])
             except requests.exceptions.RequestException:
-                self.logger.info(f"└─{index} \x1b[91;20mno response\033[0m")
+                logger.info(f"└─{index} \x1b[91;20mno response\033[0m")
                 warnings.warn(
                     f"{index} failed to return a response, results may be incomplete"
                 )
@@ -251,7 +250,7 @@ class ESGFCatalog:
                 for key, val in search.items()
             ]
         )
-        self.logger.info(f"\x1b[36;32msearch begin\033[0m {search_str}")
+        logger.info(f"\x1b[36;32msearch begin\033[0m {search_str}")
 
         # threaded search over indices
         search_time = time.time()
@@ -276,7 +275,7 @@ class ESGFCatalog:
             self.df.loc[r, "id"] = [x for x in row.id if latest in x]
 
         search_time = time.time() - search_time
-        self.logger.info(f"\x1b[36;32msearch end\033[0m total_time={search_time:.2f}")
+        logger.info(f"\x1b[36;32msearch end\033[0m total_time={search_time:.2f}")
         self.last_search = search
         return self
 
@@ -297,6 +296,7 @@ class ESGFCatalog:
             Enable to silence the progress bar.
 
         """
+        logger = intake_esgf.conf.get_logger()
 
         def _from_tracking_ids(index):
             try:
@@ -304,7 +304,7 @@ class ESGFCatalog:
             except NoSearchResults:
                 return pd.DataFrame([])
             except requests.exceptions.RequestException:
-                self.logger.info(f"└─{index} \x1b[91;20mno response\033[0m")
+                logger.info(f"└─{index} \x1b[91;20mno response\033[0m")
                 warnings.warn(
                     f"{index} failed to return a response, results may be incomplete"
                 )
@@ -315,7 +315,7 @@ class ESGFCatalog:
             tracking_ids = [tracking_ids]
 
         # log what is being searched for
-        self.logger.info("\x1b[36;32mfrom_tracking_ids begin\033[0m")
+        logger.info("\x1b[36;32mfrom_tracking_ids begin\033[0m")
 
         # threaded search over indices
         search_time = time.time()
@@ -336,27 +336,12 @@ class ESGFCatalog:
         )
         search_time = time.time() - search_time
         if len(self.df) != len(tracking_ids):
-            self.logger.info(
-                "One or more of the tracking_ids resolve to multiple files."
-            )
-        self.logger.info(
+            logger.info("One or more of the tracking_ids resolve to multiple files.")
+        logger.info(
             f"\x1b[36;32mfrom_tracking_ids end\033[0m total_time={search_time:.2f}"
         )
 
         return self
-
-    def set_esgf_data_root(self, root: Union[str, Path]) -> None:
-        """Set the root directory of the ESGF data local to your system.
-
-        It may be that you are working on a resource that has direct access to a copy of
-        the ESGF data. If you set this root, then when calling `to_dataset_dict()`, we
-        will check if the requested dataset is available through direct access.
-
-        """
-        if isinstance(root, str):
-            root = Path(root)
-        assert root.is_dir()
-        self.esgf_data_root = root
 
     def to_dataset_dict(
         self,
@@ -388,7 +373,7 @@ class ESGFCatalog:
         """
         if self.df is None or len(self.df) == 0:
             raise ValueError("No entries to retrieve.")
-
+        logger = intake_esgf.conf.get_logger()
         # The keys of the returned dictionary should only consist of the facets that are
         # different.
         output_key_format = []
@@ -438,14 +423,14 @@ class ESGFCatalog:
             except NoSearchResults:
                 return []
             except requests.exceptions.RequestException:
-                self.logger.info(f"└─{index} \x1b[91;20mno response\033[0m")
+                logger.info(f"└─{index} \x1b[91;20mno response\033[0m")
                 warnings.warn(
                     f"{index} failed to return a response, info may be incomplete"
                 )
                 return []
             return info
 
-        self.logger.info("\x1b[36;32mfile info begin\033[0m")
+        logger.info("\x1b[36;32mfile info begin\033[0m")
 
         # threaded file info over indices and flatten output
         info_time = time.time()
@@ -499,14 +484,14 @@ class ESGFCatalog:
                         merged_info[path][key] = val
         infos = [info for _, info in merged_info.items()]
         info_time = time.time() - info_time
-        self.logger.info(f"\x1b[36;32mfile info end\033[0m total_time={info_time:.2f}")
+        logger.info(f"\x1b[36;32mfile info end\033[0m total_time={info_time:.2f}")
 
         # Download in parallel using threads
         fetch = partial(
             parallel_download,
             local_cache=self.local_cache,
             download_db=self.download_db,
-            esg_dataroot=self.esgf_data_root,
+            esg_dataroot=self.esg_dataroot,
         )
         results = ThreadPool(min(num_threads, len(infos))).imap_unordered(fetch, infos)
         ds = {}
@@ -620,7 +605,7 @@ class ESGFCatalog:
 
     def session_log(self) -> str:
         """Return the log since the instantiation of `ESGFCatalog()`."""
-        log = open(self.local_cache / "esgf.log").readlines()[::-1]
+        log = open(Path(intake_esgf.conf["logfile"]).expanduser()).readlines()[::-1]
         for n, line in enumerate(log):
             m = re.search(r"\x1b\[36;20m(.*)\s\033\[0m", line)
             if not m:

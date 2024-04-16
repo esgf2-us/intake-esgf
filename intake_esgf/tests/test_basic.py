@@ -1,38 +1,37 @@
+import intake_esgf
 from intake_esgf import ESGFCatalog
 from intake_esgf.exceptions import NoSearchResults
 
-SOLR_TEST = "esgf-node.ornl.gov"
+SOLR_TEST = "esgf-node.llnl.gov"
 
 
 def test_search():
-    cat = ESGFCatalog(esgf1_indices=SOLR_TEST)
-    print(cat)
-    cat = ESGFCatalog(esgf1_indices=[SOLR_TEST]).search(
-        experiment_id="historical",
-        source_id="CanESM5",
-        variable_id=["gpp"],
-        variant_label=["r1i1p1f1"],
-    )
-    print(cat)
-    ds = cat.to_dataset_dict()
-    assert "gpp" in ds
-    assert "sftlf" in ds["gpp"]
+    with intake_esgf.conf.set(indices={SOLR_TEST: True}):
+        cat = ESGFCatalog().search(
+            experiment_id="historical",
+            source_id="CanESM5",
+            variable_id=["gpp"],
+            variant_label=["r1i1p1f1"],
+        )
+        print(cat)
+        ds = cat.to_dataset_dict()
+        assert "gpp" in ds
+        assert "sftlf" in ds["gpp"]
 
 
 def test_esgroot():
-    cat = ESGFCatalog()
-    cat.set_esgf_data_root(cat.local_cache)
-    cat.search(
-        experiment_id="historical",
-        source_id="CanESM5",
-        variable_id=["gpp"],
-        variant_label=["r1i1p1f1"],
-    )
-    ds = cat.to_dataset_dict(add_measures=False)
-    assert "gpp" in ds
-    log = cat.session_log()
-    assert "download" not in log
-    assert f"accessed {cat.esgf_data_root}" in cat.session_log()
+    with intake_esgf.conf.set(esg_dataroot=intake_esgf.conf["local_cache"]):
+        cat = ESGFCatalog().search(
+            experiment_id="historical",
+            source_id="CanESM5",
+            variable_id=["gpp"],
+            variant_label=["r1i1p1f1"],
+        )
+        ds = cat.to_dataset_dict(add_measures=False)
+        assert "gpp" in ds
+        log = cat.session_log()
+        assert "download" not in log
+        assert f"accessed {cat.esg_dataroot[0]}" in cat.session_log()
 
 
 def test_noresults():
@@ -44,10 +43,11 @@ def test_noresults():
 
 
 def test_tracking_ids():
-    cat = ESGFCatalog(esgf1_indices=SOLR_TEST).from_tracking_ids(
-        "hdl:21.14100/0577d84f-9954-494f-8cc8-465aa4fd910e"
-    )
-    assert len(cat.df) == 1
+    with intake_esgf.conf.set(indices={SOLR_TEST: True}):
+        cat = ESGFCatalog().from_tracking_ids(
+            "hdl:21.14100/0577d84f-9954-494f-8cc8-465aa4fd910e"
+        )
+        assert len(cat.df) == 1
     cat = ESGFCatalog().from_tracking_ids(
         [
             "hdl:21.14100/0577d84f-9954-494f-8cc8-465aa4fd910e",
