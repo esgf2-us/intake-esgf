@@ -97,6 +97,7 @@ def download_and_verify(
             unit_scale=True,
             desc=desc,
             ascii=False,
+            leave=False,
         ) as pbar:
             for chunk in resp.iter_content(chunk_size=1024):
                 if chunk:
@@ -115,23 +116,25 @@ def download_and_verify(
 
 def parallel_download(
     info: dict[str, Any],
-    local_cache: Path,
+    local_cache: list[Path],
     download_db: Path,
-    esg_dataroot: Union[None, Path] = None,
+    esg_dataroot: Union[None, list[Path]] = None,
 ):
     """."""
     logger = intake_esgf.conf.get_logger()
     # does this exist on a copy we have access to?
-    if esg_dataroot is not None:
-        local_file = esg_dataroot / info["path"]
+    for path in esg_dataroot:
+        if esg_dataroot is not None:
+            local_file = path / info["path"]
+            if local_file.exists():
+                logger.info(f"accessed {local_file}")
+                return info["key"], local_file
+    # have we already downloaded this?
+    for path in local_cache:
+        local_file = path / info["path"]
         if local_file.exists():
             logger.info(f"accessed {local_file}")
             return info["key"], local_file
-    # have we already downloaded this?
-    local_file = local_cache / info["path"]
-    if local_file.exists():
-        logger.info(f"accessed {local_file}")
-        return info["key"], local_file
     # else we try to download it, first we sort links by the fastest host to you
     df_rate = get_download_rate_dataframe(download_db)
     info["HTTPServer"] = sorted(
@@ -142,7 +145,7 @@ def parallel_download(
         try:
             download_and_verify(
                 url,
-                local_file,
+                local_cache[0] / info["path"],
                 info["checksum"],
                 info["checksum_type"],
                 info["size"],

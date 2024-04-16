@@ -26,7 +26,7 @@ from intake_esgf.base import (
 from intake_esgf.core import GlobusESGFIndex, SolrESGFIndex
 from intake_esgf.core.globus import variable_info
 from intake_esgf.database import create_download_database, get_download_rate_dataframe
-from intake_esgf.exceptions import NoSearchResults
+from intake_esgf.exceptions import LocalCacheNotWritable, NoSearchResults
 
 if IN_NOTEBOOK:
     from tqdm import tqdm_notebook as tqdm
@@ -77,6 +77,7 @@ class ESGFCatalog:
         self.last_search = {}
         self.local_cache = []
         self.esg_dataroot = []
+        self.download_db = None
         self._initialize()
 
     def __repr__(self):
@@ -88,9 +89,19 @@ class ESGFCatalog:
 
     def _initialize(self):
         """Ensure that directories and pertinent files are created."""
+
+        def is_writable(dir: Path) -> bool:
+            test = dir / "tmp.txt"
+            try:
+                test.touch()
+                test.unlink()
+                return True
+            except Exception:
+                pass
+            return False
+
         # ensure the local_cache directories exist, we will use the first one that is
         # writeable
-        owner_write = 0b010000000
         for path in intake_esgf.conf["local_cache"]:
             path = Path(path).expanduser()
             try:
@@ -99,17 +110,23 @@ class ESGFCatalog:
                 continue
             if not path.is_dir():
                 continue
-            if not path.stat().st_mode & owner_write:
-                continue
-            self.local_cache.append(path)
+            if is_writable(path):
+                self.local_cache.append(path)
+        if not self.local_cache:
+            raise LocalCacheNotWritable(intake_esgf.conf["local_cache"])
+
+        # check which esg_dataroot's exist and store with catalog
         for path in intake_esgf.conf["esg_dataroot"]:
             path = Path(path).expanduser()
+            if path.is_dir():
+                self.esg_dataroot.append(path)
 
         # initialize the local database
         download_db = Path(intake_esgf.conf["download_db"]).expanduser()
         download_db.parent.mkdir(parents=True, exist_ok=True)
         if not download_db.is_file():
             create_download_database(download_db)
+        self.download_db = download_db
 
     def clone(self):
         """Return a new instance of a catalog with the same indices and settings.
@@ -120,6 +137,8 @@ class ESGFCatalog:
         """
         cat = ESGFCatalog()
         cat.indices = self.indices
+        cat.local_cache = self.local_cache
+        cat.esg_dataroot = self.esg_dataroot
         return cat
 
     def unique(self) -> pd.Series:
@@ -470,9 +489,9 @@ class ESGFCatalog:
         # Download in parallel using threads
         fetch = partial(
             parallel_download,
-            local_cache=intake_esgf.conf["local_cache"],
-            download_db=intake_esgf.conf["download_db"],
-            esg_dataroot=intake_esgf.conf["esg_dataroot"],
+            local_cache=self.local_cache,
+            download_db=self.download_db,
+            esg_dataroot=self.esg_dataroot,
         )
         results = ThreadPool(min(num_threads, len(infos))).imap_unordered(fetch, infos)
         ds = {}
