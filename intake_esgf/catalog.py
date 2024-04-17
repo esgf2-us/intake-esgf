@@ -12,6 +12,7 @@ import pandas as pd
 import requests
 import xarray as xr
 from datatree import DataTree
+from globus_sdk import TransferAPIError, TransferData
 from numpy import argmax
 
 import intake_esgf
@@ -24,8 +25,12 @@ from intake_esgf.base import (
     parallel_download,
 )
 from intake_esgf.core import GlobusESGFIndex, SolrESGFIndex
-from intake_esgf.core.globus import variable_info
-from intake_esgf.database import create_download_database, get_download_rate_dataframe
+from intake_esgf.core.globus import get_authorized_transfer_client, variable_info
+from intake_esgf.database import (
+    create_download_database,
+    get_download_rate_dataframe,
+    sort_globus_endpoints,
+)
 from intake_esgf.exceptions import LocalCacheNotWritable, NoSearchResults
 
 if IN_NOTEBOOK:
@@ -419,23 +424,124 @@ class ESGFCatalog:
         logger.info(f"\x1b[36;32mfile info end\033[0m total_time={info_time:.2f}")
         return infos
 
-    def _move_data(self, infos, num_threads):
-        """Move data either by https or globus transfers."""
+    def _partition_infos(self, infos: list[dict]) -> tuple[list, dict]:
+        """Separate out infos that have globus endpoints."""
         logger = intake_esgf.conf.get_logger()
-        logger.info("\x1b[36;32mmove data begin\033[0m")
-        move_time = time.time()
-
-        # Download in parallel using threads
-        fetch = partial(
-            parallel_download,
-            local_cache=self.local_cache,
-            download_db=self.download_db,
-            esg_dataroot=self.esg_dataroot,
+        # loop thru infos and find all globus endpoints in the infos
+        globus_endpoints = []
+        for info in infos:
+            if "Globus" not in info:
+                continue
+            for entry in info["Globus"]:
+                m = re.search(r"globus:[/]+([a-z0-9\-]+)/(.*)", entry)
+                if not m:
+                    raise ValueError(f"Could not match {entry}")
+                uuid = m.group(1)
+                if uuid not in globus_endpoints:
+                    globus_endpoints.append(uuid)
+        # check which endpoints are available
+        infos_globus = {}
+        client = get_authorized_transfer_client()
+        for uuid in globus_endpoints:
+            try:
+                ep = client.get_endpoint(uuid)
+                if ep["acl_available"]:
+                    infos_globus[uuid] = []
+                else:
+                    logger.info(
+                        f"Endpoint '{uuid}' ({ep['display_name']}) not available."
+                    )
+                    continue
+            except TransferAPIError as exc:
+                logger.info(exc.message)
+        # sort endpoints by fastest transer rates
+        df_rate = get_download_rate_dataframe(self.download_db)
+        globus_endpoints = sorted(
+            infos_globus.keys(),
+            key=partial(sort_globus_endpoints, df_rate=df_rate),
+            reverse=True,
         )
-        results = ThreadPool(min(num_threads, len(infos))).imap_unordered(fetch, infos)
 
-        move_time = time.time() - move_time
-        logger.info(f"\x1b[36;32mmove data end\033[0m total_time={move_time:.2f}")
+        # partition the infos
+        def _partition(info):
+            # no globus entries so https it is
+            if "Globus" not in info:
+                info_https.append(info)
+                return
+            # start with the fastest endpoints
+            for uuid in globus_endpoints:
+                entries = [entry for entry in info["Globus"] if uuid in entry]
+                if entries:
+                    info["Globus"] = entries
+                    infos_globus[uuid].append(info)
+                    return
+            # if you get here, there is no globus endpoint
+            info_https.append(info)
+            return
+
+        info_https = []
+        for info in infos:
+            _partition(info)
+        return info_https, infos_globus
+
+    def _move_data(
+        self,
+        infos,
+        num_threads,
+        dest_endpoint: Union[str, None] = None,
+        endpoint_path: Union[Path, None] = None,
+    ):
+        """Move data either by https or globus transfers."""
+
+        # partition infos if an endpoint is given
+        infos_https = infos
+        infos_globus = {}
+        if dest_endpoint is not None:
+            infos_https, infos_globus = self._partition_infos(infos)
+
+        # build up task data and submit to the transfer client
+        tasks = []
+        if infos_globus:
+            transfer_client = get_authorized_transfer_client()
+        for source_uuid, infos in infos_globus.items():
+            # create the task data
+            task_data = TransferData(
+                source_endpoint=source_uuid, destination_endpoint=dest_endpoint
+            )
+
+            # the infos at this point should have a single entry
+            for info in infos:
+                m = re.search(r"globus:[/]+([a-z0-9\-]+)/(.*)", info["Globus"][0])
+                if not m:
+                    raise ValueError(f"Could not match {info['Globus'][0]}")
+                task_data.add_item(m.group(2), str(endpoint_path / info["path"]))
+
+            task_doc = transfer_client.submit_transfer(task_data)
+            tasks.append(task_doc)
+
+        # download in parallel using threads
+        results = ThreadPool(min(num_threads, len(infos_https))).imap_unordered(
+            partial(
+                parallel_download,
+                local_cache=self.local_cache,
+                download_db=self.download_db,
+                esg_dataroot=self.esg_dataroot,
+            ),
+            infos_https,
+        )
+
+        # block until globus transfer completes
+        for task_doc in tasks:
+            time_interval = 1.0
+            while True:
+                response = transfer_client.get_task(task_doc["task_id"])
+                if response.data["status"] == "SUCCEEDED":
+                    break
+                time.sleep(time_interval)
+                time_interval = min(time_interval * 1.1, 30.0)
+
+        # find these newly downloaded files and populate into results
+
         return results
 
     def to_dataset_dict(
@@ -468,6 +574,9 @@ class ESGFCatalog:
         """
         if self.df is None or len(self.df) == 0:
             raise ValueError("No entries to retrieve.")
+        logger = intake_esgf.conf.get_logger()
+        logger.info("\x1b[36;32mto_dataset_dict begin\033[0m")
+        load_time = time.time()
 
         # The keys of the returned dictionary should only consist of the facets that are
         # different.
@@ -555,6 +664,8 @@ class ESGFCatalog:
         for op in operators:
             ds = op(ds)
 
+        load_time = time.time() - load_time
+        logger.info(f"\x1b[36;32mto_dataset_dict end\033[0m total_time={load_time:.2f}")
         return ds
 
     def to_datatree(

@@ -44,6 +44,7 @@ class Config(dict):
             if filename is not None
             else Path.home() / ".config/intake-esgf/conf.yaml"
         )
+        self.filename.parent.mkdir(parents=True, exist_ok=True)
         self.reload_all()
         self.temp = None
         super().__init__(**kwargs)
