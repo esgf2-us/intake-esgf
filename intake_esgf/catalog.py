@@ -29,6 +29,7 @@ from intake_esgf.core.globus import get_authorized_transfer_client, variable_inf
 from intake_esgf.database import (
     create_download_database,
     get_download_rate_dataframe,
+    log_download_information,
     sort_globus_endpoints,
 )
 from intake_esgf.exceptions import LocalCacheNotWritable, NoSearchResults
@@ -433,7 +434,7 @@ class ESGFCatalog:
             if "Globus" not in info:
                 continue
             for entry in info["Globus"]:
-                m = re.search(r"globus:[/]+([a-z0-9\-]+)/(.*)", entry)
+                m = re.search(r"globus:/*([a-z0-9\-]+)/(.*)", entry)
                 if not m:
                     raise ValueError(f"Could not match {entry}")
                 uuid = m.group(1)
@@ -449,11 +450,11 @@ class ESGFCatalog:
                     infos_globus[uuid] = []
                 else:
                     logger.info(
-                        f"Endpoint '{uuid}' ({ep['display_name']}) not available."
+                        f"└─Endpoint '{uuid}' ({ep['display_name']}) not available."
                     )
                     continue
             except TransferAPIError as exc:
-                logger.info(exc.message)
+                logger.info(f"└─{exc.message}")
         # sort endpoints by fastest transer rates
         df_rate = get_download_rate_dataframe(self.download_db)
         globus_endpoints = sorted(
@@ -468,6 +469,12 @@ class ESGFCatalog:
             if "Globus" not in info:
                 info_https.append(info)
                 return
+            # if the file exists we need not transer it, leave it in https infos
+            for path in self.esg_dataroot + self.local_cache:
+                local_file = path / info["path"]
+                if local_file.exists():
+                    info_https.append(info)
+                    return
             # start with the fastest endpoints
             for uuid in globus_endpoints:
                 entries = [entry for entry in info["Globus"] if uuid in entry]
@@ -488,60 +495,98 @@ class ESGFCatalog:
         self,
         infos,
         num_threads,
-        dest_endpoint: Union[str, None] = None,
-        endpoint_path: Union[Path, None] = None,
+        globus_endpoint: Union[str, None] = None,
+        globus_path: Union[Path, None] = None,
     ):
         """Move data either by https or globus transfers."""
+        logger = intake_esgf.conf.get_logger()
+        logger.info("\x1b[36;32mbegin move_data\033[0m")
 
         # partition infos if an endpoint is given
         infos_https = infos
         infos_globus = {}
-        if dest_endpoint is not None:
+        num_globus = 0
+        if globus_endpoint is not None:
+            logger.info("partition info counts")
             infos_https, infos_globus = self._partition_infos(infos)
+            globus_path = Path(globus_path).expanduser()
+            logger.info(f"└─ {len(infos_https)}: https")
+            for key, item in infos_globus.items():
+                logger.info(f"└─ {len(item)}: {key}")
+                num_globus += len(item)
+
+        # only grab the client if we need it
+        if num_globus:
+            transfer_client = get_authorized_transfer_client()
+            logger.info("globus transfer task_ids")
 
         # build up task data and submit to the transfer client
         tasks = []
-        if infos_globus:
-            transfer_client = get_authorized_transfer_client()
         for source_uuid, infos in infos_globus.items():
             # create the task data
             task_data = TransferData(
-                source_endpoint=source_uuid, destination_endpoint=dest_endpoint
+                source_endpoint=source_uuid, destination_endpoint=globus_endpoint
             )
 
             # the infos at this point should have a single entry
             for info in infos:
-                m = re.search(r"globus:[/]+([a-z0-9\-]+)/(.*)", info["Globus"][0])
+                m = re.search(r"globus:/*([a-z0-9\-]+)/(.*)", info["Globus"][0])
                 if not m:
                     raise ValueError(f"Could not match {info['Globus'][0]}")
-                task_data.add_item(m.group(2), str(endpoint_path / info["path"]))
+                task_data.add_item(m.group(2), str(globus_path / info["path"]))
 
-            task_doc = transfer_client.submit_transfer(task_data)
-            tasks.append(task_doc)
+            # only submit the transfer if there is data
+            if task_data["DATA"]:
+                task_doc = transfer_client.submit_transfer(task_data)
+                logger.info(f"└─ {task_doc['task_id']}")
+                tasks.append(task_doc)
 
         # download in parallel using threads
-        results = ThreadPool(min(num_threads, len(infos_https))).imap_unordered(
-            partial(
-                parallel_download,
-                local_cache=self.local_cache,
-                download_db=self.download_db,
-                esg_dataroot=self.esg_dataroot,
-            ),
-            infos_https,
-        )
+        results = []
+        if infos_https:
+            results += ThreadPool(min(num_threads, len(infos_https))).imap_unordered(
+                partial(
+                    parallel_download,
+                    local_cache=self.local_cache,
+                    download_db=self.download_db,
+                    esg_dataroot=self.esg_dataroot,
+                ),
+                infos_https,
+            )
 
         # block until globus transfer completes
         for task_doc in tasks:
-            time_interval = 1.0
+            time_interval = 5.0
             while True:
                 response = transfer_client.get_task(task_doc["task_id"])
+                logger.info(f"task_id {task_doc['task_id']} {response.data['status']}")
                 if response.data["status"] == "SUCCEEDED":
+                    log_download_information(
+                        self.download_db,
+                        response["source_endpoint_id"],
+                        (
+                            pd.Timestamp(response["completion_time"])
+                            - pd.Timestamp(response["request_time"])
+                        ).total_seconds(),
+                        response["bytes_transferred"] * 1e-6,
+                    )
                     break
                 time.sleep(time_interval)
                 time_interval = min(time_interval * 1.1, 30.0)
 
         # find these newly downloaded files and populate into results
+        def _find_local_file(info):
+            for path in self.esg_dataroot + self.local_cache:
+                local_file = path / info["path"]
+                if local_file.exists():
+                    return info["key"], local_file
+            return None, None
 
+        for _, infos in infos_globus.items():
+            for info in infos:
+                results.append(_find_local_file(info))
+
+        logger.info("\x1b[36;32mend move_data\033[0m")
         return results
 
     def to_dataset_dict(
@@ -552,6 +597,8 @@ class ESGFCatalog:
         num_threads: int = 6,
         quiet: bool = False,
         add_measures: bool = True,
+        globus_endpoint: Union[str, None] = None,
+        globus_path: Union[Path, None] = None,
         operators: list[Any] = [],
     ) -> dict[str, xr.Dataset]:
         """Return the current search as a dictionary of datasets.
@@ -574,9 +621,6 @@ class ESGFCatalog:
         """
         if self.df is None or len(self.df) == 0:
             raise ValueError("No entries to retrieve.")
-        logger = intake_esgf.conf.get_logger()
-        logger.info("\x1b[36;32mto_dataset_dict begin\033[0m")
-        load_time = time.time()
 
         # The keys of the returned dictionary should only consist of the facets that are
         # different.
@@ -625,7 +669,7 @@ class ESGFCatalog:
         infos = self._get_file_info(dataset_ids, quiet, separator, search_facets)
 
         # Move the data if we need to
-        results = self._move_data(infos, num_threads)
+        results = self._move_data(infos, num_threads, globus_endpoint, globus_path)
 
         # Load into xarray objects
         ds = {}
@@ -663,9 +707,6 @@ class ESGFCatalog:
         # If the user specifies operators, apply them now
         for op in operators:
             ds = op(ds)
-
-        load_time = time.time() - load_time
-        logger.info(f"\x1b[36;32mto_dataset_dict end\033[0m total_time={load_time:.2f}")
         return ds
 
     def to_datatree(

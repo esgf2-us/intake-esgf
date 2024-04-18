@@ -1,7 +1,7 @@
 """A Globus-based ESGF1 style index."""
 
-import datetime
 import time
+from datetime import datetime
 from pathlib import Path
 from typing import Any, Union
 
