@@ -60,6 +60,13 @@ or through ``conda-forge``
 .. toctree::
    :maxdepth: 2
    :hidden:
+   :caption: Experimental
+
+   globus
+
+.. toctree::
+   :maxdepth: 2
+   :hidden:
    :caption: Communicate
 
    GitHub repository <https://github.com/esgf2-us/intake-esgf>

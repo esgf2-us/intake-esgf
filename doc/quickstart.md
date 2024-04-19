@@ -44,7 +44,7 @@ print(cat)  # <-- nothing to see here yet
 
 To populate the catalog, perform a search using the traditional facets. If you
 are not familiar with these, we recommend you starting with
-our[beginner](beginner) tutorial.
+our [beginner](beginner) tutorial.
 
 ```{code-cell}
 cat.search(

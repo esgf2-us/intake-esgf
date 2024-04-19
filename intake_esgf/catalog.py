@@ -12,6 +12,7 @@ import pandas as pd
 import requests
 import xarray as xr
 from datatree import DataTree
+from globus_sdk import TransferAPIError, TransferData
 from numpy import argmax
 
 import intake_esgf
@@ -24,8 +25,13 @@ from intake_esgf.base import (
     parallel_download,
 )
 from intake_esgf.core import GlobusESGFIndex, SolrESGFIndex
-from intake_esgf.core.globus import variable_info
-from intake_esgf.database import create_download_database, get_download_rate_dataframe
+from intake_esgf.core.globus import get_authorized_transfer_client, variable_info
+from intake_esgf.database import (
+    create_download_database,
+    get_download_rate_dataframe,
+    log_download_information,
+    sort_globus_endpoints,
+)
 from intake_esgf.exceptions import LocalCacheNotWritable, NoSearchResults
 
 if IN_NOTEBOOK:
@@ -343,79 +349,10 @@ class ESGFCatalog:
 
         return self
 
-    def to_dataset_dict(
-        self,
-        minimal_keys: bool = True,
-        ignore_facets: Union[None, str, list[str]] = None,
-        separator: str = ".",
-        num_threads: int = 6,
-        quiet: bool = False,
-        add_measures: bool = True,
-        operators: list[Any] = [],
-    ) -> dict[str, xr.Dataset]:
-        """Return the current search as a dictionary of datasets.
-
-        By default, the keys of the returned dictionary are the minimal set of facets
-        required to uniquely describe the search. If you prefer to use a full set of
-        facets, set `minimal_keys=False`.
-
-        Parameters
-        ----------
-        minimal_keys
-            Disable to return a dictonary whose keys are formed using all facets, by
-            default we use a minimal set of facets to build the simplest keys.
-        ignore_facets
-            When constructing the dictionary keys, which facets should we ignore?
-        separator
-            When generating the keys, the string to use as a seperator of facets.
-        num_threads
-            The number of threads to use when downloading files.
-        """
-        if self.df is None or len(self.df) == 0:
-            raise ValueError("No entries to retrieve.")
-        logger = intake_esgf.conf.get_logger()
-        # The keys of the returned dictionary should only consist of the facets that are
-        # different.
-        output_key_format = []
-        if ignore_facets is None:
-            ignore_facets = []
-        if isinstance(ignore_facets, str):
-            ignore_facets = [ignore_facets]
-        # ...but these we always ignore
-        ignore_facets += [
-            "version",
-            "id",
-        ]
-        for col in self.df.drop(columns=ignore_facets):
-            if minimal_keys:
-                if not (self.df[col].iloc[0] == self.df[col]).all():
-                    output_key_format.append(col)
-            else:
-                output_key_format.append(col)
-        if not output_key_format:  # at minimum we have the variable id as a key
-            output_key_format = [get_facet_by_type(self.df, "variable")]
-
-        # Populate a dictionary of dataset_ids in this search and which keys they will
-        # map to in the output dictionary. This is complicated by CMIP5 where the
-        # dataset_id -> variable mapping is not unique.
-        dataset_ids = {}
-        for _, row in self.df.iterrows():
-            key = separator.join([row[k] for k in output_key_format])
-            for dataset_id in row["id"]:
-                if dataset_id in dataset_ids:
-                    if isinstance(dataset_ids[dataset_id], str):
-                        dataset_ids[dataset_id] = [dataset_ids[dataset_id]]
-                    dataset_ids[dataset_id].append(key)
-                else:
-                    dataset_ids[dataset_id] = key
-
-        # Some projects use dataset_ids to refer to collections of variables. So we need
-        # to pass the variables to the file info search to make sure we do not get more
-        # than we want.
-        search_facets = {}
-        variable_facet = get_facet_by_type(self.df, "variable")
-        if variable_facet in self.last_search:
-            search_facets[variable_facet] = self.last_search[variable_facet]
+    def _get_file_info(
+        self, dataset_ids, quiet, separator, search_facets
+    ) -> list[dict]:
+        """Query and return file information for the given datasets."""
 
         def _get_file_info(index, dataset_ids, **search_facets):
             try:
@@ -430,6 +367,7 @@ class ESGFCatalog:
                 return []
             return info
 
+        logger = intake_esgf.conf.get_logger()
         logger.info("\x1b[36;32mfile info begin\033[0m")
 
         # threaded file info over indices and flatten output
@@ -485,15 +423,255 @@ class ESGFCatalog:
         infos = [info for _, info in merged_info.items()]
         info_time = time.time() - info_time
         logger.info(f"\x1b[36;32mfile info end\033[0m total_time={info_time:.2f}")
+        return infos
 
-        # Download in parallel using threads
-        fetch = partial(
-            parallel_download,
-            local_cache=self.local_cache,
-            download_db=self.download_db,
-            esg_dataroot=self.esg_dataroot,
+    def _partition_infos(self, infos: list[dict]) -> tuple[list, dict]:
+        """Separate out infos that have globus endpoints."""
+        logger = intake_esgf.conf.get_logger()
+        # loop thru infos and find all globus endpoints in the infos
+        globus_endpoints = []
+        for info in infos:
+            if "Globus" not in info:
+                continue
+            for entry in info["Globus"]:
+                m = re.search(r"globus:/*([a-z0-9\-]+)/(.*)", entry)
+                if not m:
+                    raise ValueError(f"Could not match {entry}")
+                uuid = m.group(1)
+                if uuid not in globus_endpoints:
+                    globus_endpoints.append(uuid)
+        # check which endpoints are available
+        infos_globus = {}
+        client = get_authorized_transfer_client()
+        for uuid in globus_endpoints:
+            try:
+                ep = client.get_endpoint(uuid)
+                if ep["acl_available"]:
+                    infos_globus[uuid] = []
+                else:
+                    logger.info(
+                        f"└─Endpoint '{uuid}' ({ep['display_name']}) not available."
+                    )
+                    continue
+            except TransferAPIError as exc:
+                logger.info(f"└─{exc.message}")
+        # sort endpoints by fastest transer rates
+        df_rate = get_download_rate_dataframe(self.download_db)
+        globus_endpoints = sorted(
+            infos_globus.keys(),
+            key=partial(sort_globus_endpoints, df_rate=df_rate),
+            reverse=True,
         )
-        results = ThreadPool(min(num_threads, len(infos))).imap_unordered(fetch, infos)
+
+        # partition the infos
+        def _partition(info):
+            # no globus entries so https it is
+            if "Globus" not in info:
+                info_https.append(info)
+                return
+            # if the file exists we need not transer it, leave it in https infos
+            for path in self.esg_dataroot + self.local_cache:
+                local_file = path / info["path"]
+                if local_file.exists():
+                    info_https.append(info)
+                    return
+            # start with the fastest endpoints
+            for uuid in globus_endpoints:
+                entries = [entry for entry in info["Globus"] if uuid in entry]
+                if entries:
+                    info["Globus"] = entries
+                    infos_globus[uuid].append(info)
+                    return
+            # if you get here, there is no globus endpoint
+            info_https.append(info)
+            return
+
+        info_https = []
+        for info in infos:
+            _partition(info)
+        return info_https, infos_globus
+
+    def _move_data(
+        self,
+        infos,
+        num_threads,
+        globus_endpoint: Union[str, None] = None,
+        globus_path: Union[Path, None] = None,
+    ):
+        """Move data either by https or globus transfers."""
+        logger = intake_esgf.conf.get_logger()
+        logger.info("\x1b[36;32mbegin move_data\033[0m")
+
+        # partition infos if an endpoint is given
+        infos_https = infos
+        infos_globus = {}
+        num_globus = 0
+        if globus_endpoint is not None:
+            logger.info("partition info counts")
+            infos_https, infos_globus = self._partition_infos(infos)
+            globus_path = Path(globus_path).expanduser()
+            logger.info(f"└─ {len(infos_https)}: https")
+            for key, item in infos_globus.items():
+                logger.info(f"└─ {len(item)}: {key}")
+                num_globus += len(item)
+
+        # only grab the client if we need it
+        if num_globus:
+            transfer_client = get_authorized_transfer_client()
+            logger.info("globus transfer task_ids")
+
+        # build up task data and submit to the transfer client
+        tasks = []
+        for source_uuid, infos in infos_globus.items():
+            # create the task data
+            task_data = TransferData(
+                source_endpoint=source_uuid, destination_endpoint=globus_endpoint
+            )
+
+            # the infos at this point should have a single entry
+            for info in infos:
+                m = re.search(r"globus:/*([a-z0-9\-]+)/(.*)", info["Globus"][0])
+                if not m:
+                    raise ValueError(f"Could not match {info['Globus'][0]}")
+                task_data.add_item(m.group(2), str(globus_path / info["path"]))
+
+            # only submit the transfer if there is data
+            if task_data["DATA"]:
+                task_doc = transfer_client.submit_transfer(task_data)
+                logger.info(f"└─ {task_doc['task_id']}")
+                tasks.append(task_doc)
+
+        # download in parallel using threads
+        results = []
+        if infos_https:
+            results += ThreadPool(min(num_threads, len(infos_https))).imap_unordered(
+                partial(
+                    parallel_download,
+                    local_cache=self.local_cache,
+                    download_db=self.download_db,
+                    esg_dataroot=self.esg_dataroot,
+                ),
+                infos_https,
+            )
+
+        # block until globus transfer completes
+        for task_doc in tasks:
+            time_interval = 5.0
+            while True:
+                response = transfer_client.get_task(task_doc["task_id"])
+                logger.info(f"task_id {task_doc['task_id']} {response.data['status']}")
+                if response.data["status"] == "SUCCEEDED":
+                    log_download_information(
+                        self.download_db,
+                        response["source_endpoint_id"],
+                        (
+                            pd.Timestamp(response["completion_time"])
+                            - pd.Timestamp(response["request_time"])
+                        ).total_seconds(),
+                        response["bytes_transferred"] * 1e-6,
+                    )
+                    break
+                time.sleep(time_interval)
+                time_interval = min(time_interval * 1.1, 30.0)
+
+        # find these newly downloaded files and populate into results
+        def _find_local_file(info):
+            for path in self.esg_dataroot + self.local_cache:
+                local_file = path / info["path"]
+                if local_file.exists():
+                    return info["key"], local_file
+            return None, None
+
+        for _, infos in infos_globus.items():
+            for info in infos:
+                results.append(_find_local_file(info))
+
+        logger.info("\x1b[36;32mend move_data\033[0m")
+        return results
+
+    def to_dataset_dict(
+        self,
+        minimal_keys: bool = True,
+        ignore_facets: Union[None, str, list[str]] = None,
+        separator: str = ".",
+        num_threads: int = 6,
+        quiet: bool = False,
+        add_measures: bool = True,
+        globus_endpoint: Union[str, None] = None,
+        globus_path: Union[Path, None] = None,
+        operators: list[Any] = [],
+    ) -> dict[str, xr.Dataset]:
+        """Return the current search as a dictionary of datasets.
+
+        By default, the keys of the returned dictionary are the minimal set of facets
+        required to uniquely describe the search. If you prefer to use a full set of
+        facets, set `minimal_keys=False`.
+
+        Parameters
+        ----------
+        minimal_keys
+            Disable to return a dictonary whose keys are formed using all facets, by
+            default we use a minimal set of facets to build the simplest keys.
+        ignore_facets
+            When constructing the dictionary keys, which facets should we ignore?
+        separator
+            When generating the keys, the string to use as a seperator of facets.
+        num_threads
+            The number of threads to use when downloading files.
+        """
+        if self.df is None or len(self.df) == 0:
+            raise ValueError("No entries to retrieve.")
+
+        # The keys of the returned dictionary should only consist of the facets that are
+        # different.
+        output_key_format = []
+        if ignore_facets is None:
+            ignore_facets = []
+        if isinstance(ignore_facets, str):
+            ignore_facets = [ignore_facets]
+        # ...but these we always ignore
+        ignore_facets += [
+            "version",
+            "id",
+        ]
+        for col in self.df.drop(columns=ignore_facets):
+            if minimal_keys:
+                if not (self.df[col].iloc[0] == self.df[col]).all():
+                    output_key_format.append(col)
+            else:
+                output_key_format.append(col)
+        if not output_key_format:  # at minimum we have the variable id as a key
+            output_key_format = [get_facet_by_type(self.df, "variable")]
+
+        # Populate a dictionary of dataset_ids in this search and which keys they will
+        # map to in the output dictionary. This is complicated by CMIP5 where the
+        # dataset_id -> variable mapping is not unique.
+        dataset_ids = {}
+        for _, row in self.df.iterrows():
+            key = separator.join([row[k] for k in output_key_format])
+            for dataset_id in row["id"]:
+                if dataset_id in dataset_ids:
+                    if isinstance(dataset_ids[dataset_id], str):
+                        dataset_ids[dataset_id] = [dataset_ids[dataset_id]]
+                    dataset_ids[dataset_id].append(key)
+                else:
+                    dataset_ids[dataset_id] = key
+
+        # Some projects use dataset_ids to refer to collections of variables. So we need
+        # to pass the variables to the file info search to make sure we do not get more
+        # than we want.
+        search_facets = {}
+        variable_facet = get_facet_by_type(self.df, "variable")
+        if variable_facet in self.last_search:
+            search_facets[variable_facet] = self.last_search[variable_facet]
+
+        # Get the file info
+        infos = self._get_file_info(dataset_ids, quiet, separator, search_facets)
+
+        # Move the data if we need to
+        results = self._move_data(infos, num_threads, globus_endpoint, globus_path)
+
+        # Load into xarray objects
         ds = {}
         for key, local_file in results:
             if local_file is None:  # there was a problem getting this file
@@ -529,7 +707,6 @@ class ESGFCatalog:
         # If the user specifies operators, apply them now
         for op in operators:
             ds = op(ds)
-
         return ds
 
     def to_datatree(
