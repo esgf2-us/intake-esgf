@@ -25,5 +25,6 @@ IN_NOTEBOOK = in_notebook()
 
 from intake_esgf.catalog import ESGFCatalog  # noqa
 from intake_esgf.config import conf  # noqa
+from intake_esgf._version import __version__  # noqa
 
 __all__ = ["ESGFCatalog", "conf", "IN_NOTEBOOK"]
