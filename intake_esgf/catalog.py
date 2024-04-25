@@ -11,7 +11,6 @@ from typing import Any, Callable, Literal, Union
 import pandas as pd
 import requests
 import xarray as xr
-from datatree import DataTree
 from globus_sdk import TransferAPIError, TransferData
 from numpy import argmax
 
@@ -708,32 +707,6 @@ class ESGFCatalog:
         for op in operators:
             ds = op(ds)
         return ds
-
-    def to_datatree(
-        self,
-        minimal_keys: bool = True,
-        ignore_facets: Union[None, str, list[str]] = None,
-    ) -> DataTree:
-        """Return the current search as a datatree.
-
-        Parameters
-        ----------
-        minimal_keys
-            Disable to return a dictonary whose keys are formed using all facets, by
-            default we use a minimal set of facets to build the simplest keys.
-        ignore_facets
-            When constructing the dictionary keys, which facets should we ignore?
-
-        See Also
-        --------
-        `to_dataset_dict`
-
-        """
-        return DataTree.from_dict(
-            self.to_dataset_dict(
-                minimal_keys=minimal_keys, ignore_facets=ignore_facets, separator="/"
-            )
-        )
 
     def remove_incomplete(self, complete: Callable[[pd.DataFrame], bool]):
         """Remove the incomplete search results as defined by the `complete` function.

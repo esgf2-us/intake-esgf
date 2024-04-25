@@ -3,15 +3,16 @@ channels:
   - conda-forge
   - nodefaults
 dependencies:
+  - python>=3.9
+  - pandas
+  - dask
   - xarray
-  - xarray-datatree
-  - jupyterlab
   - netCDF4
+  - globus-sdk
+  - requests
+  - tqdm[notebook]
+  - pyyaml
+  - jupyterlab
   - matplotlib
   - pytest
   - pytest-cov
-  - tqdm
-  - pandas
-  - globus-sdk
-  - requests
-  - dask
