@@ -138,6 +138,8 @@ class GlobusESGFIndex:
                     ],
                 }
                 info["path"] = get_content_path(content)
+                print(f"🐞🐞🐞🐞🐞🐞🐞🐞🐞🐞")
+                print(f"{info=}")
                 infos.append(info)
         response_time = time.time() - response_time
         if self.logger is not None:
