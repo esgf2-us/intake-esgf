@@ -588,7 +588,7 @@ class ESGFCatalog:
         logger.info("\x1b[36;32mend move_data\033[0m")
         return results
 
-def to_http_link_dict(
+    def to_http_link_dict(
         self,
         minimal_keys: bool = True,
         separator: str = ".",
