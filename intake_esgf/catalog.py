@@ -609,7 +609,7 @@ class ESGFCatalog:
         # different.
         output_key_format = []
 
-        ignore_facets ["id"]
+        ignore_facets = ["id"]
         for col in self.df.drop(columns=ignore_facets):
             output_key_format.append(col)
         if not output_key_format:  # at minimum we have the variable id as a key
