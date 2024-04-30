@@ -111,7 +111,6 @@ class SolrESGFIndex:
             dataset_id=dataset_ids,
         )
         search.update(facets)
-        print(f"🔦{search=}")
         infos = []
         for response in esg_search(self.url, **search):
             response = response["response"]
@@ -131,8 +130,6 @@ class SolrESGFIndex:
                     if link_type not in info:
                         info[link_type] = []
                     info[link_type].append(link)
-                print(f"SOLR🐞🐞🐞🐞🐞🐞🐞🐞🐞🐞")
-                print(f"{info=}")
                 infos.append(info)
         if self.logger is not None:
             self.logger.info(f"└─{self} results={len(infos)} {total_time=:.2f}")
