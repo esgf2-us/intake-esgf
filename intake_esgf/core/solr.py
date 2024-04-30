@@ -131,7 +131,7 @@ class SolrESGFIndex:
                     if link_type not in info:
                         info[link_type] = []
                     info[link_type].append(link)
-                print(f"🐞🐞🐞🐞🐞🐞🐞🐞🐞🐞")
+                print(f"SOLR🐞🐞🐞🐞🐞🐞🐞🐞🐞🐞")
                 print(f"{info=}")
                 infos.append(info)
         if self.logger is not None:
