@@ -588,6 +588,61 @@ class ESGFCatalog:
         logger.info("\x1b[36;32mend move_data\033[0m")
         return results
 
+def to_http_link_dict(
+        self,
+        minimal_keys: bool = True,
+        separator: str = ".",
+        quiet: bool = False,
+    ) -> dict[str, list[str]]:
+        """Return the current search as a list of http links.
+
+        Parameters
+        ----------
+        separator
+            When generating the keys, the string to use as a seperator of facets.
+        """
+        
+        if self.df is None or len(self.df) == 0:
+            raise ValueError("No entries to retrieve.")
+
+        # The keys of the returned dictionary should only consist of the facets that are
+        # different.
+        output_key_format = []
+
+        ignore_facets += [
+            "id",
+        ]
+        for col in self.df.drop(columns=ignore_facets):
+            output_key_format.append(col)
+        if not output_key_format:  # at minimum we have the variable id as a key
+            output_key_format = [get_facet_by_type(self.df, "variable")]
+
+        # Populate a dictionary of dataset_ids in this search and which keys they will
+        # map to in the output dictionary. This is complicated by CMIP5 where the
+        # dataset_id -> variable mapping is not unique.
+        dataset_ids = {}
+        for _, row in self.df.iterrows():
+            key = separator.join([row[k] for k in output_key_format])
+            for dataset_id in row["id"]:
+                if dataset_id in dataset_ids:
+                    if isinstance(dataset_ids[dataset_id], str):
+                        dataset_ids[dataset_id] = [dataset_ids[dataset_id]]
+                    dataset_ids[dataset_id].append(key)
+                else:
+                    dataset_ids[dataset_id] = key
+
+        # Some projects use dataset_ids to refer to collections of variables. So we need
+        # to pass the variables to the file info search to make sure we do not get more
+        # than we want.
+        search_facets = {}
+        variable_facet = get_facet_by_type(self.df, "variable")
+        if variable_facet in self.last_search:
+            search_facets[variable_facet] = self.last_search[variable_facet]
+
+        # Get the file info
+        infos = self._get_file_info(dataset_ids, quiet, separator, search_facets)
+        return infos
+
     def to_dataset_dict(
         self,
         minimal_keys: bool = True,
