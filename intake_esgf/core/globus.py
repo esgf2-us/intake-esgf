@@ -70,7 +70,9 @@ class GlobusESGFIndex:
         df = []
         for response in paginator:
             for g in response["gmeta"]:
+                print(f"{g=}")
                 content = g["entries"][0]["content"]
+                print(f"{content=}")
                 record = {
                     facet: (
                         content[facet][0]
@@ -91,6 +93,7 @@ class GlobusESGFIndex:
                         content["variable"],
                         record,
                     )
+                print(f"{record=}")
                 df += record if isinstance(record, list) else [record]
         df = pd.DataFrame(df)
         response_time = time.time() - response_time
