@@ -6,14 +6,18 @@ SOLR_TEST = "esgf-node.llnl.gov"
 
 
 def test_search():
-    with intake_esgf.conf.set(indices={SOLR_TEST: True}):
+    extra = ["datetime_start", "datetime_stop"]
+    with intake_esgf.conf.set(indices={SOLR_TEST: True}, additional_df_cols=extra):
         cat = ESGFCatalog().search(
             experiment_id="historical",
             source_id="CanESM5",
             variable_id=["gpp"],
             variant_label=["r1i1p1f1"],
         )
-        print(cat)
+
+        # Check that user-configured columns are in the dataframe
+        assert all([col in cat.df.columns for col in extra])
+
         ds = cat.to_dataset_dict()
         assert "gpp" in ds
         assert "sftlf" in ds["gpp"]
