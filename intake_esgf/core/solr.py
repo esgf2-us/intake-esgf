@@ -111,6 +111,7 @@ class SolrESGFIndex:
             dataset_id=dataset_ids,
         )
         search.update(facets)
+        print(f"🔦{search=}")
         infos = []
         for response in esg_search(self.url, **search):
             response = response["response"]
