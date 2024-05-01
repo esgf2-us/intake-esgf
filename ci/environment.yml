@@ -16,3 +16,4 @@ dependencies:
   - matplotlib
   - pytest
   - pytest-cov
+  - pre-commit

@@ -1,0 +1,21 @@
+cff-version: 1.2.0
+message: "If you use this tool, please cite using the information below!"
+authors:
+  # add additional entries for each author -- see https://github.com/citation-file-format/citation-file-format/blob/main/schema-guide.md
+  - family-names: Collier
+    given-names: Nathan
+    orcid: https://orcid.org/0000-0002-7367-3981 # optional
+    website: https://github.com/nocollier
+    affiliation: Oak Ridge National Laboratory # optional
+  - family-names: Grover
+    given-names: Maxwell
+    orcid: https://orcid.org/0000-0002-0370-8974
+    website: https://github.com/mgrover1
+    affiliation: Argonne National Laboratory
+  - family-names: Stachelek
+    given-names: Jemma
+    orcid: https://orcid.org/0000-0002-5924-2464
+    website: https://github.com/jsta
+    affiliation: Los Alamos National Laboratory
+title: "intake-esgf"
+abstract: "Programmatic access to the Earth System Grid Federation (ESGF) holdings"
