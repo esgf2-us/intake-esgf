@@ -22,6 +22,7 @@ defaults = {
         "esgf.nci.org.au": False,
         "esgf-node.ornl.gov": False,
     },
+    "additional_df_cols": ["datetime_start", "datetime_stop"],
     "esg_dataroot": [
         "/p/css03/esgf_publish",
         "/eagle/projects/ESGF2/esg_dataroot",
@@ -76,21 +77,25 @@ class Config(dict):
         indices: dict[str, bool] = {},
         all_indices: bool = False,
         esg_dataroot: Union[list[str], None] = None,
-        local_cache: Union[list[str], None] = None
+        local_cache: Union[list[str], None] = None,
+        additional_df_cols: Union[list[str], None] = None
     ):
         """Change intake-esgf configuration options.
 
         Parameters
         ----------
-        indices
-            A dictionary of indices whose use status you wish to change.
-        all_indices
+        indices: dict
+            Indices whose use status you wish to change.
+        all_indices: bool
             Enable to check all indices for dataset information.
-        esg_dataroot
-            A list of read-only locations that we will check for ESGF data.
-        local_cache
-            A list of locations where we read and write data to, prefering the first
+        esg_dataroot: list
+            Read-only locations that we will check for ESGF data.
+        local_cache: list
+            Locations where we read and write data to, prefering the first
             entry.
+        additional_df_cols: list
+            Additional columns to include in the dataframe. Must be part
+            of the search results.
 
         Examples
         --------
@@ -125,6 +130,13 @@ class Config(dict):
             self["local_cache"] = (
                 local_cache if isinstance(local_cache, list) else [local_cache]
             )
+        if additional_df_cols is not None:
+            self["additional_df_cols"] = (
+                additional_df_cols
+                if isinstance(additional_df_cols, list)
+                else [additional_df_cols]
+            )
+
         return self._unset(temp)
 
     def __getitem__(self, item):

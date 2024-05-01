@@ -328,10 +328,15 @@ def get_dataframe_columns(content: dict[str, Any]) -> list[str]:
     content
         The content (Globus) or document (Solr) returned from the query.
     """
+    # Required columns
+    req = ["version", "data_node"]
 
-    # CMIP5 is a disaster so...
+    # Additional columns from the configuration
+    extra = intake_esgf.conf.get("additional_df_cols", [])
+
+    # Project dependent columns
     if "project" in content and content["project"][0] == "CMIP5":
-        return [
+        proj = [
             "institute",
             "model",
             "experiment",
@@ -340,17 +345,17 @@ def get_dataframe_columns(content: dict[str, Any]) -> list[str]:
             "cmor_table",
             "ensemble",
             "variable",
-            "version",
-            "data_node",
         ]
     # ...everything else (so far) behaves nicely so...
-    if "dataset_id_template_" not in content:
+    elif "dataset_id_template_" not in content:
         raise ValueError(f"No `dataset_id_template_` in {content[id]}")
-    columns = re.findall(
-        r"%\((\w+)\)s",
-        content["dataset_id_template_"][0],
-    )
-    columns = list(set(columns).union(["version", "data_node"]))
+    else:
+        proj = re.findall(
+            r"%\((\w+)\)s",
+            content["dataset_id_template_"][0],
+        )
+
+    columns = list(set(proj).union(req + extra))
     return columns
 
 
