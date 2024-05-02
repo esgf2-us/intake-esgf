@@ -9,6 +9,8 @@
 [![Code Coverage Status][codecov-badge]][codecov-link]
 [![PyPI][pypi-badge]][pypi-link]
 [![Conda][conda-badge]][conda-link]
+[![Zenodo][zenodo-badge]][zenodo-link]
+
 
 ## Overview
 
@@ -47,4 +49,6 @@ For a full listing of features with code examples, please consult the [documenta
 [pypi-badge]: https://img.shields.io/pypi/v/intake-esgf?logo=pypi
 [pypi-link]: https://pypi.org/project/intake-esgf
 [conda-badge]: https://img.shields.io/conda/vn/conda-forge/intake-esgf?logo=anaconda
-[conda-link]: https://anaconda.org/conda-forge/intake-esgf
+[conda-link]: https://anaconda.org/conda-forge/intake-esgfi
+[zenodo-badge]: https://zenodo.org/badge/691233416.svg
+[zenodo-link]: https://zenodo.org/doi/10.5281/zenodo.11104809
