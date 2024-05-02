@@ -17,5 +17,11 @@ authors:
     orcid: https://orcid.org/0000-0002-5924-2464
     website: https://github.com/jsta
     affiliation: Los Alamos National Laboratory
+  - family-names: Huard
+    given-names: David
+    orcid: "https://orcid.org/0000-0003-0311-5498"
+    website: https://github.com/huard
+    affiliation: Ouranos
+
 title: "intake-esgf"
 abstract: "Programmatic access to the Earth System Grid Federation (ESGF) holdings"
