@@ -268,7 +268,7 @@ def add_cell_measures(ds: xr.Dataset, catalog) -> xr.Dataset:
     for add in to_add:
         try:
             ds = add_variable(add, ds, catalog)
-        except ValueError:
+        except NoSearchResults:
             pass
     return ds
 
