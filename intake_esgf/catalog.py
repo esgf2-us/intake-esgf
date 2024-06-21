@@ -39,6 +39,9 @@ else:
     from tqdm import tqdm
 
 
+# TODO we want to make a configureable or tie to the record if hosted somewhere other than LLNL
+ESGF_URL_TEMPLATE = "http://esgf-data4.llnl.gov/thredds/fileServer/user_pub_work/vzarr/{}.json"
+
 class ESGFCatalog:
     """A data catalog for searching ESGF nodes and downloading data.
 
@@ -489,7 +492,17 @@ class ESGFCatalog:
         for info in infos:
             _partition(info)
         return info_https, infos_globus
-
+    
+    def _open_vzarr(self, dsid):
+        ds = xr.open_dataset(
+        ESGF_URL_TEMPLATE.format(dsid), 
+        engine='kerchunk',  
+        chunks={},
+        )
+        if ds:
+            return ds
+        raise RuntimeError("No valid Xarray dataset returned!")
+    
     def _move_data(
         self,
         infos,
@@ -645,16 +658,12 @@ class ESGFCatalog:
         # Populate a dictionary of dataset_ids in this search and which keys they will
         # map to in the output dictionary. This is complicated by CMIP5 where the
         # dataset_id -> variable mapping is not unique.
-        dataset_ids = {}
+        dataset_ids = []
         for _, row in self.df.iterrows():
-            key = separator.join([row[k] for k in output_key_format])
-            for dataset_id in row["id"]:
-                if dataset_id in dataset_ids:
-                    if isinstance(dataset_ids[dataset_id], str):
-                        dataset_ids[dataset_id] = [dataset_ids[dataset_id]]
-                    dataset_ids[dataset_id].append(key)
-                else:
-                    dataset_ids[dataset_id] = key
+            # key = separator.join([row[k] for k in output_key_format])
+            # print(key)
+            dataset_ids += [dataset_id.split('|')[0] for dataset_id in row["id"]]
+  
 
         # Some projects use dataset_ids to refer to collections of variables. So we need
         # to pass the variables to the file info search to make sure we do not get more
@@ -665,29 +674,15 @@ class ESGFCatalog:
             search_facets[variable_facet] = self.last_search[variable_facet]
 
         # Get the file info
-        infos = self._get_file_info(dataset_ids, quiet, separator, search_facets)
+#        infos = self._get_file_info(dataset_ids, quiet, separator, search_facets)
 
         # Move the data if we need to
-        results = self._move_data(infos, num_threads, globus_endpoint, globus_path)
+#        results = self._move_data(infos, num_threads, globus_endpoint, globus_path)
 
         # Load into xarray objects
         ds = {}
-        for key, local_file in results:
-            if local_file is None:  # there was a problem getting this file
-                continue
-            if key in ds:
-                ds[key].append(local_file)
-            else:
-                ds[key] = [local_file]
-
-        # Return xarray objects
-        for key, files in ds.items():
-            if len(files) == 1:
-                ds[key] = xr.open_dataset(files[0])
-            elif len(files) > 1:
-                ds[key] = xr.open_mfdataset(sorted(files))
-            else:
-                ds[key] = "Error in opening"
+        for key in dataset_ids:
+            ds[key] = self._open_vzarr(key)
 
         # Attempt to add cell measures (serial)
         if add_measures:

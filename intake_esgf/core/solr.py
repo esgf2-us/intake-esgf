@@ -61,6 +61,8 @@ class SolrESGFIndex:
                 }
                 record["project"] = doc["project"][0]
                 record["id"] = doc["id"]
+                record["instance_id"] = doc["instance_id"]
+                
                 if record["project"] == "CMIP5":
                     variables = search["variable"] if "variable" in search else []
                     if not isinstance(variables, list):

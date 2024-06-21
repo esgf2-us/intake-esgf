@@ -125,6 +125,7 @@ class GlobusESGFIndex:
                     "checksum_type": content["checksum_type"][0],
                     "checksum": content["checksum"][0],
                     "size": content["size"],
+
                     "HTTPServer": [
                         url.split("|")[0]
                         for url in content["url"]
