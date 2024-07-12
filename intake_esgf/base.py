@@ -229,7 +229,7 @@ def add_variable(variable_id: str, ds: xr.Dataset, catalog) -> xr.Dataset:
     # many times the coordinates of the measures differ in only precision of the
     # variables and will lead to unexpected merged results
     var = cat.to_dataset_dict(quiet=True, add_measures=False)[variable_id]
-    var = var.reindex_like(ds, method="nearest", tolerance=1e-6)
+    var = var.reindex_like(ds, method="nearest", tolerance=1e-5)
     ds = xr.merge([ds, var[variable_id]])
     return ds
 
