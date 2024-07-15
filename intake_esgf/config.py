@@ -22,7 +22,7 @@ defaults = {
         "esgf.nci.org.au": False,
         "esgf-node.ornl.gov": False,
     },
-    "additional_df_cols": ["datetime_start", "datetime_stop"],
+    "additional_df_cols": [],
     "esg_dataroot": [
         "/p/css03/esgf_publish",
         "/eagle/projects/ESGF2/esg_dataroot",
