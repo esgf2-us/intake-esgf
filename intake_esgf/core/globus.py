@@ -15,11 +15,9 @@ from globus_sdk import (
 )
 from globus_sdk.tokenstorage import SimpleJSONFileAdapter
 
-from intake_esgf.base import (
-    expand_cmip5_record,
-    get_content_path,
-    get_dataframe_columns,
-)
+import intake_esgf
+from intake_esgf.base import expand_cmip5_record, get_content_path
+from intake_esgf.projects import get_project_facets
 
 CLIENT_ID = "81a13009-8326-456e-a487-2d1557d8eb11"  # intake-esgf
 
@@ -63,6 +61,10 @@ class GlobusESGFIndex:
             query_data.add_filter(
                 key, val if isinstance(val, list) else [val], type="match_any"
             )
+
+        facets = get_project_facets(search) + intake_esgf.conf.get(
+            "additional_df_cols", []
+        )
         response_time = time.time()
         sc = SearchClient()
         paginator = sc.paginated.post_search(self.index_id, query_data)
@@ -77,7 +79,7 @@ class GlobusESGFIndex:
                         if isinstance(content[facet], list)
                         else content[facet]
                     )
-                    for facet in get_dataframe_columns(content)
+                    for facet in facets
                     if facet in content
                 }
                 record["project"] = content["project"][0]
@@ -155,7 +157,7 @@ class GlobusESGFIndex:
                     if isinstance(content[facet], list)
                     else content[facet]
                 )
-                for facet in get_dataframe_columns(content)
+                for facet in get_project_facets(content)
                 if facet in content
             }
             record["project"] = content["project"][0]

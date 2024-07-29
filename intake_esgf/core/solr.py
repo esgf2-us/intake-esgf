@@ -6,12 +6,13 @@ from typing import Any, Union
 import pandas as pd
 import requests
 
+import intake_esgf
 from intake_esgf.base import (
     expand_cmip5_record,
     get_content_path,
-    get_dataframe_columns,
 )
 from intake_esgf.exceptions import NoSearchResults
+from intake_esgf.projects import get_project_facets
 
 
 def esg_search(base_url, **search):
@@ -44,8 +45,10 @@ class SolrESGFIndex:
 
     def search(self, **search: Union[str, list[str]]) -> pd.DataFrame:
         search["distrib"] = search["distrib"] if "distrib" in search else self.distrib
+        facets = get_project_facets(search) + intake_esgf.conf.get(
+            "additional_df_cols", []
+        )
         total_time = time.time()
-
         df = []
         for response in esg_search(self.url, **search):
             response = response["response"]
@@ -56,7 +59,7 @@ class SolrESGFIndex:
             for doc in response["docs"]:
                 record = {
                     facet: doc[facet][0] if isinstance(doc[facet], list) else doc[facet]
-                    for facet in get_dataframe_columns(doc)
+                    for facet in facets
                     if facet in doc
                 }
                 record["project"] = doc["project"][0]
@@ -87,9 +90,10 @@ class SolrESGFIndex:
                     self.logger.info(f"└─{self} no results")
                 raise NoSearchResults
             for doc in response["docs"]:
+                facets = get_project_facets(doc)
                 record = {
                     facet: doc[facet][0] if isinstance(doc[facet], list) else doc[facet]
-                    for facet in get_dataframe_columns(doc)
+                    for facet in facets
                     if facet in doc
                 }
                 record["project"] = doc["project"][0]

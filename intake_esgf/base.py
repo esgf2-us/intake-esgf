@@ -313,52 +313,6 @@ def get_cell_measure(var: str, ds: xr.Dataset) -> Union[xr.DataArray, None]:
     return measure
 
 
-def get_dataframe_columns(content: dict[str, Any]) -> list[str]:
-    """Get the columns to be populated in a pandas dataframe.
-
-    We determine the columns that will be part of the search dataframe by parsing out
-    facets from the `dataset_id_template_` found in the query response. We look for
-    facets between the sentinels `%(...)s` and then assume that they will have values in
-    the response. CMIP5 has many inconsistencies and so we hard code it here. We also
-    postpend `version` and `data_node` to the facets. Any facets that do not appear in
-    the content will show up as `nan` in the dataframe.
-
-    Parameters
-    ----------
-    content
-        The content (Globus) or document (Solr) returned from the query.
-    """
-    # Required columns
-    req = ["version", "data_node"]
-
-    # Additional columns from the configuration
-    extra = intake_esgf.conf.get("additional_df_cols", [])
-
-    # Project dependent columns
-    if "project" in content and content["project"][0] == "CMIP5":
-        proj = [
-            "institute",
-            "model",
-            "experiment",
-            "time_frequency",
-            "realm",
-            "cmor_table",
-            "ensemble",
-            "variable",
-        ]
-    # ...everything else (so far) behaves nicely so...
-    elif "dataset_id_template_" not in content:
-        raise ValueError(f"No `dataset_id_template_` in {content[id]}")
-    else:
-        proj = re.findall(
-            r"%\((\w+)\)s",
-            content["dataset_id_template_"][0],
-        )
-
-    columns = list(set(proj).union(req + extra))
-    return columns
-
-
 def expand_cmip5_record(
     search_vars: list[str], content_vars: list[str], record: dict[str, Any]
 ) -> list[dict[str, Any]]:

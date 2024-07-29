@@ -23,3 +23,13 @@ class LocalCacheNotWritable(IntakeESGFException):
 
     def __str__(self):
         return f"You do not have write permission in the cache directories specified: {self.paths}"
+
+
+class ProjectNotSupported(IntakeESGFException):
+    """You searched for a project that we do not yet support."""
+
+    def __init__(self, project: str):
+        self.project = project
+
+    def __str__(self):
+        return f"The '{self.project}' project is not yet supported by intake-esgf"
