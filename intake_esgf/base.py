@@ -17,7 +17,8 @@ from intake_esgf.database import (
     log_download_information,
     sort_download_links,
 )
-from intake_esgf.exceptions import NoSearchResults
+from intake_esgf.exceptions import NoSearchResults, ProjectNotSupported
+from intake_esgf.projects import projects
 
 if intake_esgf.IN_NOTEBOOK:
     from tqdm import tqdm_notebook as tqdm
@@ -35,14 +36,21 @@ def combine_results(dfs: list[pd.DataFrame]) -> pd.DataFrame:
     if len(df) == 0:
         logger.info("\x1b[36;32msearch end \x1b[91;20mno results\033[0m")
         raise NoSearchResults()
+    # retrieve project information about how to combine results
+    project_id = df["project"].unique()
+    if len(project_id) != 1:
+        raise ValueError(
+            f"Only single project queries are supported, but found {project_id}"
+        )
+    project_id = project_id[0]
+    project = projects.get(project_id.lower(), None)
+    if project is None:
+        raise ProjectNotSupported(project_id)
+    variable_facet = project.variable_facet()
     combine_time = time.time()
-    variable_facet = get_facet_by_type(df, "variable")
     df = df.drop_duplicates(subset=[variable_facet, "id"]).reset_index(drop=True)
     # now convert groups to list
-    group_cols = [
-        col for col in df.columns if col not in ["version", "data_node", "id"]
-    ]
-    for _, grp in df.groupby(group_cols, dropna=False):
+    for _, grp in df.groupby(project.master_id_facets(), dropna=False):
         df = df.drop(grp.iloc[1:].index)
         df.loc[grp.index[0], "id"] = grp.id.to_list()
     df = df.drop(columns="data_node")
