@@ -41,6 +41,13 @@ class ESGFProject(ABC):
         raise NotImplementedError()
 
     @abstractmethod
+    def variable_description_facets(self) -> list[str]:
+        """
+        Return the facets that describe the specific variable.
+        """
+        raise NotImplementedError()
+
+    @abstractmethod
     def variable_facet(self) -> str:
         """
         Return the facet name considered to be the `variable`.
@@ -148,6 +155,9 @@ class CMIP6(ESGFProject):
     def relaxation_facets(self) -> list[str]:
         return ["member_id", "experiment_id", "activity_drs", "institution_id"]
 
+    def variable_description_facets(self) -> list[str]:
+        return ["table_id", "variable_id"]
+
     def variable_facet(self) -> str:
         return "variable_id"
 
@@ -185,6 +195,9 @@ class CMIP5(ESGFProject):
     def relaxation_facets(self) -> list[str]:
         return ["ensemble", "experiment", "institute"]
 
+    def variable_description_facets(self) -> list[str]:
+        return ["time_frequency", "realm", "cmor_table", "variable"]
+
     def variable_facet(self) -> str:
         return "variable"
 
@@ -221,6 +234,9 @@ class CMIP3(ESGFProject):
 
     def relaxation_facets(self) -> list[str]:
         return ["ensemble", "experiment", "institute"]
+
+    def variable_description_facets(self) -> list[str]:
+        return ["time_frequency", "realm", "variable"]
 
     def variable_facet(self) -> str:
         return "variable"
@@ -264,4 +280,21 @@ def get_project_facets(content: dict[str, Union[str, list[str]]]) -> list[str]:
     return project.id_facets()
 
 
-__all__ = ["projects", "get_project_facets"]
+def get_likely_project(facets: Union[list, dict]) -> str:
+    """
+    Return the project which is likely to correspond to the given facets.
+
+    Unfortunately, the `project` is not always part of the dataset global attributes.
+    This means that if you have a dataset and no other query, you need some logic to
+    determine from which project the dataset came. Here we return the project whose
+    master_id facets most match the input facets.
+    """
+    facets = set(facets)
+    counts = {
+        project_id: len(facets & set(project.master_id_facets()))
+        for project_id, project in projects.items()
+    }
+    return max(counts, key=counts.get)
+
+
+__all__ = ["projects", "get_project_facets", "get_likely_project"]

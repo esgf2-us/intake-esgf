@@ -167,22 +167,23 @@ def parallel_download(
     return None, None
 
 
-def get_search_criteria(ds: xr.Dataset) -> dict[str, str]:
+def get_search_criteria(
+    ds: xr.Dataset, project_id: Union[str, None] = None
+) -> dict[str, str]:
     """Return a dictionary of facet information from the dataset attributes."""
-    keys = [
-        "activity_id",
-        "experiment_id",
-        "frequency",
-        "grid_label",
-        "institution_id",
-        "mip_era",
-        "source_id",
-        "table_id",
-        "variable_id",
-        "variant_label",
-        "version",
-    ]
-    search = {key: ds.attrs[key] for key in set(keys).intersection(ds.attrs.keys())}
+    if "project" in ds.attrs:
+        project_id = ds.attrs["project"]
+    if project_id is None:
+        raise ValueError(
+            "Cannot get search criteria if 'project' not in the attributes or specified."
+        )
+    project = projects.get(project_id.lower())
+    if project is None:
+        raise ProjectNotSupported(project_id)
+    search = {
+        key: ds.attrs[key]
+        for key in set(project.master_id_facets()).intersection(ds.attrs.keys())
+    }
     return search
 
 
@@ -204,22 +205,22 @@ def add_variable(variable_id: str, ds: xr.Dataset, catalog) -> xr.Dataset:
         that any current search is not altered.
     """
     cat = catalog.clone()  # so we do not interfere with the current search
-
-    search = get_search_criteria(ds)
-    # some keys we get rid of either because we do not need them or they are wrong
-    for key in [
-        "frequency",
-        "institution_id",
-        "table_id",
-        "version",
-        "variable_id",
-    ]:
-        if key in search:
-            search.pop(key)
-    # now we update for this search
-    search.update({"table_id": ["fx", "Ofx"], "variable_id": variable_id})
+    # extract the project information from the catalog
+    project_id = catalog.df["project"].unique()
+    if len(project_id) != 1:
+        raise ValueError(
+            f"Only single project queries are supported, found: {project_id}"
+        )
+    project_id = project_id[0]
+    project = projects.get(project_id.lower())
+    if project is None:
+        raise ProjectNotSupported(project_id)
+    # populate the search
+    search = get_search_criteria(ds, project_id)
+    [search.pop(key) for key in project.variable_description_facets()]
+    search[project.variable_facet()] = variable_id
     # relax search criteria
-    relaxation = ["variant_label", "experiment_id", "activity_id"]
+    relaxation = project.relaxation_facets()
     while True:
         try:
             cat.search(quiet=True, **search)

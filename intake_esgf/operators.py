@@ -1,4 +1,5 @@
 """A collection of common operators used in CMIP analysis."""
+
 from typing import Union
 
 import pandas as pd
@@ -6,6 +7,7 @@ import xarray as xr
 
 from intake_esgf import IN_NOTEBOOK
 from intake_esgf.base import bar_format, get_cell_measure, get_search_criteria
+from intake_esgf.projects import get_likely_project, projects
 
 if IN_NOTEBOOK:
     from tqdm import tqdm_notebook as tqdm
@@ -101,7 +103,9 @@ def global_mean(
 
 
 def ensemble_mean(
-    dsd: dict[str, xr.Dataset], include_std: bool = False, quiet: bool = False
+    dsd: dict[str, xr.Dataset],
+    include_std: bool = False,
+    quiet: bool = False,
 ) -> dict[str, xr.Dataset]:
     """Compute the ensemble mean of the input dictionary of datasets.
 
@@ -121,13 +125,14 @@ def ensemble_mean(
     # parse facets out of the dataset attributes
     df = []
     for key, ds in dsd.items():
-        df.append(get_search_criteria(ds))
+        project_id = get_likely_project(ds.attrs)
+        project = projects[project_id]
+        df.append(get_search_criteria(ds, project_id))
         df[-1]["key"] = key
     df = pd.DataFrame(df)
-    if "version" in df.columns:
-        df = df.drop(columns="version")
     # now groupby everything but the variant_label and compute the mean/std
-    grp_cols = [c for c in list(df.columns) if c not in ["variant_label", "key"]]
+    variant_facet = project.variant_facet()
+    grp_cols = [c for c in list(df.columns) if c not in [variant_facet, "key"]]
     out = {}
     for _, grp in tqdm(
         df.groupby(grp_cols),
@@ -139,13 +144,13 @@ def ensemble_mean(
         ascii=False,
     ):
         ds = xr.concat([dsd[key] for key in grp["key"].to_list()], dim="variant")
-        ds.attrs["variant_label"] = grp["variant_label"].to_list()
+        ds.attrs[variant_facet] = grp[variant_facet].to_list()
         row = grp.iloc[0]
-        out[row["key"].replace(row["variant_label"], "mean")] = ds.mean(
+        out[row["key"].replace(row[variant_facet], "mean")] = ds.mean(
             dim="variant", keep_attrs=True
         )
         if include_std:
-            out[row["key"].replace(row["variant_label"], "std")] = ds.std(
+            out[row["key"].replace(row[variant_facet], "std")] = ds.std(
                 dim="variant", keep_attrs=True
             )
     return out
