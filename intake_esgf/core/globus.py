@@ -65,6 +65,9 @@ class GlobusESGFIndex:
         facets = get_project_facets(search) + intake_esgf.conf.get(
             "additional_df_cols", []
         )
+        if "project" not in facets:
+            facets = ["project"] + facets
+
         response_time = time.time()
         sc = SearchClient()
         paginator = sc.paginated.post_search(self.index_id, query_data)
@@ -151,13 +154,16 @@ class GlobusESGFIndex:
         df = []
         for g in response["gmeta"]:
             content = g["entries"][0]["content"]
+            facets = get_project_facets(content)
+            if "project" not in facets:
+                facets = ["project"] + facets
             record = {
                 facet: (
                     content[facet][0]
                     if isinstance(content[facet], list)
                     else content[facet]
                 )
-                for facet in get_project_facets(content)
+                for facet in facets
                 if facet in content
             }
             record["project"] = content["project"][0]

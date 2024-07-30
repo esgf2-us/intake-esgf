@@ -48,6 +48,8 @@ class SolrESGFIndex:
         facets = get_project_facets(search) + intake_esgf.conf.get(
             "additional_df_cols", []
         )
+        if "project" not in facets:
+            facets = ["project"] + facets
         total_time = time.time()
         df = []
         for response in esg_search(self.url, **search):
@@ -91,6 +93,8 @@ class SolrESGFIndex:
                 raise NoSearchResults
             for doc in response["docs"]:
                 facets = get_project_facets(doc)
+                if "project" not in facets:
+                    facets = ["project"] + facets
                 record = {
                     facet: doc[facet][0] if isinstance(doc[facet], list) else doc[facet]
                     for facet in facets
