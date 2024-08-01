@@ -5,7 +5,7 @@ import re
 import time
 from functools import partial
 from pathlib import Path
-from typing import Any, Literal, Union
+from typing import Any, Union
 
 import pandas as pd
 import requests
@@ -336,32 +336,6 @@ def expand_cmip5_record(
         r["variable"] = var
         records.append(r)
     return records
-
-
-def get_facet_by_type(
-    df: pd.DataFrame, ftype: Literal["variable", "model", "variant", "grid"]
-) -> str:
-    """Get the facet name by the type.
-
-    Across projects, facets may have different names but serve similar functions. Here
-    we provide a method of defining equivalence so functions like `model_groups()` can
-    work for all projects. We may have to expand this collection or make this a more
-    general and public function.
-    """
-    possible = {
-        "variable": ["variable", "variable_id"],
-        "model": ["model", "source_id"],
-        "variant": ["ensemble", "ensemble_member", "member_id", "variant_label"],
-        "grid": ["grid", "grid_label", "grid_resolution"],
-    }
-    facet = [col for col in df.columns if col in possible[ftype]]
-    if not facet:
-        raise ValueError(f"Could not find a '{ftype}' facet in {list(df.columns)}")
-    if len(facet) > 1:  # relax this to handle multi-project searches
-        raise ValueError(
-            f"Ambiguous '{ftype}' facet in {list(df.columns)}, found {facet}"
-        )
-    return facet[0]
 
 
 def get_content_path(content: dict[str, Any]) -> Path:

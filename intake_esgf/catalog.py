@@ -20,7 +20,6 @@ from intake_esgf.base import (
     add_cell_measures,
     bar_format,
     combine_results,
-    get_facet_by_type,
     parallel_download,
 )
 from intake_esgf.core import GlobusESGFIndex, SolrESGFIndex
@@ -32,6 +31,7 @@ from intake_esgf.database import (
     sort_globus_endpoints,
 )
 from intake_esgf.exceptions import LocalCacheNotWritable, NoSearchResults
+from intake_esgf.projects import projects as esgf_projects
 
 if IN_NOTEBOOK:
     from tqdm import tqdm_notebook as tqdm
@@ -78,6 +78,7 @@ class ESGFCatalog:
         if not self.indices:
             raise ValueError("You must have at least 1 search index configured")
         self.df = None
+        self.project = None
         self.session_time = pd.Timestamp.now()
         self.last_search = {}
         self.local_cache = []
@@ -164,13 +165,13 @@ class ESGFCatalog:
             return "".join([rf"{s}(\d+)" for s in match.groups()])
 
         # sort by the lower-case version of the 'model' name
-        model_facet = get_facet_by_type(self.df, "model")
+        model_facet = self.project.model_facet()
         lower = self.df[model_facet].str.lower()
         lower.name = "lower"
 
         # sort the variants but extract out the integer values, assume the first result
         # is representative of the whole
-        variant_facet = get_facet_by_type(self.df, "variant")
+        variant_facet = self.project.variant_facet()
         int_pattern = _extract_int_pattern(self.df.iloc[0][variant_facet])
 
         # add in these new data to a temporary dataframe
@@ -187,12 +188,11 @@ class ESGFCatalog:
         added_columns = list(df.columns[len(self.df.columns) :])
         sort_columns = list(df.columns[len(self.df.columns) :])
         group_columns = [model_facet, variant_facet]
-        try:
-            grid_facet = get_facet_by_type(self.df, "grid")
+
+        grid_facet = self.project.grid_facet()
+        if grid_facet is not None:
             sort_columns.append(grid_facet)
             group_columns.append(grid_facet)
-        except ValueError:
-            pass
 
         return (
             df.sort_values(sort_columns)
@@ -272,6 +272,9 @@ class ESGFCatalog:
                 total=len(self.indices),
             )
         )
+
+        # store the project
+        self.project = esgf_projects[self.df["project"].unique()[0].lower()]
 
         # even though we are using latest=True, because the search is distributed, we
         # may have different versions.
@@ -640,7 +643,7 @@ class ESGFCatalog:
             else:
                 output_key_format.append(col)
         if not output_key_format:  # at minimum we have the variable id as a key
-            output_key_format = [get_facet_by_type(self.df, "variable")]
+            output_key_format = [self.project.variable_facet()]
 
         # Populate a dictionary of dataset_ids in this search and which keys they will
         # map to in the output dictionary. This is complicated by CMIP5 where the
@@ -660,7 +663,7 @@ class ESGFCatalog:
         # to pass the variables to the file info search to make sure we do not get more
         # than we want.
         search_facets = {}
-        variable_facet = get_facet_by_type(self.df, "variable")
+        variable_facet = self.project.variable_facet()
         if variable_facet in self.last_search:
             search_facets[variable_facet] = self.last_search[variable_facet]
 
@@ -721,11 +724,11 @@ class ESGFCatalog:
 
         """
         group = [
-            get_facet_by_type(self.df, "model"),
-            get_facet_by_type(self.df, "variant"),
+            self.project.model_facet(),
+            self.project.variant_facet(),
         ]
         try:
-            group.append(get_facet_by_type(self.df, "grid"))
+            group.append(self.project.grid_facet())
         except ValueError:
             pass
         for _, grp in self.df.groupby(group):
@@ -744,7 +747,7 @@ class ESGFCatalog:
 
         """
         df = self.model_groups()
-        variant_facet = get_facet_by_type(self.df, "variant")
+        variant_facet = self.project.variant_facet()
         names = [name for name in df.index.names if name != variant_facet]
         for lbl, grp in df.to_frame().reset_index().groupby(names):
             variant = grp.iloc[0][variant_facet]
