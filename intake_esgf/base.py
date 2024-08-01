@@ -217,7 +217,7 @@ def add_variable(variable_id: str, ds: xr.Dataset, catalog) -> xr.Dataset:
         raise ProjectNotSupported(project_id)
     # populate the search
     search = get_search_criteria(ds, project_id)
-    [search.pop(key) for key in project.variable_description_facets()]
+    [search.pop(key) for key in project.variable_description_facets() if key in search]
     search[project.variable_facet()] = variable_id
     # relax search criteria
     relaxation = project.relaxation_facets()

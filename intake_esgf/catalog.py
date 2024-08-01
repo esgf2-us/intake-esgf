@@ -692,8 +692,8 @@ class ESGFCatalog:
             else:
                 ds[key] = "Error in opening"
 
-        # Attempt to add cell measures (serial)
-        if add_measures:
+        # Attempt to add cell measures (serial), only work for CMIP6
+        if add_measures and "cmip6" in str(self.project.__class__).lower():
             for key in tqdm(
                 ds,
                 disable=quiet,
