@@ -12,7 +12,6 @@ import pandas as pd
 import requests
 import xarray as xr
 from globus_sdk import TransferAPIError, TransferData
-from numpy import argmax
 
 import intake_esgf
 from intake_esgf import IN_NOTEBOOK
@@ -134,6 +133,17 @@ class ESGFCatalog:
             create_download_database(download_db)
         self.download_db = download_db
 
+    def _set_project(self) -> None:
+        """
+        Parse the project from the last search.
+        """
+        if self.df is None:
+            raise ValueError("Perform a search() to populate the dataframe.")
+        project = self.df["project"].unique()
+        if len(project) != 1:
+            raise ValueError("Only single project searches are supported")
+        self.project = esgf_projects[project[0].lower()]
+
     def clone(self):
         """Return a new instance of a catalog with the same indices and settings.
 
@@ -149,8 +159,19 @@ class ESGFCatalog:
 
     def unique(self) -> pd.Series:
         """Return the the unique values in each facet of the search."""
+        if self.df is None:
+            raise ValueError("Perform a search() to populate the catalog.")
         out = {}
-        for col in self.df.drop(columns=["id", "version"]).columns:
+        drops = [
+            col
+            for col in self.df.columns
+            if col
+            not in (
+                self.project.master_id_facets()
+                + intake_esgf.conf.get("additional_df_cols")
+            )
+        ]
+        for col in self.df.drop(columns=drops).columns:
             out[col] = self.df[col].unique()
         return pd.Series(out)
 
@@ -272,9 +293,7 @@ class ESGFCatalog:
                 total=len(self.indices),
             )
         )
-
-        # store the project
-        self.project = esgf_projects[self.df["project"].unique()[0].lower()]
+        self._set_project()
 
         # even though we are using latest=True, because the search is distributed, we
         # may have different versions.
@@ -348,13 +367,12 @@ class ESGFCatalog:
         logger.info(
             f"\x1b[36;32mfrom_tracking_ids end\033[0m total_time={search_time:.2f}"
         )
+        self._set_project()
 
         return self
 
-    def _get_file_info(
-        self, dataset_ids, quiet, separator, search_facets
-    ) -> list[dict]:
-        """Query and return file information for the given datasets."""
+    def _get_file_info(self, separator: str = ".", quiet: bool = False) -> list[dict]:
+        """Query and return file information datasets present in the catalog."""
 
         def _get_file_info(index, dataset_ids, **search_facets):
             try:
@@ -372,7 +390,38 @@ class ESGFCatalog:
         logger = intake_esgf.conf.get_logger()
         logger.info("\x1b[36;32mfile info begin\033[0m")
 
-        # threaded file info over indices and flatten output
+        # Eventually we will return a dictionary of paths/datasets. The keys of this
+        # dictionary we will initialize to the master_id facets joined together by the
+        # `separator` and placed in a new column in the dataframe called `keys`
+        if self.project is None:
+            self._set_project()
+        self.df["key"] = self.df.apply(
+            lambda row: separator.join(
+                [row[f] for f in self.project.master_id_facets()]
+            ),
+            axis=1,
+        )
+
+        # From the catalog dataframe, we have the mapping `key` -> `dataset_id` but in
+        # order to pass information back we need the inverse.
+        dataset_ids = {
+            dataset_id: row["key"]
+            for _, row in self.df.iterrows()
+            for dataset_id in row["id"]
+        }
+
+        # Some projects (CMIP5 for example) use dataset_ids to refer to collections of
+        # variables. This means that the user may get many more variables than they want
+        # simply because the variable name is not part of the dataset_id. We fix this
+        # by including the variable facet from the last search when we get file
+        # information.
+        search_facets = {}
+        variable_facet = self.project.variable_facet()
+        if variable_facet in self.last_search:
+            search_facets[variable_facet] = self.last_search[variable_facet]
+
+        # The index nodes are again queried for file information. Each file points back
+        # to the dataset_id to which it belongs.
         info_time = time.time()
         get_file_info = ThreadPool(len(self.indices)).imap_unordered(
             partial(_get_file_info, dataset_ids=dataset_ids, **search_facets),
@@ -392,27 +441,14 @@ class ESGFCatalog:
         )
         index_infos = [info for index_info in index_infos for info in index_info]
 
-        # now we merge this info together.
-        def _which_key(path, keys):
-            """Return the key that is likely correct based on counts in the path."""
-            counts = []
-            for key in keys:
-                counts.append(sum([str(path).count(k) for k in key.split(separator)]))
-            return keys[argmax(counts)]
-
+        # Now we merge the access/validation information, but where the primary key is
+        # not longer dataset_id, but rather the file path.
+        combine_time = time.time()
         merged_info = {}
         for info in index_infos:
             path = info["path"]
             if path not in merged_info:
-                # Because CMIP5 is annoying, we may have multiple dataset_ids for each
-                # path (file). So here we choose which key is more likely correct.
-                if isinstance(dataset_ids[info["dataset_id"]], list):
-                    merged_info[path] = {
-                        "key": _which_key(path, dataset_ids[info["dataset_id"]])
-                    }
-                else:
-                    merged_info[path] = {"key": dataset_ids[info["dataset_id"]]}
-
+                merged_info[path] = {"key": dataset_ids[info["dataset_id"]]}
             for key, val in info.items():
                 if isinstance(val, list):
                     if key not in merged_info[path]:
@@ -423,7 +459,9 @@ class ESGFCatalog:
                     if key not in merged_info[path]:
                         merged_info[path][key] = val
         infos = [info for _, info in merged_info.items()]
+        combine_time = time.time() - combine_time
         info_time = time.time() - info_time
+        logger.info(f"{combine_time=:.2f}")
         logger.info(f"\x1b[36;32mfile info end\033[0m total_time={info_time:.2f}")
         return infos
 
@@ -591,6 +629,14 @@ class ESGFCatalog:
         logger.info("\x1b[36;32mend move_data\033[0m")
         return results
 
+    def to_path_dict(
+        self,
+        separator: str = ".",
+    ):
+        """ """
+        if self.df is None or len(self.df) == 0:
+            raise ValueError("No entries to retrieve.")
+
     def to_dataset_dict(
         self,
         minimal_keys: bool = True,
@@ -624,51 +670,20 @@ class ESGFCatalog:
         if self.df is None or len(self.df) == 0:
             raise ValueError("No entries to retrieve.")
 
-        # The keys of the returned dictionary should only consist of the facets that are
-        # different.
-        output_key_format = []
-        if ignore_facets is None:
-            ignore_facets = []
-        if isinstance(ignore_facets, str):
-            ignore_facets = [ignore_facets]
-        # ...but these we always ignore
-        ignore_facets += [
-            "version",
-            "id",
-        ]
-        for col in self.df.drop(columns=ignore_facets):
-            if minimal_keys:
-                if not (self.df[col].iloc[0] == self.df[col]).all():
-                    output_key_format.append(col)
-            else:
-                output_key_format.append(col)
-        if not output_key_format:  # at minimum we have the variable id as a key
-            output_key_format = [self.project.variable_facet()]
-
-        # Populate a dictionary of dataset_ids in this search and which keys they will
-        # map to in the output dictionary. This is complicated by CMIP5 where the
-        # dataset_id -> variable mapping is not unique.
-        dataset_ids = {}
-        for _, row in self.df.iterrows():
-            key = separator.join([row[k] for k in output_key_format])
-            for dataset_id in row["id"]:
-                if dataset_id in dataset_ids:
-                    if isinstance(dataset_ids[dataset_id], str):
-                        dataset_ids[dataset_id] = [dataset_ids[dataset_id]]
-                    dataset_ids[dataset_id].append(key)
-                else:
-                    dataset_ids[dataset_id] = key
-
-        # Some projects use dataset_ids to refer to collections of variables. So we need
-        # to pass the variables to the file info search to make sure we do not get more
-        # than we want.
-        search_facets = {}
-        variable_facet = self.project.variable_facet()
-        if variable_facet in self.last_search:
-            search_facets[variable_facet] = self.last_search[variable_facet]
+        # Eventually we will return a dictionary of datasets. The keys of this
+        # dictionary we will initialize to the master_id facets joined together by the
+        # `separator` and placed in a new column in the dataframe called `keys`
+        if self.project is None:
+            self._set_project()
+        self.df["key"] = self.df.apply(
+            lambda row: separator.join(
+                [row[f] for f in self.project.master_id_facets()]
+            ),
+            axis=1,
+        )
 
         # Get the file info
-        infos = self._get_file_info(dataset_ids, quiet, separator, search_facets)
+        infos = self._get_file_info(separator=separator, quiet=quiet)
 
         # Move the data if we need to
         results = self._move_data(infos, num_threads, globus_endpoint, globus_path)
