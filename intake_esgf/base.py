@@ -5,7 +5,7 @@ import re
 import time
 from functools import partial
 from pathlib import Path
-from typing import Any, Literal, Union
+from typing import Any, Union
 
 import pandas as pd
 import requests
@@ -17,7 +17,8 @@ from intake_esgf.database import (
     log_download_information,
     sort_download_links,
 )
-from intake_esgf.exceptions import NoSearchResults
+from intake_esgf.exceptions import NoSearchResults, ProjectNotSupported
+from intake_esgf.projects import projects
 
 if intake_esgf.IN_NOTEBOOK:
     from tqdm import tqdm_notebook as tqdm
@@ -35,14 +36,21 @@ def combine_results(dfs: list[pd.DataFrame]) -> pd.DataFrame:
     if len(df) == 0:
         logger.info("\x1b[36;32msearch end \x1b[91;20mno results\033[0m")
         raise NoSearchResults()
+    # retrieve project information about how to combine results
+    project_id = df["project"].unique()
+    if len(project_id) != 1:
+        raise ValueError(
+            f"Only single project queries are supported, but found {project_id}"
+        )
+    project_id = project_id[0]
+    project = projects.get(project_id.lower(), None)
+    if project is None:
+        raise ProjectNotSupported(project_id)
+    variable_facet = project.variable_facet()
     combine_time = time.time()
-    variable_facet = get_facet_by_type(df, "variable")
     df = df.drop_duplicates(subset=[variable_facet, "id"]).reset_index(drop=True)
     # now convert groups to list
-    group_cols = [
-        col for col in df.columns if col not in ["version", "data_node", "id"]
-    ]
-    for _, grp in df.groupby(group_cols, dropna=False):
+    for _, grp in df.groupby(project.master_id_facets(), dropna=False):
         df = df.drop(grp.iloc[1:].index)
         df.loc[grp.index[0], "id"] = grp.id.to_list()
     df = df.drop(columns="data_node")
@@ -159,22 +167,23 @@ def parallel_download(
     return None, None
 
 
-def get_search_criteria(ds: xr.Dataset) -> dict[str, str]:
+def get_search_criteria(
+    ds: xr.Dataset, project_id: Union[str, None] = None
+) -> dict[str, str]:
     """Return a dictionary of facet information from the dataset attributes."""
-    keys = [
-        "activity_id",
-        "experiment_id",
-        "frequency",
-        "grid_label",
-        "institution_id",
-        "mip_era",
-        "source_id",
-        "table_id",
-        "variable_id",
-        "variant_label",
-        "version",
-    ]
-    search = {key: ds.attrs[key] for key in set(keys).intersection(ds.attrs.keys())}
+    if "project" in ds.attrs:
+        project_id = ds.attrs["project"]
+    if project_id is None:
+        raise ValueError(
+            "Cannot get search criteria if 'project' not in the attributes or specified."
+        )
+    project = projects.get(project_id.lower())
+    if project is None:
+        raise ProjectNotSupported(project_id)
+    search = {
+        key: ds.attrs[key]
+        for key in set(project.master_id_facets()).intersection(ds.attrs.keys())
+    }
     return search
 
 
@@ -196,22 +205,22 @@ def add_variable(variable_id: str, ds: xr.Dataset, catalog) -> xr.Dataset:
         that any current search is not altered.
     """
     cat = catalog.clone()  # so we do not interfere with the current search
-
-    search = get_search_criteria(ds)
-    # some keys we get rid of either because we do not need them or they are wrong
-    for key in [
-        "frequency",
-        "institution_id",
-        "table_id",
-        "version",
-        "variable_id",
-    ]:
-        if key in search:
-            search.pop(key)
-    # now we update for this search
-    search.update({"table_id": ["fx", "Ofx"], "variable_id": variable_id})
+    # extract the project information from the catalog
+    project_id = catalog.df["project"].unique()
+    if len(project_id) != 1:
+        raise ValueError(
+            f"Only single project queries are supported, found: {project_id}"
+        )
+    project_id = project_id[0]
+    project = projects.get(project_id.lower())
+    if project is None:
+        raise ProjectNotSupported(project_id)
+    # populate the search
+    search = get_search_criteria(ds, project_id)
+    [search.pop(key) for key in project.variable_description_facets() if key in search]
+    search[project.variable_facet()] = variable_id
     # relax search criteria
-    relaxation = ["variant_label", "experiment_id", "activity_id"]
+    relaxation = project.relaxation_facets()
     while True:
         try:
             cat.search(quiet=True, **search)
@@ -313,52 +322,6 @@ def get_cell_measure(var: str, ds: xr.Dataset) -> Union[xr.DataArray, None]:
     return measure
 
 
-def get_dataframe_columns(content: dict[str, Any]) -> list[str]:
-    """Get the columns to be populated in a pandas dataframe.
-
-    We determine the columns that will be part of the search dataframe by parsing out
-    facets from the `dataset_id_template_` found in the query response. We look for
-    facets between the sentinels `%(...)s` and then assume that they will have values in
-    the response. CMIP5 has many inconsistencies and so we hard code it here. We also
-    postpend `version` and `data_node` to the facets. Any facets that do not appear in
-    the content will show up as `nan` in the dataframe.
-
-    Parameters
-    ----------
-    content
-        The content (Globus) or document (Solr) returned from the query.
-    """
-    # Required columns
-    req = ["version", "data_node"]
-
-    # Additional columns from the configuration
-    extra = intake_esgf.conf.get("additional_df_cols", [])
-
-    # Project dependent columns
-    if "project" in content and content["project"][0] == "CMIP5":
-        proj = [
-            "institute",
-            "model",
-            "experiment",
-            "time_frequency",
-            "realm",
-            "cmor_table",
-            "ensemble",
-            "variable",
-        ]
-    # ...everything else (so far) behaves nicely so...
-    elif "dataset_id_template_" not in content:
-        raise ValueError(f"No `dataset_id_template_` in {content[id]}")
-    else:
-        proj = re.findall(
-            r"%\((\w+)\)s",
-            content["dataset_id_template_"][0],
-        )
-
-    columns = list(set(proj).union(req + extra))
-    return columns
-
-
 def expand_cmip5_record(
     search_vars: list[str], content_vars: list[str], record: dict[str, Any]
 ) -> list[dict[str, Any]]:
@@ -373,32 +336,6 @@ def expand_cmip5_record(
         r["variable"] = var
         records.append(r)
     return records
-
-
-def get_facet_by_type(
-    df: pd.DataFrame, ftype: Literal["variable", "model", "variant", "grid"]
-) -> str:
-    """Get the facet name by the type.
-
-    Across projects, facets may have different names but serve similar functions. Here
-    we provide a method of defining equivalence so functions like `model_groups()` can
-    work for all projects. We may have to expand this collection or make this a more
-    general and public function.
-    """
-    possible = {
-        "variable": ["variable", "variable_id"],
-        "model": ["model", "source_id"],
-        "variant": ["ensemble", "ensemble_member", "member_id", "variant_label"],
-        "grid": ["grid", "grid_label", "grid_resolution"],
-    }
-    facet = [col for col in df.columns if col in possible[ftype]]
-    if not facet:
-        raise ValueError(f"Could not find a '{ftype}' facet in {list(df.columns)}")
-    if len(facet) > 1:  # relax this to handle multi-project searches
-        raise ValueError(
-            f"Ambiguous '{ftype}' facet in {list(df.columns)}, found {facet}"
-        )
-    return facet[0]
 
 
 def get_content_path(content: dict[str, Any]) -> Path:

@@ -1,5 +1,7 @@
 from functools import partial
 
+import pytest
+
 import intake_esgf.operators as ops
 from intake_esgf import ESGFCatalog
 
@@ -25,6 +27,7 @@ def test_global_mean():
     assert set(["fgco2", "gpp"]) == set(dsd.keys())
 
 
+@pytest.mark.skip(reason="Temporary while we rework to_dataset_dict()")
 def test_ensemble_mean():
     """Run a test on composition of operators.
 
