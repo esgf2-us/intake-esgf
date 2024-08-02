@@ -38,25 +38,24 @@ class SolrESGFIndex:
         self.repr = f"SolrESGFIndex('{index_node}'{',distrib=True' if distrib else ''})"
         self.url = f"https://{index_node}"
         self.distrib = distrib
-        self.logger = None
 
     def __repr__(self):
         return self.repr
 
     def search(self, **search: Union[str, list[str]]) -> pd.DataFrame:
+        logger = intake_esgf.conf.get_logger()
         search["distrib"] = search["distrib"] if "distrib" in search else self.distrib
         facets = get_project_facets(search) + intake_esgf.conf.get(
             "additional_df_cols", []
         )
         if "project" not in facets:
             facets = ["project"] + facets
-        total_time = time.time()
+        response_time = time.time()
         df = []
         for response in esg_search(self.url, **search):
             response = response["response"]
             if not response["numFound"]:
-                if self.logger is not None:
-                    self.logger.info(f"└─{self} no results")
+                logger.info(f"└─{self} no results")
                 raise NoSearchResults
             for doc in response["docs"]:
                 record = {
@@ -77,19 +76,19 @@ class SolrESGFIndex:
                     )
                 df += record if isinstance(record, list) else [record]
         df = pd.DataFrame(df)
-        total_time = time.time() - total_time
-        if self.logger is not None:
-            self.logger.info(f"└─{self} results={len(df)} {total_time=:.2f}")
+        response_time = time.time() - response_time
+        logger = intake_esgf.conf.get_logger()
+        logger.info(f"└─{self} results={len(df)} {response_time=:.2f}")
         return df
 
     def from_tracking_ids(self, tracking_ids: list[str]) -> pd.DataFrame:
+        logger = intake_esgf.conf.get_logger()
         total_time = time.time()
         df = []
         for response in esg_search(self.url, type="File", tracking_id=tracking_ids):
             response = response["response"]
             if not response["numFound"]:
-                if self.logger is not None:
-                    self.logger.info(f"└─{self} no results")
+                logger.info(f"└─{self} no results")
                 raise NoSearchResults
             for doc in response["docs"]:
                 facets = get_project_facets(doc)
@@ -105,12 +104,12 @@ class SolrESGFIndex:
                 df.append(record)
         df = pd.DataFrame(df)
         total_time = time.time() - total_time
-        if self.logger is not None:
-            self.logger.info(f"└─{self} results={len(df)} {total_time=:.2f}")
+        logger.info(f"└─{self} results={len(df)} {total_time=:.2f}")
         return df
 
     def get_file_info(self, dataset_ids: list[str], **facets) -> dict[str, Any]:
-        total_time = time.time()
+        logger = intake_esgf.conf.get_logger()
+        response_time = time.time()
         search = dict(
             type="File",
             latest=True,
@@ -123,8 +122,7 @@ class SolrESGFIndex:
         for response in esg_search(self.url, **search):
             response = response["response"]
             if not response["numFound"]:
-                if self.logger is not None:
-                    self.logger.info(f"└─{self} no results")
+                logger.info(f"└─{self} no results")
                 raise NoSearchResults
             for doc in response["docs"]:
                 info = {}
@@ -139,6 +137,6 @@ class SolrESGFIndex:
                         info[link_type] = []
                     info[link_type].append(link)
                 infos.append(info)
-        if self.logger is not None:
-            self.logger.info(f"└─{self} results={len(infos)} {total_time=:.2f}")
+        response_time = time.time() - response_time
+        logger.info(f"└─{self} results={len(infos)} {response_time=:.2f}")
         return infos

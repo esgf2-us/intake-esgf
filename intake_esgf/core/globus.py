@@ -34,7 +34,6 @@ class GlobusESGFIndex:
             index_id = GlobusESGFIndex.GLOBUS_INDEX_IDS[index_id]
         self.index_id = index_id
         self.client = SearchClient()
-        self.logger = None
 
     def __repr__(self):
         return self.repr
@@ -99,10 +98,8 @@ class GlobusESGFIndex:
                 df += record if isinstance(record, list) else [record]
         df = pd.DataFrame(df)
         response_time = time.time() - response_time
-
-        # logging
-        if self.logger is not None:
-            self.logger.info(f"└─{self} results={len(df)} {response_time=:.2f}")
+        logger = intake_esgf.conf.get_logger()
+        logger.info(f"└─{self} results={len(df)} {response_time=:.2f}")
         return df
 
     def get_file_info(self, dataset_ids: list[str], **facets) -> dict[str, Any]:
@@ -142,8 +139,8 @@ class GlobusESGFIndex:
                 info["path"] = get_content_path(content)
                 infos.append(info)
         response_time = time.time() - response_time
-        if self.logger is not None:
-            self.logger.info(f"└─{self} results={len(infos)} {response_time=:.2f}")
+        logger = intake_esgf.conf.get_logger()
+        logger.info(f"└─{self} results={len(infos)} {response_time=:.2f}")
         return infos
 
     def from_tracking_ids(self, tracking_ids: list[str]) -> pd.DataFrame:
