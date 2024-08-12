@@ -144,6 +144,28 @@ class ESGFCatalog:
             raise ValueError("Only single project searches are supported")
         self.project = esgf_projects[project[0].lower()]
 
+    def _minimal_key_format(
+        self, ignore_facets: Union[list[str], str, None] = None
+    ) -> list[str]:
+        """
+        Return the facets that have different values in the current catalog.
+        """
+        if ignore_facets is None:
+            ignore_facets = []
+        if isinstance(ignore_facets, str):
+            ignore_facets = [ignore_facets]
+        output_key_format = [
+            col
+            for col in self.project.master_id_facets()
+            if (
+                (self.df[col].iloc[0] != self.df[col]).any()
+                and col not in ignore_facets
+            )
+        ]
+        if not output_key_format:
+            output_key_format = [self.project.variable_facet()]
+        return output_key_format
+
     def clone(self):
         """Return a new instance of a catalog with the same indices and settings.
 
@@ -631,11 +653,19 @@ class ESGFCatalog:
 
     def to_path_dict(
         self,
+        minimal_keys: bool = True,
+        ignore_facets: Union[None, str, list[str]] = None,
         separator: str = ".",
+        num_threads: int = 6,
+        quiet: bool = False,
+        globus_endpoint: Union[str, None] = None,
+        globus_path: Union[Path, None] = None,
     ):
         """ """
         if self.df is None or len(self.df) == 0:
             raise ValueError("No entries to retrieve.")
+        infos = self._get_file_info(separator=separator, quiet=quiet)
+        self._move_data(infos, num_threads, globus_endpoint, globus_path)
 
     def to_dataset_dict(
         self,
@@ -669,23 +699,7 @@ class ESGFCatalog:
         """
         if self.df is None or len(self.df) == 0:
             raise ValueError("No entries to retrieve.")
-
-        # Eventually we will return a dictionary of datasets. The keys of this
-        # dictionary we will initialize to the master_id facets joined together by the
-        # `separator` and placed in a new column in the dataframe called `keys`
-        if self.project is None:
-            self._set_project()
-        self.df["key"] = self.df.apply(
-            lambda row: separator.join(
-                [row[f] for f in self.project.master_id_facets()]
-            ),
-            axis=1,
-        )
-
-        # Get the file info
         infos = self._get_file_info(separator=separator, quiet=quiet)
-
-        # Move the data if we need to
         results = self._move_data(infos, num_threads, globus_endpoint, globus_path)
 
         # Load into xarray objects
