@@ -251,7 +251,44 @@ class CMIP3(ESGFProject):
         return None
 
 
-projects = {"cmip6": CMIP6(), "cmip5": CMIP5(), "cmip3": CMIP3()}
+class OBS4MIPS(ESGFProject):
+    def __init__(self):
+        self.facets = [
+            "project",
+            "institute",
+            "time_frequency",
+            "realm",
+            "variable",
+            "version",
+            "data_node",
+        ]
+
+    def master_id_facets(self) -> list[str]:
+        return self.facets[:-2]
+
+    def id_facets(self) -> list[str]:
+        return self.facets
+
+    def relaxation_facets(self) -> list[str]:
+        return ["ensemble", "experiment", "institute"]
+
+    def variable_description_facets(self) -> list[str]:
+        return ["time_frequency", "realm", "variable"]
+
+    def variable_facet(self) -> str:
+        return "variable"
+
+    def model_facet(self) -> str:
+        return "model"
+
+    def variant_facet(self) -> str:
+        return "ensemble"
+
+    def grid_facet(self) -> str:
+        return None
+        
+
+projects = {"cmip6": CMIP6(), "cmip5": CMIP5(), "cmip3": CMIP3(), "obs4mips": OBS4MIPS()}
 
 
 def get_project_facets(content: dict[str, Union[str, list[str]]]) -> list[str]:
