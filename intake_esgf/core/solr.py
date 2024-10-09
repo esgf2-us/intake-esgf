@@ -7,10 +7,7 @@ import pandas as pd
 import requests
 
 import intake_esgf
-from intake_esgf.base import (
-    expand_cmip5_record,
-    get_content_path,
-)
+import intake_esgf.base as base
 from intake_esgf.exceptions import NoSearchResults
 from intake_esgf.projects import get_project_facets
 
@@ -69,7 +66,7 @@ class SolrESGFIndex:
                     variables = search["variable"] if "variable" in search else []
                     if not isinstance(variables, list):
                         variables = [variables]
-                    record = expand_cmip5_record(
+                    record = base.expand_cmip5_record(
                         variables,
                         doc["variable"],
                         record,
@@ -130,7 +127,7 @@ class SolrESGFIndex:
                 info["checksum_type"] = doc["checksum_type"][0]
                 info["checksum"] = doc["checksum"][0]
                 info["size"] = doc["size"]
-                info["path"] = get_content_path(doc)
+                info["path"] = base.get_content_path(doc)
                 for entry in doc["url"]:
                     link, _, link_type = entry.split("|")
                     if link_type not in info:

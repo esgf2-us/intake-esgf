@@ -16,7 +16,7 @@ from globus_sdk import (
 from globus_sdk.tokenstorage import SimpleJSONFileAdapter
 
 import intake_esgf
-from intake_esgf.base import expand_cmip5_record, get_content_path
+import intake_esgf.base as base
 from intake_esgf.projects import get_project_facets
 
 CLIENT_ID = "81a13009-8326-456e-a487-2d1557d8eb11"  # intake-esgf
@@ -90,7 +90,7 @@ class GlobusESGFIndex:
                     variables = search["variable"] if "variable" in search else []
                     if not isinstance(variables, list):
                         variables = [variables]
-                    record = expand_cmip5_record(
+                    record = base.expand_cmip5_record(
                         variables,
                         content["variable"],
                         record,
@@ -132,11 +132,16 @@ class GlobusESGFIndex:
                         for url in content["url"]
                         if "HTTPServer" in url
                     ],
+                    "OPENDAP": [
+                        url.split("|")[0].replace(".html", "")
+                        for url in content["url"]
+                        if "OPENDAP" in url
+                    ],
                     "Globus": [
                         url.split("|")[0] for url in content["url"] if "Globus" in url
                     ],
                 }
-                info["path"] = get_content_path(content)
+                info["path"] = base.get_content_path(content)
                 infos.append(info)
         response_time = time.time() - response_time
         logger = intake_esgf.conf.get_logger()

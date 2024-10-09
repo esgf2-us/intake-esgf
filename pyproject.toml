@@ -13,7 +13,10 @@ write_to_template = '__version__ = "{version}"'
 
 [tool.pytest.ini_options]
 console_output_style = "count"
-addopts = "--cov=intake_esgf --cov-report=xml --verbose"
+addopts = "--cov=intake_esgf --cov-report=xml --verbose -m 'not globus_auth'"
+markers = [
+    "globus_auth: tests which require globus authentication",
+]
 
 [tool.coverage.run]
 omit = ["*/intake_esgf/tests/*"]

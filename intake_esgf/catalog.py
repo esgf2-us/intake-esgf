@@ -14,13 +14,8 @@ import xarray as xr
 from globus_sdk import TransferAPIError, TransferData
 
 import intake_esgf
+import intake_esgf.base as base
 from intake_esgf import IN_NOTEBOOK
-from intake_esgf.base import (
-    add_cell_measures,
-    bar_format,
-    combine_results,
-    parallel_download,
-)
 from intake_esgf.core import GlobusESGFIndex, SolrESGFIndex
 from intake_esgf.core.globus import get_authorized_transfer_client, variable_info
 from intake_esgf.database import (
@@ -303,11 +298,11 @@ class ESGFCatalog:
         # threaded search over indices
         search_time = time.time()
         dfs = ThreadPool(len(self.indices)).imap_unordered(_search, self.indices)
-        self.df = combine_results(
+        self.df = base.combine_results(
             tqdm(
                 dfs,
                 disable=quiet,
-                bar_format=bar_format,
+                bar_format=base.bar_format,
                 unit="index",
                 unit_scale=False,
                 desc="Searching indices",
@@ -318,7 +313,7 @@ class ESGFCatalog:
         self._set_project()
 
         # even though we are using latest=True, because the search is distributed, we
-        # may have different versions.
+        # may have different versions from different indices.
         for r, row in self.df.iterrows():
             latest = max([x.split("|")[0].split(".")[-1] for x in row.id])
             self.df.loc[r, "id"] = [x for x in row.id if latest in x]
@@ -371,11 +366,11 @@ class ESGFCatalog:
         dfs = ThreadPool(len(self.indices)).imap_unordered(
             _from_tracking_ids, self.indices
         )
-        self.df = combine_results(
+        self.df = base.combine_results(
             tqdm(
                 dfs,
                 disable=quiet,
-                bar_format=bar_format,
+                bar_format=base.bar_format,
                 unit="index",
                 unit_scale=False,
                 desc="Searching indices",
@@ -414,7 +409,7 @@ class ESGFCatalog:
 
         # Eventually we will return a dictionary of paths/datasets. The keys of this
         # dictionary we will initialize to the master_id facets joined together by the
-        # `separator` and placed in a new column in the dataframe called `keys`
+        # `separator` and placed in a new column in the dataframe called `key`
         if self.project is None:
             self._set_project()
         self.df["key"] = self.df.apply(
@@ -453,7 +448,7 @@ class ESGFCatalog:
             tqdm(
                 get_file_info,
                 disable=quiet,
-                bar_format=bar_format,
+                bar_format=base.bar_format,
                 unit="index",
                 unit_scale=False,
                 desc="Get file information",
@@ -608,7 +603,7 @@ class ESGFCatalog:
         if infos_https:
             results += ThreadPool(min(num_threads, len(infos_https))).imap_unordered(
                 partial(
-                    parallel_download,
+                    base.parallel_download,
                     local_cache=self.local_cache,
                     download_db=self.download_db,
                     esg_dataroot=self.esg_dataroot,
@@ -660,12 +655,17 @@ class ESGFCatalog:
         quiet: bool = False,
         globus_endpoint: Union[str, None] = None,
         globus_path: Union[Path, None] = None,
+        prefer_streaming: bool = False,
     ):
         """ """
         if self.df is None or len(self.df) == 0:
             raise ValueError("No entries to retrieve.")
         infos = self._get_file_info(separator=separator, quiet=quiet)
-        self._move_data(infos, num_threads, globus_endpoint, globus_path)
+        infos = base.partition_infos(
+            infos,
+            prefer_streaming,
+            prefer_globus=False if globus_endpoint is None else True,
+        )
 
     def to_dataset_dict(
         self,
@@ -726,14 +726,14 @@ class ESGFCatalog:
             for key in tqdm(
                 ds,
                 disable=quiet,
-                bar_format=bar_format,
+                bar_format=base.bar_format,
                 unit="dataset",
                 unit_scale=False,
                 desc="Adding cell measures",
                 ascii=False,
                 total=len(ds),
             ):
-                ds[key] = add_cell_measures(ds[key], self)
+                ds[key] = base.add_cell_measures(ds[key], self)
 
         # If the user specifies operators, apply them now
         for op in operators:

@@ -5,8 +5,8 @@ from typing import Union
 import pandas as pd
 import xarray as xr
 
+import intake_esgf.base as base
 from intake_esgf import IN_NOTEBOOK
-from intake_esgf.base import bar_format, get_cell_measure, get_search_criteria
 from intake_esgf.projects import get_likely_project, projects
 
 if IN_NOTEBOOK:
@@ -31,7 +31,7 @@ def global_sum(
         ds_sum = {}
         ds_attrs = ds.attrs
         for var, da in ds.items():
-            measure = get_cell_measure(var, ds)
+            measure = base.get_cell_measure(var, ds)
             if measure is None:
                 continue
             attrs = da.attrs  # attributes get dropped, so we rem them
@@ -48,7 +48,7 @@ def global_sum(
     for key, ds in tqdm(
         dsd.items(),
         disable=quiet,
-        bar_format=bar_format,
+        bar_format=base.bar_format,
         unit="dataset",
         unit_scale=False,
         desc="Global sum",
@@ -75,7 +75,7 @@ def global_mean(
         ds_mean = {}
         ds_attrs = ds.attrs
         for var, da in ds.items():
-            measure = get_cell_measure(var, ds)
+            measure = base.get_cell_measure(var, ds)
             if measure is None:
                 continue
             attrs = da.attrs  # attributes get dropped, so we rem them
@@ -91,7 +91,7 @@ def global_mean(
     for key, ds in tqdm(
         dsd.items(),
         disable=quiet,
-        bar_format=bar_format,
+        bar_format=base.bar_format,
         unit="dataset",
         unit_scale=False,
         desc="Global mean",
@@ -127,7 +127,7 @@ def ensemble_mean(
     for key, ds in dsd.items():
         project_id = get_likely_project(ds.attrs)
         project = projects[project_id]
-        df.append(get_search_criteria(ds, project_id))
+        df.append(base.get_search_criteria(ds, project_id))
         df[-1]["key"] = key
     df = pd.DataFrame(df)
     # now groupby everything but the variant_label and compute the mean/std
@@ -137,7 +137,7 @@ def ensemble_mean(
     for _, grp in tqdm(
         df.groupby(grp_cols),
         disable=quiet,
-        bar_format=bar_format,
+        bar_format=base.bar_format,
         unit="dataset",
         unit_scale=False,
         desc="Ensemble mean",

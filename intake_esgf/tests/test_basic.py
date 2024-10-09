@@ -1,5 +1,10 @@
+from pathlib import Path
+
+import pytest
+
 import intake_esgf
 from intake_esgf import ESGFCatalog
+from intake_esgf.base import partition_infos
 from intake_esgf.exceptions import NoSearchResults
 
 SOLR_TEST = "esgf-node.llnl.gov"
@@ -121,3 +126,73 @@ def test_variable_info():
             "tsl",
         ]
     ).all()
+
+
+def test_partition_infos():
+    # Only https available
+    infos = [
+        {
+            "key": "dataset1",
+            "path": Path("file1"),
+            "HTTPServer": ["link1", "link2"],
+        },
+        {
+            "key": "dataset1",
+            "path": Path("file2"),
+            "HTTPServer": ["link1", "link2"],
+        },
+    ]
+    infos_, _ = partition_infos(infos, False, False)
+    assert max([len(infos_[p]) for p in ["exist", "stream", "globus"]]) == 0
+    assert len(infos_["https"]) == 2
+    infos_, _ = partition_infos(infos, True, True)
+    assert max([len(infos_[p]) for p in ["exist", "stream", "globus"]]) == 0
+    assert len(infos_["https"]) == 2
+
+
+def test_partition_infos_stream():
+    infos = [
+        {
+            "key": "dataset1",
+            "path": Path("file1"),
+            "VirtualZarr": ["link1", "link2"],
+        },
+        {
+            "key": "dataset2",
+            "path": Path("file1"),
+            "HTTPServer": ["link1", "link2"],
+            "OPENDAP": ["link1", "link2"],
+        },
+    ]
+    infos_, ds = partition_infos(infos, False, False)
+    assert max([len(infos_[p]) for p in ["exist", "stream", "globus"]]) == 0
+    assert len(infos_["https"]) == 2
+    assert len(ds) == 0
+    infos_, ds = partition_infos(infos, True, True)
+    assert max([len(infos_[p]) for p in ["exist", "globus", "https"]]) == 0
+    assert len(infos_["stream"]) == 2
+    assert len(ds) == 2
+
+
+@pytest.mark.globus_auth
+def test_partition_infos_globus():
+    # Check globus options, but with invalid endpoints
+    infos = [
+        {
+            "key": "dataset2",
+            "path": Path("file3"),
+            "HTTPServer": ["link1", "link2"],
+            "Globus": [
+                "globus:123456789/blah",
+            ],
+        }
+    ]
+    infos_, _ = partition_infos(infos, False, True)
+    assert max([len(infos_[p]) for p in ["exist", "stream", "globus"]]) == 0
+    assert len(infos_["https"]) == 1
+
+    # Add a valid endpoint (depends on it being active)
+    infos[0]["Globus"] = ["globus://8896f38e-68d1-4708-bce4-b1b3a3405809/blah"]
+    infos_, _ = partition_infos(infos, False, True)
+    assert max([len(infos_[p]) for p in ["exist", "stream", "https"]]) == 0
+    assert len(infos_["globus"]) == 1
