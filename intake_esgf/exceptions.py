@@ -11,10 +11,6 @@ class NoSearchResults(IntakeESGFException):
     """Search returned no results."""
 
 
-class SearchError(IntakeESGFException):
-    """Search was used incorrectly."""
-
-
 class LocalCacheNotWritable(IntakeESGFException):
     """You do not have permission to write in the cache directories."""
 
