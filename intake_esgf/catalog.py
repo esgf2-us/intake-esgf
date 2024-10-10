@@ -7,7 +7,7 @@ from collections.abc import Callable
 from functools import partial
 from multiprocessing.pool import ThreadPool
 from pathlib import Path
-from typing import Literal
+from typing import Literal, Self
 
 import pandas as pd
 import requests
@@ -40,54 +40,29 @@ else:
     from tqdm import tqdm
 
 
-def _load_into_dsd(dsd, infos):
-    for info in infos:
-        try:
-            path = base.get_local_file(info["path"], intake_esgf.conf["local_cache"])
-        except Exception:
-            # This means that the download failed, decide on handling, skip for
-            # now
-            continue
-        key = info["key"]
-        if key not in dsd:
-            dsd[key] = []
-        dsd[key] += [path]
-    return dsd
-
-
-def _minimal_key_format(cat, ignore_facets: list[str] | str | None = None) -> list[str]:
-    if ignore_facets is None:
-        ignore_facets = []
-    if isinstance(ignore_facets, str):
-        ignore_facets = [ignore_facets]
-    output_key_format = [
-        col
-        for col in cat.project.master_id_facets()
-        if ((cat.df[col].iloc[0] != cat.df[col]).any() and col not in ignore_facets)
-    ]
-    if not output_key_format:
-        output_key_format = [cat.project.variable_facet()]
-    return output_key_format
-
-
 class ESGFCatalog:
-    """A data catalog for searching ESGF nodes and downloading data.
+    """
+    A data catalog for searching ESGF nodes and downloading data.
 
     Attributes
     ----------
-    indices : list[Union[SolrESGFIndex, GlobusESGFIndex]]
-        A list of indices to search, implementations are in `intake_esgf.core`. The test
-        Globus index `anl-dev` is default and always included.
+    indices : list[SolrESGFIndex | GlobusESGFIndex]
+        A list of indices to search, implementations are in `intake_esgf.core`.
     df : pd.DataFrame
-        A pandas dataframe into which the results from the search are parsed. Once you
-        are satisfied with the datasets listed in this dataframe, calling
-        `to_dataset_dict()` will then requery the indices to obtain file information and
-        then download files in parallel.
+        A pandas dataframe into which the results from the search are parsed. You may
+        manipulate this dataframe by removing rows or adding columns.
+    project : ESGFProject
+        A class which provides facet usage in the current project.
+    session_time : pd.Timestamp
+        The time that the class instance was initialized.
     last_search: dict
         The keywords and values used in the previous call to `search()`.
-    session_time : pd.Timestamp
-        The time that the class instance was initialized. Used in `session_log()` to
-        parse out only the portion of the log used in this session.
+    local_cache: list[Path]
+        The local caches to which data will be read/downloaded.
+    esg_dataroot: list[Path]
+        A lits of locations from which data is loaded.
+    download_db: Path
+        The path to a database into which download hosts, sizes, and transfer times are recored.
     """
 
     def __init__(self):
@@ -113,15 +88,19 @@ class ESGFCatalog:
         self.download_db = None
         self._initialize()
 
-    def __repr__(self):
-        """Return the unique facets and values from the search."""
+    def __repr__(self) -> str:
+        """
+        Return the unique facets and values from the search.
+        """
         if self.df is None:
             return "Perform a search() to populate the catalog."
         repr = f"Summary information for {len(self.df)} results:\n"
         return repr + self.unique().__repr__()
 
-    def _initialize(self):
-        """Ensure that directories and pertinent files are created."""
+    def _initialize(self) -> None:
+        """
+        Ensure that directories and pertinent files are created.
+        """
 
         def is_writable(dir: Path) -> bool:
             test = dir / "tmp.txt"
@@ -176,7 +155,18 @@ class ESGFCatalog:
         self, ignore_facets: list[str] | str | None = None
     ) -> list[str]:
         """
-        Return the facets that have different values in the current catalog.
+        Return the facets which have different values in the current catalog.
+
+        Parameters
+        ----------
+        ignore_facets: list[str] or str, optional
+            The facets you wish to ignore. This is useful if, for example, you have
+            variables from different tables, but do not wish the `table_id` to be part of
+            the keys.
+
+        Returns
+        -------
+        list[str]
         """
         if ignore_facets is None:
             ignore_facets = []
@@ -194,12 +184,12 @@ class ESGFCatalog:
             output_key_format = [self.project.variable_facet()]
         return output_key_format
 
-    def clone(self):
-        """Return a new instance of a catalog with the same indices and settings.
+    def clone(self) -> "ESGFCatalog":
+        """
+        Return a new instance of a catalog with the same indices and settings.
 
         This is used internally for when we want to find cell measures relating to the
         previous search but not overwrite the results.
-
         """
         cat = ESGFCatalog()
         cat.indices = self.indices
@@ -208,7 +198,9 @@ class ESGFCatalog:
         return cat
 
     def unique(self) -> pd.Series:
-        """Return the the unique values in each facet of the search."""
+        """
+        Return the the unique values in each facet of the search.
+        """
         if self.df is None:
             raise ValueError("Perform a search() to populate the catalog.")
         out = {}
@@ -226,7 +218,9 @@ class ESGFCatalog:
         return pd.Series(out)
 
     def model_groups(self) -> pd.Series:
-        """Return counts for unique combinations of (source_id,member_id,grid_label)."""
+        """
+        Return counts for unique combinations of (source_id,member_id,grid_label).
+        """
 
         def _extract_int_pattern(sample: str) -> str:
             ints = re.findall(r"\d+", sample)
@@ -273,16 +267,16 @@ class ESGFCatalog:
             .iloc[:, 0]
         )
 
-    def search(self, quiet: bool = False, **search: str | list[str]):
-        """Populate the catalog by specifying search facets and values.
+    def search(self, quiet: bool = False, **search) -> Self:
+        """
+        Populate the catalog by specifying search facets and values.
 
         Parameters
         ----------
         quiet
             Enable to silence the progress bar.
-        search
+        **search
             Any number of facet keywords and values.
-
         """
         logger = intake_esgf.conf.get_logger()
 
@@ -356,8 +350,11 @@ class ESGFCatalog:
         self.last_search = search
         return self
 
-    def from_tracking_ids(self, tracking_ids: str | list[str], quiet: bool = False):
-        """Populate the catalog by speciying tracking ids.
+    def from_tracking_ids(
+        self, tracking_ids: str | list[str], quiet: bool = False
+    ) -> Self:
+        """
+        Populate the catalog by speciying tracking ids.
 
         While tracking_ids should uniquely define individual files, we observe that some
         centers erronsouly reuse ids on multiple files. For this reason, you may find
@@ -369,7 +366,6 @@ class ESGFCatalog:
             The ids whose datasets will form the items in the catalog.
         quiet
             Enable to silence the progress bar.
-
         """
         logger = intake_esgf.conf.get_logger()
 
@@ -420,7 +416,21 @@ class ESGFCatalog:
         return self
 
     def _get_file_info(self, separator: str = ".", quiet: bool = False) -> list[dict]:
-        """Query and return file information datasets present in the catalog."""
+        """
+        Query and return file information datasets present in the catalog.
+
+        Parameters
+        ----------
+        separator: str
+            The character to use in between facets in the key values.
+        quiet: bool
+            Enable to silence the progress bar.
+
+        Returns
+        -------
+        list[dict]
+            The file info combined from all sources.
+        """
 
         def _get_file_info(index, dataset_ids, **search_facets):
             try:
@@ -523,7 +533,30 @@ class ESGFCatalog:
         separator: str = ".",
         quiet: bool = False,
     ) -> dict[str, list[Path]]:
-        """ """
+        """
+        Return the current search as a dictionary of paths to files.
+
+        Parameters
+        ----------
+        prefer_streaming: bool
+            Enable to use streaming links (OPENDAP, Zarr, Kerchunk, etc.) instead of
+            downloading data.
+        globus_endpoint: str
+            A destination globus endpoint UUID to which we will transfer files using
+            Globus Transfers where possible.
+        globus_path: Path
+            The relative path to the endpoint root into which we will save files in the
+            Globus Transfer.
+        minimal_keys: bool
+            Disable to return a dictonary whose keys are formed using all facets in the
+            master_id.
+        ignore_facets: str or list of str
+            When constructing the dictionary keys, which facets should we ignore?
+        separator: str
+            When generating the keys, the string to use as a seperator of facets.
+        quiet: bool
+            Enable to quiet the progress bars.
+        """
         if self.df is None or len(self.df) == 0:
             raise ValueError("No entries to retrieve.")
         prefer_globus = globus_endpoint is not None
@@ -586,7 +619,7 @@ class ESGFCatalog:
 
         # optionally simplify the keys
         if minimal_keys:
-            key_format = _minimal_key_format(self, ignore_facets)
+            key_format = self._minimal_key_format(self, ignore_facets)
             key_map = {
                 row["key"]: separator.join(row[key_format])
                 for _, row in self.df.iterrows()
@@ -606,21 +639,31 @@ class ESGFCatalog:
         separator: str = ".",
         quiet: bool = False,
     ) -> dict[str, xr.Dataset]:
-        """Return the current search as a dictionary of datasets.
-
-        By default, the keys of the returned dictionary are the minimal set of facets
-        required to uniquely describe the search. If you prefer to use a full set of
-        facets, set `minimal_keys=False`.
+        """
+        Return the current search as a dictionary of datasets.
 
         Parameters
         ----------
-        minimal_keys
-            Disable to return a dictonary whose keys are formed using all facets, by
-            default we use a minimal set of facets to build the simplest keys.
-        ignore_facets
+        prefer_streaming: bool
+            Enable to use streaming links (OPENDAP, Zarr, Kerchunk, etc.) instead of
+            downloading data.
+        globus_endpoint: str
+            A destination globus endpoint UUID to which we will transfer files using
+            Globus Transfers where possible.
+        globus_path: Path
+            The relative path to the endpoint root into which we will save files in the
+            Globus Transfer.
+        add_measures: bool
+            Disable to supress the automated search for cell measure information.
+        minimal_keys: bool
+            Disable to return a dictonary whose keys are formed using all facets in the
+            master_id.
+        ignore_facets: str or list of str
             When constructing the dictionary keys, which facets should we ignore?
-        separator
+        separator: str
             When generating the keys, the string to use as a seperator of facets.
+        quiet: bool
+            Enable to quiet the progress bars.
         """
         logger = intake_esgf.conf.get_logger()
         ds = self.to_path_dict(
@@ -686,7 +729,7 @@ class ESGFCatalog:
 
         # optionally simplify the keys
         if minimal_keys:
-            key_format = _minimal_key_format(self, ignore_facets)
+            key_format = self._minimal_key_format(self, ignore_facets)
             key_map = {
                 row["key"]: separator.join(row[key_format])
                 for _, row in self.df.iterrows()
@@ -699,8 +742,9 @@ class ESGFCatalog:
 
         return ds
 
-    def remove_incomplete(self, complete: Callable[[pd.DataFrame], bool]):
-        """Remove the incomplete search results as defined by the `complete` function.
+    def remove_incomplete(self, complete: Callable[[pd.DataFrame], bool]) -> Self:
+        """
+        Remove the incomplete search results as defined by the `complete` function.
 
         While the ESGF search results will return anything matching the criteria, we are
         typically interested in unique combinations of `source_id`, `member_id`, and
@@ -724,7 +768,7 @@ class ESGFCatalog:
                 self.df = self.df.drop(grp.index)
         return self
 
-    def remove_ensembles(self):
+    def remove_ensembles(self) -> Self:
         """Remove higher numeric ensembles for each `source_id`.
 
         Many times an ESGF search will return possible many ensembles, but you only need
@@ -745,7 +789,9 @@ class ESGFCatalog:
         return self
 
     def session_log(self) -> str:
-        """Return the log since the instantiation of `ESGFCatalog()`."""
+        """
+        Return the log since the instantiation of this catalog.
+        """
         log = open(Path(intake_esgf.conf["logfile"]).expanduser()).readlines()[::-1]
         for n, line in enumerate(log):
             m = re.search(r"\x1b\[36;20m(.*)\s\033\[0m", line)
@@ -762,7 +808,8 @@ class ESGFCatalog:
         history: Literal[None, "day", "week", "month"] = None,
         minimum_size: float = 0,
     ) -> pd.DataFrame:
-        """Return the per host download summary statistics as a dataframe.
+        """
+        Return the per host download summary statistics as a dataframe.
 
         Parameters
         ----------
@@ -771,7 +818,6 @@ class ESGFCatalog:
             use the entire history.
         minimum_size
             The minimum size in Mb to include in the reported record.
-
         """
         df = get_download_rate_dataframe(
             self.download_db, history=history, minimum_size=minimum_size
@@ -787,7 +833,8 @@ class ESGFCatalog:
         return df
 
     def variable_info(self, query: str, project: str = "CMIP6") -> pd.DataFrame:
-        """Return a dataframe with variable information from a query.
+        """
+        Return a dataframe with variable information from a query.
 
         If you are new to searching for data in ESGF, you may not know how to figure out
         what variables you need for your purpose.
@@ -804,6 +851,54 @@ class ESGFCatalog:
         df
             A dataframe with the possibly relevant variables, their units, and various
             name and description fields.
-
         """
         return variable_info(query, project)
+
+
+def _load_into_dsd(
+    dsd: dict[str, list[Path]], infos: list[dict]
+) -> dict[str, list[Path]]:
+    """
+    Insert the local path into the dictinoary if the file exists.
+
+    Parameters
+    ----------
+    dsd: dict[str,list[Path]]
+        A dictionary of a list of paths whose keys are datasets.
+    infos: list[dict]
+        A list of file info to parse.
+
+    Returns
+    -------
+    dict[str,list[Path]]
+        The dataset dictionary with paths from the file info loaded.
+    """
+    for info in infos:
+        try:
+            path = base.get_local_file(info["path"], intake_esgf.conf["local_cache"])
+        except Exception:
+            # This means that the file isn't there, will be reported down the line
+            continue
+        key = info["key"]
+        if key not in dsd:
+            dsd[key] = []
+        dsd[key] += [path]
+    return dsd
+
+
+def _minimal_key_format(
+    cat: ESGFCatalog, ignore_facets: list[str] | str | None = None
+) -> list[str]:
+    """ """
+    if ignore_facets is None:
+        ignore_facets = []
+    if isinstance(ignore_facets, str):
+        ignore_facets = [ignore_facets]
+    output_key_format = [
+        col
+        for col in cat.project.master_id_facets()
+        if ((cat.df[col].iloc[0] != cat.df[col]).any() and col not in ignore_facets)
+    ]
+    if not output_key_format:
+        output_key_format = [cat.project.variable_facet()]
+    return output_key_format
