@@ -34,6 +34,7 @@ defaults = {
     "logfile": "~/.config/intake-esgf/esgf.log",
     "download_db": "~/.config/intake-esgf/download.db",
     "num_threads": 6,
+    "break_on_error": True,
 }
 
 
@@ -81,6 +82,7 @@ class Config(dict):
         local_cache: Union[list[str], None] = None,
         additional_df_cols: Union[list[str], None] = None,
         num_threads: Union[int, None] = None,
+        break_on_error: Union[bool, None] = None
     ):
         """Change intake-esgf configuration options.
 
@@ -100,6 +102,8 @@ class Config(dict):
             of the search results.
         num_threads: int
             The number of threads to use when downloading via https.
+        break_on_error: bool
+            Should a user script continue if any of the datasets fail to load?
 
         Examples
         --------
@@ -142,7 +146,8 @@ class Config(dict):
             )
         if num_threads is not None:
             self["num_threads"] = int(num_threads)
-
+        if break_on_error is not None:
+            self["break_on_error"] = bool(break_on_error)
         return self._unset(temp)
 
     def __getitem__(self, item):

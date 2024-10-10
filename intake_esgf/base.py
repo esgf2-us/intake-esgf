@@ -152,7 +152,7 @@ def partition_infos(
         # 2) does the user prefer to stream data?
         if prefer_streaming:
             # how do we choose a link?
-            preferred_sources = ["VirtualZarr", "OPENDAP"]
+            preferred_sources = ["VirtualZarr", "OPENDAP"]  # move to configure
             links = [
                 link
                 for src in (set(preferred_sources) & set(info))

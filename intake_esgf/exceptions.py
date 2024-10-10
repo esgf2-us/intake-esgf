@@ -33,3 +33,25 @@ class ProjectNotSupported(IntakeESGFException):
 
     def __str__(self):
         return f"The '{self.project}' project is not yet supported by intake-esgf"
+
+
+class MissingFileInformation(IntakeESGFException):
+    """There was incomplete file access information"""
+
+    def __init__(self, problem_keys: list[str]):
+        self.problem_keys = problem_keys
+
+    def __str__(self):
+        return f"We were unable to find file information for these keys: {self.problem_keys}. Your access options could affect the possibilties."
+
+
+class DatasetInitError(IntakeESGFException):
+    """There was a problem initializing datasets."""
+
+    def __init__(self, problem_keys: list[str]):
+        self.problem_keys = problem_keys
+
+    def __str__(self):
+        return (
+            f"xarray threw an exception while loading these keys: {self.problem_keys}"
+        )

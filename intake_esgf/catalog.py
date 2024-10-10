@@ -25,7 +25,12 @@ from intake_esgf.database import (
     create_download_database,
     get_download_rate_dataframe,
 )
-from intake_esgf.exceptions import LocalCacheNotWritable, NoSearchResults
+from intake_esgf.exceptions import (
+    DatasetInitError,
+    LocalCacheNotWritable,
+    MissingFileInformation,
+    NoSearchResults,
+)
 from intake_esgf.projects import projects as esgf_projects
 
 if IN_NOTEBOOK:
@@ -578,7 +583,9 @@ class ESGFCatalog:
         # did we get everything that was in the catalog?
         missed = set(self.df["key"]) - set(dsd)
         if missed:
-            warnings.warn("We could not download your entire catalog, {missed=}")
+            warnings.warn(f"We could not download your entire catalog, {missed=}")
+            if intake_esgf.conf["break_on_error"]:
+                raise MissingFileInformation(missed)
 
         # optionally simplify the keys
         if minimal_keys:
@@ -630,13 +637,32 @@ class ESGFCatalog:
         )
 
         # load paths into xarray objects (also log files accessed)
+        exceptions = []
+        failed_keys = []
         for key, files in ds.items():
-            for f in files:
-                logger.info(f"accessed {f}")
+            [logger.info(f"accessed {f}") for f in files]
             if len(files) == 1:
-                ds[key] = xr.open_dataset(files[0])
+                try:
+                    ds[key] = xr.open_dataset(files[0])
+                except Exception as ex:
+                    warnings.warn(
+                        f"xarray threw an exception opening this file: {files[0]}"
+                    )
+                    failed_keys.append(key)
+                    exceptions.append(ex)
             elif len(files) > 1:
-                ds[key] = xr.open_mfdataset(sorted(files))
+                try:
+                    ds[key] = xr.open_mfdataset(sorted(files))
+                except Exception as ex:
+                    warnings.warn(
+                        f"xarray threw an exception opening these files: {files}"
+                    )
+                    failed_keys.append(key)
+                    exceptions.append(ex)
+        if intake_esgf.conf["break_on_error"] and exceptions:
+            for ex in exceptions:
+                print(ex)
+            raise DatasetInitError(failed_keys)
 
         # master_id facets should be in the global attributes of each file, but
         # sometimes they aren't
@@ -648,7 +674,7 @@ class ESGFCatalog:
             ds[key].attrs.update(row[master_id_facets].to_dict())
 
         # attempt to add cell measures (serial), only work for CMIP6 for now
-        if add_measures and "cmip6" in str(self.project.__class__).lower():
+        if ds and add_measures and "cmip6" in str(self.project.__class__).lower():
             for key in tqdm(
                 ds,
                 disable=quiet,
@@ -668,7 +694,11 @@ class ESGFCatalog:
                 row["key"]: separator.join(row[key_format])
                 for _, row in self.df.iterrows()
             }
-            ds = {key_new: ds[key_old] for key_old, key_new in key_map.items()}
+            ds = {
+                key_new: ds[key_old]
+                for key_old, key_new in key_map.items()
+                if key_old in ds
+            }
 
         return ds
 
