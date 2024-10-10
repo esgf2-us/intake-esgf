@@ -33,6 +33,7 @@ defaults = {
     ],
     "logfile": "~/.config/intake-esgf/esgf.log",
     "download_db": "~/.config/intake-esgf/download.db",
+    "num_threads": 6,
 }
 
 
@@ -78,7 +79,8 @@ class Config(dict):
         all_indices: bool = False,
         esg_dataroot: Union[list[str], None] = None,
         local_cache: Union[list[str], None] = None,
-        additional_df_cols: Union[list[str], None] = None
+        additional_df_cols: Union[list[str], None] = None,
+        num_threads: Union[int, None] = None,
     ):
         """Change intake-esgf configuration options.
 
@@ -96,6 +98,8 @@ class Config(dict):
         additional_df_cols: list
             Additional columns to include in the dataframe. Must be part
             of the search results.
+        num_threads: int
+            The number of threads to use when downloading via https.
 
         Examples
         --------
@@ -136,6 +140,8 @@ class Config(dict):
                 if isinstance(additional_df_cols, list)
                 else [additional_df_cols]
             )
+        if num_threads is not None:
+            self["num_threads"] = int(num_threads)
 
         return self._unset(temp)
 
