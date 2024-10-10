@@ -5,7 +5,7 @@ import re
 import time
 from functools import partial
 from pathlib import Path
-from typing import Any, Union
+from typing import Any
 
 import pandas as pd
 import requests
@@ -59,7 +59,7 @@ def combine_results(dfs: list[pd.DataFrame]) -> pd.DataFrame:
     return df
 
 
-def get_file_hash(filepath: Union[str, Path], algorithm: str) -> str:
+def get_file_hash(filepath: str | Path, algorithm: str) -> str:
     """Get the file has using the given algorithm."""
     algorithm = algorithm.lower()
     assert algorithm in hashlib.algorithms_available
@@ -75,7 +75,7 @@ def get_file_hash(filepath: Union[str, Path], algorithm: str) -> str:
 
 def download_and_verify(
     url: str,
-    local_file: Union[str, Path],
+    local_file: str | Path,
     hash: str,
     hash_algorithm: str,
     content_length: int,
@@ -126,7 +126,7 @@ def parallel_download(
     info: dict[str, Any],
     local_cache: list[Path],
     download_db: Path,
-    esg_dataroot: Union[None, list[Path]] = None,
+    esg_dataroot: None | list[Path] = None,
 ):
     """."""
     logger = intake_esgf.conf.get_logger()
@@ -168,7 +168,7 @@ def parallel_download(
 
 
 def get_search_criteria(
-    ds: xr.Dataset, project_id: Union[str, None] = None
+    ds: xr.Dataset, project_id: str | None = None
 ) -> dict[str, str]:
     """Return a dictionary of facet information from the dataset attributes."""
     if "project" in ds.attrs:
@@ -282,7 +282,7 @@ def add_cell_measures(ds: xr.Dataset, catalog) -> xr.Dataset:
     return ds
 
 
-def get_cell_measure(var: str, ds: xr.Dataset) -> Union[xr.DataArray, None]:
+def get_cell_measure(var: str, ds: xr.Dataset) -> xr.DataArray | None:
     """Return the dataarray of the measures required by the given var.
 
     This routine will examine the `cell_measures` attribute of the specified `var` as

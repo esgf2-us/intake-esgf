@@ -1,7 +1,6 @@
 """Supported projects and their facet definitions."""
 
 from abc import ABC, abstractmethod
-from typing import Union
 
 from intake_esgf.exceptions import ProjectNotSupported
 
@@ -254,7 +253,7 @@ class CMIP3(ESGFProject):
 projects = {"cmip6": CMIP6(), "cmip5": CMIP5(), "cmip3": CMIP3()}
 
 
-def get_project_facets(content: dict[str, Union[str, list[str]]]) -> list[str]:
+def get_project_facets(content: dict[str, str | list[str]]) -> list[str]:
     """
     Return the facets for the project found defined in the given content.
 
@@ -280,7 +279,7 @@ def get_project_facets(content: dict[str, Union[str, list[str]]]) -> list[str]:
     return project.id_facets()
 
 
-def get_likely_project(facets: Union[list, dict]) -> str:
+def get_likely_project(facets: list | dict) -> str:
     """
     Return the project which is likely to correspond to the given facets.
 

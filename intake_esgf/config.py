@@ -4,7 +4,6 @@ import contextlib
 import copy
 import logging
 from pathlib import Path
-from typing import Union
 
 import yaml
 
@@ -39,7 +38,7 @@ defaults = {
 class Config(dict):
     """A global configuration object used in the package."""
 
-    def __init__(self, filename: Union[Path, None] = None, **kwargs):
+    def __init__(self, filename: Path | None = None, **kwargs):
         self.filename = (
             Path(filename)
             if filename is not None
@@ -58,7 +57,7 @@ class Config(dict):
         self.clear()
         self.update(copy.deepcopy(defaults))
 
-    def save(self, filename: Union[Path, None] = None):
+    def save(self, filename: Path | None = None):
         """Save current configuration to file as YAML."""
         filename = filename or self.filename
         filename.parent.mkdir(parents=True, exist_ok=True)
@@ -76,9 +75,9 @@ class Config(dict):
         *,
         indices: dict[str, bool] = {},
         all_indices: bool = False,
-        esg_dataroot: Union[list[str], None] = None,
-        local_cache: Union[list[str], None] = None,
-        additional_df_cols: Union[list[str], None] = None
+        esg_dataroot: list[str] | None = None,
+        local_cache: list[str] | None = None,
+        additional_df_cols: list[str] | None = None
     ):
         """Change intake-esgf configuration options.
 
@@ -156,7 +155,7 @@ class Config(dict):
         self.reset()
         self.load()
 
-    def load(self, filename: Union[Path, None] = None):
+    def load(self, filename: Path | None = None):
         """Update global config from YAML file or default file if None."""
         filename = filename or self.filename
         if filename.is_file():
