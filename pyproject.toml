@@ -19,7 +19,7 @@ addopts = "--cov=intake_esgf --cov-report=xml --verbose"
 omit = ["*/intake_esgf/tests/*"]
 
 [tool.ruff]
-target-version = "py39"
+target-version = "py310"
 ignore = [
     "E501", # line too long - let black worry about that
 ]

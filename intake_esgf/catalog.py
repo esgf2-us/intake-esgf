@@ -3,10 +3,11 @@
 import re
 import time
 import warnings
+from collections.abc import Callable
 from functools import partial
 from multiprocessing.pool import ThreadPool
 from pathlib import Path
-from typing import Callable, Literal, Union
+from typing import Literal, Union
 
 import pandas as pd
 import requests
@@ -202,7 +203,7 @@ class ESGFCatalog:
             .iloc[:, 0]
         )
 
-    def search(self, quiet: bool = False, **search: Union[str, list[str]]):
+    def search(self, quiet: bool = False, **search: str | list[str]):
         """Populate the catalog by specifying search facets and values.
 
         Parameters
@@ -287,9 +288,7 @@ class ESGFCatalog:
         self.last_search = search
         return self
 
-    def from_tracking_ids(
-        self, tracking_ids: Union[str, list[str]], quiet: bool = False
-    ):
+    def from_tracking_ids(self, tracking_ids: str | list[str], quiet: bool = False):
         """Populate the catalog by speciying tracking ids.
 
         While tracking_ids should uniquely define individual files, we observe that some
@@ -497,8 +496,8 @@ class ESGFCatalog:
         self,
         infos,
         num_threads,
-        globus_endpoint: Union[str, None] = None,
-        globus_path: Union[Path, None] = None,
+        globus_endpoint: str | None = None,
+        globus_path: Path | None = None,
     ):
         """Move data either by https or globus transfers."""
         logger = intake_esgf.conf.get_logger()
@@ -594,7 +593,7 @@ class ESGFCatalog:
     def to_dataset_dict(
         self,
         minimal_keys: bool = True,
-        ignore_facets: Union[None, str, list[str]] = None,
+        ignore_facets: None | str | list[str] = None,
         separator: str = ".",
         num_threads: int = 6,
         quiet: bool = False,
