@@ -3,7 +3,7 @@
 import time
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Union
+from typing import Any
 
 import pandas as pd
 from globus_sdk import (
@@ -41,7 +41,7 @@ class GlobusESGFIndex:
     def __repr__(self):
         return self.repr
 
-    def search(self, **search: Union[str, list[str]]) -> pd.DataFrame:
+    def search(self, **search: str | list[str]) -> pd.DataFrame:
         """Search the index and return as a pandas dataframe.
 
         This function uses the Globus `post_search()` function where our query consists

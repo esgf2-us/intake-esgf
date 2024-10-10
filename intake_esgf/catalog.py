@@ -3,10 +3,11 @@
 import re
 import time
 import warnings
+from collections.abc import Callable
 from functools import partial
 from multiprocessing.pool import ThreadPool
 from pathlib import Path
-from typing import Callable, Literal, Union
+from typing import Literal
 
 import pandas as pd
 import requests
@@ -54,9 +55,7 @@ def _load_into_dsd(dsd, infos):
     return dsd
 
 
-def _minimal_key_format(
-    cat, ignore_facets: Union[list[str], str, None] = None
-) -> list[str]:
+def _minimal_key_format(cat, ignore_facets: list[str] | str | None = None) -> list[str]:
     if ignore_facets is None:
         ignore_facets = []
     if isinstance(ignore_facets, str):
@@ -174,7 +173,7 @@ class ESGFCatalog:
         self.project = esgf_projects[project[0].lower()]
 
     def _minimal_key_format(
-        self, ignore_facets: Union[list[str], str, None] = None
+        self, ignore_facets: list[str] | str | None = None
     ) -> list[str]:
         """
         Return the facets that have different values in the current catalog.
@@ -274,7 +273,7 @@ class ESGFCatalog:
             .iloc[:, 0]
         )
 
-    def search(self, quiet: bool = False, **search: Union[str, list[str]]):
+    def search(self, quiet: bool = False, **search: str | list[str]):
         """Populate the catalog by specifying search facets and values.
 
         Parameters
@@ -357,9 +356,7 @@ class ESGFCatalog:
         self.last_search = search
         return self
 
-    def from_tracking_ids(
-        self, tracking_ids: Union[str, list[str]], quiet: bool = False
-    ):
+    def from_tracking_ids(self, tracking_ids: str | list[str], quiet: bool = False):
         """Populate the catalog by speciying tracking ids.
 
         While tracking_ids should uniquely define individual files, we observe that some
@@ -519,10 +516,10 @@ class ESGFCatalog:
     def to_path_dict(
         self,
         prefer_streaming: bool = False,
-        globus_endpoint: Union[str, None] = None,
-        globus_path: Union[Path, None] = None,
+        globus_endpoint: str | None = None,
+        globus_path: Path | None = None,
         minimal_keys: bool = True,
-        ignore_facets: Union[None, str, list[str]] = None,
+        ignore_facets: None | str | list[str] = None,
         separator: str = ".",
         quiet: bool = False,
     ) -> dict[str, list[Path]]:
@@ -601,11 +598,11 @@ class ESGFCatalog:
     def to_dataset_dict(
         self,
         prefer_streaming: bool = False,
-        globus_endpoint: Union[str, None] = None,
-        globus_path: Union[Path, None] = None,
+        globus_endpoint: str | None = None,
+        globus_path: Path | None = None,
         add_measures: bool = True,
         minimal_keys: bool = True,
-        ignore_facets: Union[None, str, list[str]] = None,
+        ignore_facets: None | str | list[str] = None,
         separator: str = ".",
         quiet: bool = False,
     ) -> dict[str, xr.Dataset]:

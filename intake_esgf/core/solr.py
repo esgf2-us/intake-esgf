@@ -1,7 +1,7 @@
 """A ESGF1 Solr index class."""
 
 import time
-from typing import Any, Union
+from typing import Any
 
 import pandas as pd
 import requests
@@ -39,7 +39,7 @@ class SolrESGFIndex:
     def __repr__(self):
         return self.repr
 
-    def search(self, **search: Union[str, list[str]]) -> pd.DataFrame:
+    def search(self, **search: str | list[str]) -> pd.DataFrame:
         logger = intake_esgf.conf.get_logger()
         search["distrib"] = search["distrib"] if "distrib" in search else self.distrib
         facets = get_project_facets(search) + intake_esgf.conf.get(
