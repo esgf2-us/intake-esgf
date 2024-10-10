@@ -6,7 +6,7 @@ import warnings
 from functools import partial
 from multiprocessing.pool import ThreadPool
 from pathlib import Path
-from typing import Any, Callable, Literal, Union
+from typing import Callable, Literal, Union
 
 import pandas as pd
 import requests
@@ -601,7 +601,6 @@ class ESGFCatalog:
         add_measures: bool = True,
         globus_endpoint: Union[str, None] = None,
         globus_path: Union[Path, None] = None,
-        operators: list[Any] = [],
     ) -> dict[str, xr.Dataset]:
         """Return the current search as a dictionary of datasets.
 
@@ -706,9 +705,6 @@ class ESGFCatalog:
             ):
                 ds[key] = add_cell_measures(ds[key], self)
 
-        # If the user specifies operators, apply them now
-        for op in operators:
-            ds = op(ds)
         return ds
 
     def remove_incomplete(self, complete: Callable[[pd.DataFrame], bool]):
