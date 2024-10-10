@@ -132,7 +132,7 @@ def partition_infos(
     active_endpoints = set()
 
     # Partition and setup all the file infos based on a priority
-    for info in infos:
+    for i, info in enumerate(infos):
         key = info["key"]
 
         # 1) does the file already exist locally?
@@ -180,7 +180,10 @@ def partition_infos(
                 except TransferAPIError:
                     pass
             # if at least one endpoint is active, then we will use globus
-            if active_endpoints & set(source_endpoints):
+            source_endpoints = list(active_endpoints & set(source_endpoints))
+            if source_endpoints:
+                # store this information for later
+                infos[i]["active_endpoints"] = source_endpoints
                 infos_globus.append(info)
                 continue
 
