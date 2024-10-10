@@ -619,7 +619,7 @@ class ESGFCatalog:
 
         # optionally simplify the keys
         if minimal_keys:
-            key_format = self._minimal_key_format(self, ignore_facets)
+            key_format = self._minimal_key_format(ignore_facets)
             key_map = {
                 row["key"]: separator.join(row[key_format])
                 for _, row in self.df.iterrows()
@@ -729,7 +729,7 @@ class ESGFCatalog:
 
         # optionally simplify the keys
         if minimal_keys:
-            key_format = self._minimal_key_format(self, ignore_facets)
+            key_format = self._minimal_key_format(ignore_facets)
             key_map = {
                 row["key"]: separator.join(row[key_format])
                 for _, row in self.df.iterrows()
