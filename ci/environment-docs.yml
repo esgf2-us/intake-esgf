@@ -6,7 +6,6 @@ dependencies:
   - furo
   - numpydoc
   - xarray
-  - xarray-datatree
   - dask
   - distributed
   - netCDF4
