@@ -10,8 +10,10 @@ from typing import Any
 import pandas as pd
 import requests
 import xarray as xr
+from globus_sdk import TransferAPIError
 
 import intake_esgf
+from intake_esgf.core.globus import get_authorized_transfer_client
 from intake_esgf.database import (
     get_download_rate_dataframe,
     log_download_information,
@@ -26,6 +28,179 @@ else:
     from tqdm import tqdm
 
 bar_format = "{desc:>20}: {percentage:3.0f}%|{bar}|{n_fmt}/{total_fmt} [{rate_fmt:>15s}{postfix}]"
+
+
+def get_local_file(path: Path, dataroots: list[Path]) -> Path:
+    """
+    Return the local path to a file if it exists.
+
+    Parameters
+    ----------
+    path : Path
+        The path of the file relative to a `esgroot`.
+    dataroots : list[Path]
+        A list of roots to prepend to `path` to check for existence.
+
+    Returns
+    -------
+    Path
+        A local path to a file which exists.
+
+    Raises
+    ------
+    FileNotFoundError
+        If the file does not exist at any of the dataroots.
+    """
+    for root in dataroots:
+        local_file = (root / path).expanduser()
+        if local_file.is_file():
+            return local_file
+    raise FileNotFoundError
+
+
+def get_globus_endpoints(info: dict) -> list[str]:
+    """
+    Return the Globus endpoints found in the file info.
+
+    Parameters
+    ----------
+    info : dict
+        A file info record as returned by the Solr/Globus responses.
+
+    Returns
+    -------
+    list[str]
+        A list of the Globus endpoint UUIDs where this file may be found.
+
+    Raises
+    ------
+    ValueError
+        If the UUID cannot be parsed from the Globus 'link'.
+    """
+    if "Globus" not in info:
+        return []
+    globus_endpoints = []
+    for entry in info["Globus"]:
+        m = re.search(r"globus:/*([a-z0-9\-]+)/(.*)", entry)
+        if not m:
+            raise ValueError(f"Globus 'link' count not be parsed: {entry}")
+        uuid = m.group(1)
+        globus_endpoints.append(uuid)
+    return globus_endpoints
+
+
+def partition_infos(
+    infos: list[dict], prefer_streaming: bool, prefer_globus: bool
+) -> tuple[dict, dict]:
+    """
+    Partition the file info based on how it will be handled.
+
+    Each file may have many access options. Here we partition the file infos according
+    to the access method we will use. This is based on a priority as well as user
+    options. The priority uses: (1) local files if present, (2) streaming if possible
+    and requested, (3) globus transfer if possible and request, and finally (4) https
+    download. If no transfer is needed, then we also begin building the output
+    dictionary of paths/datasets.
+
+    Parameters
+    ----------
+    infos : list[dict]
+        A list of file info as returned in the Solr/Globus response.
+    prefer_streaming : bool
+        Enable to use OPENDAP/VirtualZarr options if present in the info.
+    prefer_globus : bool
+        Enable to use Globus transfer options if present in the info.
+
+    Returns
+    -------
+    dict[list]
+        A dicionary of partitioned infos based on the access method.
+    ds
+        A dictionary of access paths for use in xarray.open_dataset.
+    """
+    # this routine will eventually return a dictionary of key -> list[paths]
+    ds = {}
+
+    # as we iterate through the infos we will partition them
+    infos_exist = []
+    infos_stream = []
+    infos_globus = []
+    infos_https = []
+
+    # to keep from checking globus endpoints active status too much, we will store them
+    client = None
+    active_endpoints = set()
+
+    # Partition and setup all the file infos based on a priority
+    for i, info in enumerate(infos):
+        key = info["key"]
+
+        # 1) does the file already exist locally?
+        try:
+            local_path = get_local_file(
+                info["path"],
+                intake_esgf.conf["esg_dataroot"] + intake_esgf.conf["local_cache"],
+            )
+            if key not in ds:
+                ds[key] = []
+            ds[key].append(local_path)
+            infos_exist.append(info)  # maybe not needed
+            continue
+        except FileNotFoundError:
+            pass
+
+        # 2) does the user prefer to stream data?
+        if prefer_streaming:
+            # how do we choose a link?
+            preferred_sources = ["VirtualZarr", "OPENDAP"]  # move to configure
+            links = [
+                link
+                for src in (set(preferred_sources) & set(info))
+                for link in info[src]
+            ]
+            if links:
+                # for now just use first link, we need to do better
+                ds[key] = [links[0]]
+                infos_stream.append(info)  # maybe not needed
+                continue
+
+        # 3) does the user prefer to use globus transfer?
+        if prefer_globus:
+            source_endpoints = get_globus_endpoints(info)
+            # before removing these from infos of what we will download, check that
+            # their endpoints actually work
+            for uuid in source_endpoints:
+                if uuid in active_endpoints:
+                    continue
+                client = get_authorized_transfer_client() if client is None else client
+                try:
+                    ep = client.get_endpoint(uuid)
+                    if ep["acl_available"]:
+                        active_endpoints = active_endpoints | set([uuid])
+                except TransferAPIError:
+                    pass
+            # if at least one endpoint is active, then we will use globus
+            source_endpoints = list(active_endpoints & set(source_endpoints))
+            if source_endpoints:
+                # store this information for later
+                infos[i]["active_endpoints"] = source_endpoints
+                infos_globus.append(info)
+                continue
+
+        # 4) the rest we need to download using https, even if no https links are
+        #    available. We will error this condititon later.
+        infos_https.append(info)
+
+    # was the data properly partitioned?
+    assert len(infos) == (
+        len(infos_exist) + len(infos_stream) + len(infos_globus) + len(infos_https)
+    )
+    return {
+        "exist": infos_exist,
+        "stream": infos_stream,
+        "globus": infos_globus,
+        "https": infos_https,
+    }, ds
 
 
 def combine_results(dfs: list[pd.DataFrame]) -> pd.DataFrame:
@@ -280,46 +455,6 @@ def add_cell_measures(ds: xr.Dataset, catalog) -> xr.Dataset:
         except NoSearchResults:
             pass
     return ds
-
-
-def get_cell_measure(var: str, ds: xr.Dataset) -> xr.DataArray | None:
-    """Return the dataarray of the measures required by the given var.
-
-    This routine will examine the `cell_measures` attribute of the specified `var` as
-    well as the `cell_measures` applying any land/sea fractions that are necesary. This
-    assumes that these variables are already part of the input dataset.
-
-    Parameters
-    ----------
-    var
-        The variable whose measures we will return.
-    ds
-        The dataset from which we will find the measures.
-
-    """
-    # if the dataarray has a cell_measures attribute and 'area' in it, we can
-    # integrate it
-    da = ds[var]
-    if "cell_measures" not in da.attrs:
-        return None
-    m = re.search(r"area:\s(\w+)\s*", da.attrs["cell_measures"])
-    if not m:
-        return None
-    msr = m.group(1)
-    if msr not in ds:
-        raise ValueError(f"{var} cell_measures={msr} but not in dataset")
-    measure = ds[msr]
-    # apply land/sea fractions if applicable, this is messy and there are maybe
-    # others we need to find
-    for domain, vid in zip(["land", "sea"], ["sftlf", "sftof"]):
-        if "cell_methods" in da.attrs and f"where {domain}" in da.attrs["cell_methods"]:
-            if vid not in ds:
-                raise ValueError(f"{var} is land but {vid} not in dataset")
-            # if fractions aren't [0,1], convert % to 1
-            if ds[vid].max() > 2.0:
-                ds[vid] *= 0.01
-            measure *= ds[vid]
-    return measure
 
 
 def expand_cmip5_record(

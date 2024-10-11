@@ -7,16 +7,19 @@ from typing import Any
 
 import pandas as pd
 from globus_sdk import (
+    GlobusHTTPResponse,
     NativeAppAuthClient,
     RefreshTokenAuthorizer,
     SearchClient,
     SearchQuery,
+    TransferAPIError,
     TransferClient,
+    TransferData,
 )
 from globus_sdk.tokenstorage import SimpleJSONFileAdapter
 
 import intake_esgf
-from intake_esgf.base import expand_cmip5_record, get_content_path
+import intake_esgf.base as base
 from intake_esgf.projects import get_project_facets
 
 CLIENT_ID = "81a13009-8326-456e-a487-2d1557d8eb11"  # intake-esgf
@@ -34,7 +37,6 @@ class GlobusESGFIndex:
             index_id = GlobusESGFIndex.GLOBUS_INDEX_IDS[index_id]
         self.index_id = index_id
         self.client = SearchClient()
-        self.logger = None
 
     def __repr__(self):
         return self.repr
@@ -91,7 +93,7 @@ class GlobusESGFIndex:
                     variables = search["variable"] if "variable" in search else []
                     if not isinstance(variables, list):
                         variables = [variables]
-                    record = expand_cmip5_record(
+                    record = base.expand_cmip5_record(
                         variables,
                         content["variable"],
                         record,
@@ -99,10 +101,8 @@ class GlobusESGFIndex:
                 df += record if isinstance(record, list) else [record]
         df = pd.DataFrame(df)
         response_time = time.time() - response_time
-
-        # logging
-        if self.logger is not None:
-            self.logger.info(f"└─{self} results={len(df)} {response_time=:.2f}")
+        logger = intake_esgf.conf.get_logger()
+        logger.info(f"└─{self} results={len(df)} {response_time=:.2f}")
         return df
 
     def get_file_info(self, dataset_ids: list[str], **facets) -> dict[str, Any]:
@@ -135,15 +135,20 @@ class GlobusESGFIndex:
                         for url in content["url"]
                         if "HTTPServer" in url
                     ],
+                    "OPENDAP": [
+                        url.split("|")[0].replace(".html", "")
+                        for url in content["url"]
+                        if "OPENDAP" in url
+                    ],
                     "Globus": [
                         url.split("|")[0] for url in content["url"] if "Globus" in url
                     ],
                 }
-                info["path"] = get_content_path(content)
+                info["path"] = base.get_content_path(content)
                 infos.append(info)
         response_time = time.time() - response_time
-        if self.logger is not None:
-            self.logger.info(f"└─{self} results={len(infos)} {response_time=:.2f}")
+        logger = intake_esgf.conf.get_logger()
+        logger.info(f"└─{self} results={len(infos)} {response_time=:.2f}")
         return infos
 
     def from_tracking_ids(self, tracking_ids: list[str]) -> pd.DataFrame:
@@ -254,3 +259,83 @@ You will have to login (or be logged in) to your Globus account. Globus will als
     )
     transfer_client = TransferClient(authorizer=authorizer)
     return transfer_client
+
+
+def create_globus_transfer(
+    infos: list[dict], globus_endpoint: str, globus_path: Path = Path("")
+) -> list[GlobusHTTPResponse]:
+    """
+    Create
+
+    Parameters
+    ----------
+    infos : list[dict]
+        The file information which has come from the
+    """
+    # if nothing to do just return
+    if not infos:
+        return []
+
+    # is the destination endpoint active?
+    client = get_authorized_transfer_client()
+    try:
+        ep = client.get_endpoint(globus_endpoint)
+    except TransferAPIError as exc:
+        print(exc)
+        raise ValueError(
+            f"There was a Globus error associated with your destination endpoint: {globus_endpoint}"
+        )
+    if not ep["acl_available"]:
+        raise ValueError(
+            f"The provided destination endpoint {globus_endpoint} reports as unavailable."
+        )
+
+    # we want to launch as few tasks as we can, so let's see how many files are
+    # available on each endpoint.
+    active_endpoints = {}
+    for i, info in enumerate(infos):
+        infos[i]["added"] = False  # has this file been added to a task?
+        for uuid in info["active_endpoints"]:
+            if uuid not in active_endpoints:
+                active_endpoints[uuid] = 0
+            active_endpoints[uuid] += 1
+
+    # create globus transfers
+    tasks = []
+    for source_uuid in sorted(active_endpoints, key=active_endpoints.get, reverse=True):
+        task_data = TransferData(
+            source_endpoint=source_uuid, destination_endpoint=globus_endpoint
+        )
+        for i, info in enumerate(infos):
+            if info["added"]:
+                continue
+            if source_uuid not in info["active_endpoints"]:
+                continue
+            task_data.add_item(source_uuid, str(globus_path / info["path"]))
+            infos[i]["added"] = True
+
+        # only submit the transfer if there is data
+        if task_data["DATA"]:
+            task_doc = client.submit_transfer(task_data)
+            tasks.append(task_doc)
+
+    # make sure everything was submitted
+    assert min([info["added"] for info in infos]) == 1
+    return tasks
+
+
+def monitor_globus_transfer(tasks: list[GlobusHTTPResponse]) -> None:
+    """
+    Monitor the status of the provided Globus transfers.
+
+
+    """
+    client = get_authorized_transfer_client()
+    for task_doc in tasks:
+        time_interval = 5.0
+        while True:
+            response = client.get_task(task_doc["task_id"])
+            if response.data["status"] == "SUCCEEDED":
+                break
+            time.sleep(time_interval)
+            time_interval = min(time_interval * 1.1, 30.0)

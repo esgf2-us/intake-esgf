@@ -180,7 +180,7 @@ class CMIP5(ESGFProject):
             "realm",
             "cmor_table",
             "ensemble",
-            "variable",
+            "variable",  # not an official facet but we 'fix' the records on the fly
             "version",
             "data_node",
         ]

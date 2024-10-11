@@ -119,7 +119,7 @@ look at the keys of the resulting dictionary.
 print(dsd.keys())
 ```
 
-By defult the keys are populated using the different facet values in the
+By default the keys are populated using the different facet values in the
 dictionary. However, you have a lot of [control](dictkeys) on the form that they
 take. During the download process, you may have also noticed that a progress bar
 informed you that we were adding cell measures. We add [cell measures](measures)

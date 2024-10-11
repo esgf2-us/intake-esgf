@@ -1,37 +1,45 @@
 """The primary object in intake-esgf."""
 
 import re
+import sys
 import time
 import warnings
 from collections.abc import Callable
 from functools import partial
 from multiprocessing.pool import ThreadPool
 from pathlib import Path
-from typing import Literal, Union
+
+# Self isn't available in typing in 3.10
+if sys.version_info[1] == 10:
+    from typing import Literal
+
+    from typing_extensions import Self
+else:
+    from typing import Literal, Self
 
 import pandas as pd
 import requests
 import xarray as xr
-from globus_sdk import TransferAPIError, TransferData
-from numpy import argmax
 
 import intake_esgf
+import intake_esgf.base as base
 from intake_esgf import IN_NOTEBOOK
-from intake_esgf.base import (
-    add_cell_measures,
-    bar_format,
-    combine_results,
-    parallel_download,
-)
 from intake_esgf.core import GlobusESGFIndex, SolrESGFIndex
-from intake_esgf.core.globus import get_authorized_transfer_client, variable_info
+from intake_esgf.core.globus import (
+    create_globus_transfer,
+    monitor_globus_transfer,
+    variable_info,
+)
 from intake_esgf.database import (
     create_download_database,
     get_download_rate_dataframe,
-    log_download_information,
-    sort_globus_endpoints,
 )
-from intake_esgf.exceptions import LocalCacheNotWritable, NoSearchResults
+from intake_esgf.exceptions import (
+    DatasetInitError,
+    LocalCacheNotWritable,
+    MissingFileInformation,
+    NoSearchResults,
+)
 from intake_esgf.projects import projects as esgf_projects
 
 if IN_NOTEBOOK:
@@ -41,27 +49,28 @@ else:
 
 
 class ESGFCatalog:
-    """A data catalog for searching ESGF nodes and downloading data.
-
-    This catalog is largely experimental. We are using it to test capabilities and
-    understand consequences of index design. Please feel free to use it but understand
-    that the API will likely change.
+    """
+    A data catalog for searching ESGF nodes and downloading data.
 
     Attributes
     ----------
-    indices : list[Union[SolrESGFIndex, GlobusESGFIndex]]
-        A list of indices to search, implementations are in `intake_esgf.core`. The test
-        Globus index `anl-dev` is default and always included.
+    indices : list[SolrESGFIndex | GlobusESGFIndex]
+        A list of indices to search, implementations are in `intake_esgf.core`.
     df : pd.DataFrame
-        A pandas dataframe into which the results from the search are parsed. Once you
-        are satisfied with the datasets listed in this dataframe, calling
-        `to_dataset_dict()` will then requery the indices to obtain file information and
-        then download files in parallel.
+        A pandas dataframe into which the results from the search are parsed. You may
+        manipulate this dataframe by removing rows or adding columns.
+    project : ESGFProject
+        A class which provides facet usage in the current project.
+    session_time : pd.Timestamp
+        The time that the class instance was initialized.
     last_search: dict
         The keywords and values used in the previous call to `search()`.
-    session_time : pd.Timestamp
-        The time that the class instance was initialized. Used in `session_log()` to
-        parse out only the portion of the log used in this session.
+    local_cache: list[Path]
+        The local caches to which data will be read/downloaded.
+    esg_dataroot: list[Path]
+        A lits of locations from which data is loaded.
+    download_db: Path
+        The path to a database into which download hosts, sizes, and transfer times are recored.
     """
 
     def __init__(self):
@@ -87,15 +96,19 @@ class ESGFCatalog:
         self.download_db = None
         self._initialize()
 
-    def __repr__(self):
-        """Return the unique facets and values from the search."""
+    def __repr__(self) -> str:
+        """
+        Return the unique facets and values from the search.
+        """
         if self.df is None:
             return "Perform a search() to populate the catalog."
         repr = f"Summary information for {len(self.df)} results:\n"
         return repr + self.unique().__repr__()
 
-    def _initialize(self):
-        """Ensure that directories and pertinent files are created."""
+    def _initialize(self) -> None:
+        """
+        Ensure that directories and pertinent files are created.
+        """
 
         def is_writable(dir: Path) -> bool:
             test = dir / "tmp.txt"
@@ -135,12 +148,56 @@ class ESGFCatalog:
             create_download_database(download_db)
         self.download_db = download_db
 
-    def clone(self):
-        """Return a new instance of a catalog with the same indices and settings.
+    def _set_project(self) -> None:
+        """
+        Parse the project from the last search.
+        """
+        if self.df is None:
+            raise ValueError("Perform a search() to populate the dataframe.")
+        project = self.df["project"].unique()
+        if len(project) != 1:
+            raise ValueError("Only single project searches are supported")
+        self.project = esgf_projects[project[0].lower()]
+
+    def _minimal_key_format(
+        self, ignore_facets: list[str] | str | None = None
+    ) -> list[str]:
+        """
+        Return the facets which have different values in the current catalog.
+
+        Parameters
+        ----------
+        ignore_facets: list[str] or str, optional
+            The facets you wish to ignore. This is useful if, for example, you have
+            variables from different tables, but do not wish the `table_id` to be part of
+            the keys.
+
+        Returns
+        -------
+        list[str]
+        """
+        if ignore_facets is None:
+            ignore_facets = []
+        if isinstance(ignore_facets, str):
+            ignore_facets = [ignore_facets]
+        output_key_format = [
+            col
+            for col in self.project.master_id_facets()
+            if (
+                (self.df[col].iloc[0] != self.df[col]).any()
+                and col not in ignore_facets
+            )
+        ]
+        if not output_key_format:
+            output_key_format = [self.project.variable_facet()]
+        return output_key_format
+
+    def clone(self) -> "ESGFCatalog":
+        """
+        Return a new instance of a catalog with the same indices and settings.
 
         This is used internally for when we want to find cell measures relating to the
         previous search but not overwrite the results.
-
         """
         cat = ESGFCatalog()
         cat.indices = self.indices
@@ -149,14 +206,29 @@ class ESGFCatalog:
         return cat
 
     def unique(self) -> pd.Series:
-        """Return the the unique values in each facet of the search."""
+        """
+        Return the the unique values in each facet of the search.
+        """
+        if self.df is None:
+            raise ValueError("Perform a search() to populate the catalog.")
         out = {}
-        for col in self.df.drop(columns=["id", "version"]).columns:
+        drops = [
+            col
+            for col in self.df.columns
+            if col
+            not in (
+                self.project.master_id_facets()
+                + intake_esgf.conf.get("additional_df_cols")
+            )
+        ]
+        for col in self.df.drop(columns=drops).columns:
             out[col] = self.df[col].unique()
         return pd.Series(out)
 
     def model_groups(self) -> pd.Series:
-        """Return counts for unique combinations of (source_id,member_id,grid_label)."""
+        """
+        Return counts for unique combinations of (source_id,member_id,grid_label).
+        """
 
         def _extract_int_pattern(sample: str) -> str:
             ints = re.findall(r"\d+", sample)
@@ -203,16 +275,16 @@ class ESGFCatalog:
             .iloc[:, 0]
         )
 
-    def search(self, quiet: bool = False, **search: str | list[str]):
-        """Populate the catalog by specifying search facets and values.
+    def search(self, quiet: bool = False, **search) -> Self:
+        """
+        Populate the catalog by specifying search facets and values.
 
         Parameters
         ----------
         quiet
             Enable to silence the progress bar.
-        search
+        **search
             Any number of facet keywords and values.
-
         """
         logger = intake_esgf.conf.get_logger()
 
@@ -261,11 +333,11 @@ class ESGFCatalog:
         # threaded search over indices
         search_time = time.time()
         dfs = ThreadPool(len(self.indices)).imap_unordered(_search, self.indices)
-        self.df = combine_results(
+        self.df = base.combine_results(
             tqdm(
                 dfs,
                 disable=quiet,
-                bar_format=bar_format,
+                bar_format=base.bar_format,
                 unit="index",
                 unit_scale=False,
                 desc="Searching indices",
@@ -273,12 +345,10 @@ class ESGFCatalog:
                 total=len(self.indices),
             )
         )
-
-        # store the project
-        self.project = esgf_projects[self.df["project"].unique()[0].lower()]
+        self._set_project()
 
         # even though we are using latest=True, because the search is distributed, we
-        # may have different versions.
+        # may have different versions from different indices.
         for r, row in self.df.iterrows():
             latest = max([x.split("|")[0].split(".")[-1] for x in row.id])
             self.df.loc[r, "id"] = [x for x in row.id if latest in x]
@@ -288,8 +358,11 @@ class ESGFCatalog:
         self.last_search = search
         return self
 
-    def from_tracking_ids(self, tracking_ids: str | list[str], quiet: bool = False):
-        """Populate the catalog by speciying tracking ids.
+    def from_tracking_ids(
+        self, tracking_ids: str | list[str], quiet: bool = False
+    ) -> Self:
+        """
+        Populate the catalog by speciying tracking ids.
 
         While tracking_ids should uniquely define individual files, we observe that some
         centers erronsouly reuse ids on multiple files. For this reason, you may find
@@ -301,7 +374,6 @@ class ESGFCatalog:
             The ids whose datasets will form the items in the catalog.
         quiet
             Enable to silence the progress bar.
-
         """
         logger = intake_esgf.conf.get_logger()
 
@@ -329,11 +401,11 @@ class ESGFCatalog:
         dfs = ThreadPool(len(self.indices)).imap_unordered(
             _from_tracking_ids, self.indices
         )
-        self.df = combine_results(
+        self.df = base.combine_results(
             tqdm(
                 dfs,
                 disable=quiet,
-                bar_format=bar_format,
+                bar_format=base.bar_format,
                 unit="index",
                 unit_scale=False,
                 desc="Searching indices",
@@ -347,13 +419,26 @@ class ESGFCatalog:
         logger.info(
             f"\x1b[36;32mfrom_tracking_ids end\033[0m total_time={search_time:.2f}"
         )
+        self._set_project()
 
         return self
 
-    def _get_file_info(
-        self, dataset_ids, quiet, separator, search_facets
-    ) -> list[dict]:
-        """Query and return file information for the given datasets."""
+    def _get_file_info(self, separator: str = ".", quiet: bool = False) -> list[dict]:
+        """
+        Query and return file information datasets present in the catalog.
+
+        Parameters
+        ----------
+        separator: str
+            The character to use in between facets in the key values.
+        quiet: bool
+            Enable to silence the progress bar.
+
+        Returns
+        -------
+        list[dict]
+            The file info combined from all sources.
+        """
 
         def _get_file_info(index, dataset_ids, **search_facets):
             try:
@@ -371,7 +456,38 @@ class ESGFCatalog:
         logger = intake_esgf.conf.get_logger()
         logger.info("\x1b[36;32mfile info begin\033[0m")
 
-        # threaded file info over indices and flatten output
+        # Eventually we will return a dictionary of paths/datasets. The keys of this
+        # dictionary we will initialize to the master_id facets joined together by the
+        # `separator` and placed in a new column in the dataframe called `key`
+        if self.project is None:
+            self._set_project()
+        self.df["key"] = self.df.apply(
+            lambda row: separator.join(
+                [row[f] for f in self.project.master_id_facets()]
+            ),
+            axis=1,
+        )
+
+        # From the catalog dataframe, we have the mapping `key` -> `dataset_id` but in
+        # order to pass information back we need the inverse.
+        dataset_ids = {
+            dataset_id: row["key"]
+            for _, row in self.df.iterrows()
+            for dataset_id in row["id"]
+        }
+
+        # Some projects (CMIP5 for example) use dataset_ids to refer to collections of
+        # variables. This means that the user may get many more variables than they want
+        # simply because the variable name is not part of the dataset_id. We fix this
+        # by including the variable facet from the last search when we get file
+        # information.
+        search_facets = {}
+        variable_facet = self.project.variable_facet()
+        if variable_facet in self.last_search:
+            search_facets[variable_facet] = self.last_search[variable_facet]
+
+        # The index nodes are again queried for file information. Each file points back
+        # to the dataset_id to which it belongs.
         info_time = time.time()
         get_file_info = ThreadPool(len(self.indices)).imap_unordered(
             partial(_get_file_info, dataset_ids=dataset_ids, **search_facets),
@@ -381,7 +497,7 @@ class ESGFCatalog:
             tqdm(
                 get_file_info,
                 disable=quiet,
-                bar_format=bar_format,
+                bar_format=base.bar_format,
                 unit="index",
                 unit_scale=False,
                 desc="Get file information",
@@ -391,27 +507,14 @@ class ESGFCatalog:
         )
         index_infos = [info for index_info in index_infos for info in index_info]
 
-        # now we merge this info together.
-        def _which_key(path, keys):
-            """Return the key that is likely correct based on counts in the path."""
-            counts = []
-            for key in keys:
-                counts.append(sum([str(path).count(k) for k in key.split(separator)]))
-            return keys[argmax(counts)]
-
+        # Now we merge the access/validation information, but where the primary key is
+        # not longer dataset_id, but rather the file path.
+        combine_time = time.time()
         merged_info = {}
         for info in index_infos:
             path = info["path"]
             if path not in merged_info:
-                # Because CMIP5 is annoying, we may have multiple dataset_ids for each
-                # path (file). So here we choose which key is more likely correct.
-                if isinstance(dataset_ids[info["dataset_id"]], list):
-                    merged_info[path] = {
-                        "key": _which_key(path, dataset_ids[info["dataset_id"]])
-                    }
-                else:
-                    merged_info[path] = {"key": dataset_ids[info["dataset_id"]]}
-
+                merged_info[path] = {"key": dataset_ids[info["dataset_id"]]}
             for key, val in info.items():
                 if isinstance(val, list):
                     if key not in merged_info[path]:
@@ -422,292 +525,234 @@ class ESGFCatalog:
                     if key not in merged_info[path]:
                         merged_info[path][key] = val
         infos = [info for _, info in merged_info.items()]
+        combine_time = time.time() - combine_time
         info_time = time.time() - info_time
+        logger.info(f"{combine_time=:.2f}")
         logger.info(f"\x1b[36;32mfile info end\033[0m total_time={info_time:.2f}")
         return infos
 
-    def _partition_infos(self, infos: list[dict]) -> tuple[list, dict]:
-        """Separate out infos that have globus endpoints."""
-        logger = intake_esgf.conf.get_logger()
-        # loop thru infos and find all globus endpoints in the infos
-        globus_endpoints = []
-        for info in infos:
-            if "Globus" not in info:
-                continue
-            for entry in info["Globus"]:
-                m = re.search(r"globus:/*([a-z0-9\-]+)/(.*)", entry)
-                if not m:
-                    raise ValueError(f"Could not match {entry}")
-                uuid = m.group(1)
-                if uuid not in globus_endpoints:
-                    globus_endpoints.append(uuid)
-        # check which endpoints are available
-        infos_globus = {}
-        client = get_authorized_transfer_client()
-        for uuid in globus_endpoints:
-            try:
-                ep = client.get_endpoint(uuid)
-                if ep["acl_available"]:
-                    infos_globus[uuid] = []
-                else:
-                    logger.info(
-                        f"└─Endpoint '{uuid}' ({ep['display_name']}) not available."
-                    )
-                    continue
-            except TransferAPIError as exc:
-                logger.info(f"└─{exc.message}")
-        # sort endpoints by fastest transer rates
-        df_rate = get_download_rate_dataframe(self.download_db)
-        globus_endpoints = sorted(
-            infos_globus.keys(),
-            key=partial(sort_globus_endpoints, df_rate=df_rate),
-            reverse=True,
-        )
-
-        # partition the infos
-        def _partition(info):
-            # no globus entries so https it is
-            if "Globus" not in info:
-                info_https.append(info)
-                return
-            # if the file exists we need not transer it, leave it in https infos
-            for path in self.esg_dataroot + self.local_cache:
-                local_file = path / info["path"]
-                if local_file.exists():
-                    info_https.append(info)
-                    return
-            # start with the fastest endpoints
-            for uuid in globus_endpoints:
-                entries = [entry for entry in info["Globus"] if uuid in entry]
-                if entries:
-                    info["Globus"] = entries
-                    infos_globus[uuid].append(info)
-                    return
-            # if you get here, there is no globus endpoint
-            info_https.append(info)
-            return
-
-        info_https = []
-        for info in infos:
-            _partition(info)
-        return info_https, infos_globus
-
-    def _move_data(
+    def to_path_dict(
         self,
-        infos,
-        num_threads,
+        prefer_streaming: bool = False,
         globus_endpoint: str | None = None,
         globus_path: Path | None = None,
-    ):
-        """Move data either by https or globus transfers."""
-        logger = intake_esgf.conf.get_logger()
-        logger.info("\x1b[36;32mbegin move_data\033[0m")
-
-        # partition infos if an endpoint is given
-        infos_https = infos
-        infos_globus = {}
-        num_globus = 0
-        if globus_endpoint is not None:
-            logger.info("partition info counts")
-            infos_https, infos_globus = self._partition_infos(infos)
-            globus_path = Path(globus_path).expanduser()
-            logger.info(f"└─ {len(infos_https)}: https")
-            for key, item in infos_globus.items():
-                logger.info(f"└─ {len(item)}: {key}")
-                num_globus += len(item)
-
-        # only grab the client if we need it
-        if num_globus:
-            transfer_client = get_authorized_transfer_client()
-            logger.info("globus transfer task_ids")
-
-        # build up task data and submit to the transfer client
-        tasks = []
-        for source_uuid, infos in infos_globus.items():
-            # create the task data
-            task_data = TransferData(
-                source_endpoint=source_uuid, destination_endpoint=globus_endpoint
-            )
-
-            # the infos at this point should have a single entry
-            for info in infos:
-                m = re.search(r"globus:/*([a-z0-9\-]+)/(.*)", info["Globus"][0])
-                if not m:
-                    raise ValueError(f"Could not match {info['Globus'][0]}")
-                task_data.add_item(m.group(2), str(globus_path / info["path"]))
-
-            # only submit the transfer if there is data
-            if task_data["DATA"]:
-                task_doc = transfer_client.submit_transfer(task_data)
-                logger.info(f"└─ {task_doc['task_id']}")
-                tasks.append(task_doc)
-
-        # download in parallel using threads
-        results = []
-        if infos_https:
-            results += ThreadPool(min(num_threads, len(infos_https))).imap_unordered(
-                partial(
-                    parallel_download,
-                    local_cache=self.local_cache,
-                    download_db=self.download_db,
-                    esg_dataroot=self.esg_dataroot,
-                ),
-                infos_https,
-            )
-
-        # block until globus transfer completes
-        for task_doc in tasks:
-            time_interval = 5.0
-            while True:
-                response = transfer_client.get_task(task_doc["task_id"])
-                logger.info(f"task_id {task_doc['task_id']} {response.data['status']}")
-                if response.data["status"] == "SUCCEEDED":
-                    log_download_information(
-                        self.download_db,
-                        response["source_endpoint_id"],
-                        (
-                            pd.Timestamp(response["completion_time"])
-                            - pd.Timestamp(response["request_time"])
-                        ).total_seconds(),
-                        response["bytes_transferred"] * 1e-6,
-                    )
-                    break
-                time.sleep(time_interval)
-                time_interval = min(time_interval * 1.1, 30.0)
-
-        # find these newly downloaded files and populate into results
-        def _find_local_file(info):
-            for path in self.esg_dataroot + self.local_cache:
-                local_file = path / info["path"]
-                if local_file.exists():
-                    return info["key"], local_file
-            return None, None
-
-        for _, infos in infos_globus.items():
-            for info in infos:
-                results.append(_find_local_file(info))
-
-        logger.info("\x1b[36;32mend move_data\033[0m")
-        return results
-
-    def to_dataset_dict(
-        self,
         minimal_keys: bool = True,
         ignore_facets: None | str | list[str] = None,
         separator: str = ".",
-        num_threads: int = 6,
         quiet: bool = False,
-        add_measures: bool = True,
-        globus_endpoint: Union[str, None] = None,
-        globus_path: Union[Path, None] = None,
-    ) -> dict[str, xr.Dataset]:
-        """Return the current search as a dictionary of datasets.
-
-        By default, the keys of the returned dictionary are the minimal set of facets
-        required to uniquely describe the search. If you prefer to use a full set of
-        facets, set `minimal_keys=False`.
+    ) -> dict[str, list[Path]]:
+        """
+        Return the current search as a dictionary of paths to files.
 
         Parameters
         ----------
-        minimal_keys
-            Disable to return a dictonary whose keys are formed using all facets, by
-            default we use a minimal set of facets to build the simplest keys.
-        ignore_facets
+        prefer_streaming: bool
+            Enable to use streaming links (OPENDAP, Zarr, Kerchunk, etc.) instead of
+            downloading data.
+        globus_endpoint: str
+            A destination globus endpoint UUID to which we will transfer files using
+            Globus Transfers where possible.
+        globus_path: Path
+            The relative path to the endpoint root into which we will save files in the
+            Globus Transfer.
+        minimal_keys: bool
+            Disable to return a dictonary whose keys are formed using all facets in the
+            master_id.
+        ignore_facets: str or list of str
             When constructing the dictionary keys, which facets should we ignore?
-        separator
+        separator: str
             When generating the keys, the string to use as a seperator of facets.
-        num_threads
-            The number of threads to use when downloading files.
+        quiet: bool
+            Enable to quiet the progress bars.
         """
         if self.df is None or len(self.df) == 0:
             raise ValueError("No entries to retrieve.")
+        prefer_globus = globus_endpoint is not None
 
-        # The keys of the returned dictionary should only consist of the facets that are
-        # different.
-        output_key_format = []
-        if ignore_facets is None:
-            ignore_facets = []
-        if isinstance(ignore_facets, str):
-            ignore_facets = [ignore_facets]
-        # ...but these we always ignore
-        ignore_facets += [
-            "version",
-            "id",
-        ]
-        for col in self.df.drop(columns=ignore_facets):
-            if minimal_keys:
-                if not (self.df[col].iloc[0] == self.df[col]).all():
-                    output_key_format.append(col)
-            else:
-                output_key_format.append(col)
-        if not output_key_format:  # at minimum we have the variable id as a key
-            output_key_format = [self.project.variable_facet()]
+        # get and partition file info based on access method
+        infos = self._get_file_info(separator=separator, quiet=quiet)
+        infos, dsd = base.partition_infos(
+            infos,
+            prefer_streaming,
+            prefer_globus,
+        )
 
-        # Populate a dictionary of dataset_ids in this search and which keys they will
-        # map to in the output dictionary. This is complicated by CMIP5 where the
-        # dataset_id -> variable mapping is not unique.
-        dataset_ids = {}
-        for _, row in self.df.iterrows():
-            key = separator.join([row[k] for k in output_key_format])
-            for dataset_id in row["id"]:
-                if dataset_id in dataset_ids:
-                    if isinstance(dataset_ids[dataset_id], str):
-                        dataset_ids[dataset_id] = [dataset_ids[dataset_id]]
-                    dataset_ids[dataset_id].append(key)
-                else:
-                    dataset_ids[dataset_id] = key
+        # optionally use globus to transfer what we can
+        tasks = []
+        if prefer_globus:
+            tasks = create_globus_transfer(
+                infos["globus"], globus_endpoint, globus_path
+            )
 
-        # Some projects use dataset_ids to refer to collections of variables. So we need
-        # to pass the variables to the file info search to make sure we do not get more
-        # than we want.
-        search_facets = {}
-        variable_facet = self.project.variable_facet()
-        if variable_facet in self.last_search:
-            search_facets[variable_facet] = self.last_search[variable_facet]
+        # download in parallel using threads
+        if infos["https"]:
+            # inform user of download sizes
+            download_size = sum([info["size"] for info in infos["https"]]) * 1e-6
+            download_unit = "Mb"
+            if download_size > 1e3:
+                download_size *= 1e-3
+                download_unit = "Gb"
+            if not quiet:
+                print(f"Downloading {download_size:.1f} [{download_unit}]...")
 
-        # Get the file info
-        infos = self._get_file_info(dataset_ids, quiet, separator, search_facets)
+            list(
+                ThreadPool(
+                    min(intake_esgf.conf["num_threads"], len(infos["https"]))
+                ).imap_unordered(
+                    partial(
+                        base.parallel_download,
+                        local_cache=self.local_cache,
+                        download_db=self.download_db,
+                        esg_dataroot=self.esg_dataroot,
+                    ),
+                    infos["https"],
+                )
+            )
 
-        # Move the data if we need to
-        results = self._move_data(infos, num_threads, globus_endpoint, globus_path)
+        # unpack the https files which should now exist in local cache
+        dsd = _load_into_dsd(dsd, infos["https"])
 
-        # Load into xarray objects
-        ds = {}
-        for key, local_file in results:
-            if local_file is None:  # there was a problem getting this file
-                continue
-            if key in ds:
-                ds[key].append(local_file)
-            else:
-                ds[key] = [local_file]
+        if prefer_globus and infos["globus"]:
+            monitor_globus_transfer(tasks)  # blocks while transfer continues
 
-        # Return xarray objects
+            # unpack the globus files which should now exist in local cache
+            dsd = _load_into_dsd(dsd, infos["globus"])
+
+        # did we get everything that was in the catalog?
+        missed = set(self.df["key"]) - set(dsd)
+        if missed:
+            warnings.warn(f"We could not download your entire catalog, {missed=}")
+            if intake_esgf.conf["break_on_error"]:
+                raise MissingFileInformation(missed)
+
+        # optionally simplify the keys
+        if minimal_keys:
+            key_format = self._minimal_key_format(ignore_facets)
+            key_map = {
+                row["key"]: separator.join(row[key_format])
+                for _, row in self.df.iterrows()
+            }
+            dsd = {key_new: dsd[key_old] for key_old, key_new in key_map.items()}
+
+        return dsd
+
+    def to_dataset_dict(
+        self,
+        prefer_streaming: bool = False,
+        globus_endpoint: str | None = None,
+        globus_path: Path | None = None,
+        add_measures: bool = True,
+        minimal_keys: bool = True,
+        ignore_facets: None | str | list[str] = None,
+        separator: str = ".",
+        quiet: bool = False,
+    ) -> dict[str, xr.Dataset]:
+        """
+        Return the current search as a dictionary of datasets.
+
+        Parameters
+        ----------
+        prefer_streaming: bool
+            Enable to use streaming links (OPENDAP, Zarr, Kerchunk, etc.) instead of
+            downloading data.
+        globus_endpoint: str
+            A destination globus endpoint UUID to which we will transfer files using
+            Globus Transfers where possible.
+        globus_path: Path
+            The relative path to the endpoint root into which we will save files in the
+            Globus Transfer.
+        add_measures: bool
+            Disable to supress the automated search for cell measure information.
+        minimal_keys: bool
+            Disable to return a dictonary whose keys are formed using all facets in the
+            master_id.
+        ignore_facets: str or list of str
+            When constructing the dictionary keys, which facets should we ignore?
+        separator: str
+            When generating the keys, the string to use as a seperator of facets.
+        quiet: bool
+            Enable to quiet the progress bars.
+        """
+        logger = intake_esgf.conf.get_logger()
+        ds = self.to_path_dict(
+            prefer_streaming=prefer_streaming,
+            globus_endpoint=globus_endpoint,
+            globus_path=globus_path,
+            minimal_keys=False,
+            ignore_facets=ignore_facets,
+            separator=separator,
+            quiet=quiet,
+        )
+
+        # load paths into xarray objects (also log files accessed)
+        exceptions = []
+        failed_keys = []
         for key, files in ds.items():
+            [logger.info(f"accessed {f}") for f in files]
             if len(files) == 1:
-                ds[key] = xr.open_dataset(files[0])
+                try:
+                    ds[key] = xr.open_dataset(files[0])
+                except Exception as ex:
+                    warnings.warn(
+                        f"xarray threw an exception opening this file: {files[0]}"
+                    )
+                    failed_keys.append(key)
+                    exceptions.append(ex)
             elif len(files) > 1:
-                ds[key] = xr.open_mfdataset(sorted(files))
-            else:
-                ds[key] = "Error in opening"
+                try:
+                    ds[key] = xr.open_mfdataset(sorted(files))
+                except Exception as ex:
+                    warnings.warn(
+                        f"xarray threw an exception opening these files: {files}"
+                    )
+                    failed_keys.append(key)
+                    exceptions.append(ex)
+        if intake_esgf.conf["break_on_error"] and exceptions:
+            for ex in exceptions:
+                print(ex)
+            raise DatasetInitError(failed_keys)
 
-        # Attempt to add cell measures (serial), only work for CMIP6
-        if add_measures and "cmip6" in str(self.project.__class__).lower():
+        # master_id facets should be in the global attributes of each file, but
+        # sometimes they aren't
+        master_id_facets = self.project.master_id_facets()
+        for key in ds:
+            row = self.df.loc[self.df["key"] == key]
+            assert len(row) == 1
+            row = row.iloc[0]
+            ds[key].attrs.update(row[master_id_facets].to_dict())
+
+        # attempt to add cell measures (serial), only work for CMIP6 for now
+        if ds and add_measures and "cmip6" in str(self.project.__class__).lower():
             for key in tqdm(
                 ds,
                 disable=quiet,
-                bar_format=bar_format,
+                bar_format=base.bar_format,
                 unit="dataset",
                 unit_scale=False,
                 desc="Adding cell measures",
                 ascii=False,
                 total=len(ds),
             ):
-                ds[key] = add_cell_measures(ds[key], self)
+                ds[key] = base.add_cell_measures(ds[key], self)
+
+        # optionally simplify the keys
+        if minimal_keys:
+            key_format = self._minimal_key_format(ignore_facets)
+            key_map = {
+                row["key"]: separator.join(row[key_format])
+                for _, row in self.df.iterrows()
+            }
+            ds = {
+                key_new: ds[key_old]
+                for key_old, key_new in key_map.items()
+                if key_old in ds
+            }
 
         return ds
 
-    def remove_incomplete(self, complete: Callable[[pd.DataFrame], bool]):
-        """Remove the incomplete search results as defined by the `complete` function.
+    def remove_incomplete(self, complete: Callable[[pd.DataFrame], bool]) -> Self:
+        """
+        Remove the incomplete search results as defined by the `complete` function.
 
         While the ESGF search results will return anything matching the criteria, we are
         typically interested in unique combinations of `source_id`, `member_id`, and
@@ -731,7 +776,7 @@ class ESGFCatalog:
                 self.df = self.df.drop(grp.index)
         return self
 
-    def remove_ensembles(self):
+    def remove_ensembles(self) -> Self:
         """Remove higher numeric ensembles for each `source_id`.
 
         Many times an ESGF search will return possible many ensembles, but you only need
@@ -752,7 +797,9 @@ class ESGFCatalog:
         return self
 
     def session_log(self) -> str:
-        """Return the log since the instantiation of `ESGFCatalog()`."""
+        """
+        Return the log since the instantiation of this catalog.
+        """
         log = open(Path(intake_esgf.conf["logfile"]).expanduser()).readlines()[::-1]
         for n, line in enumerate(log):
             m = re.search(r"\x1b\[36;20m(.*)\s\033\[0m", line)
@@ -769,7 +816,8 @@ class ESGFCatalog:
         history: Literal[None, "day", "week", "month"] = None,
         minimum_size: float = 0,
     ) -> pd.DataFrame:
-        """Return the per host download summary statistics as a dataframe.
+        """
+        Return the per host download summary statistics as a dataframe.
 
         Parameters
         ----------
@@ -778,7 +826,6 @@ class ESGFCatalog:
             use the entire history.
         minimum_size
             The minimum size in Mb to include in the reported record.
-
         """
         df = get_download_rate_dataframe(
             self.download_db, history=history, minimum_size=minimum_size
@@ -794,7 +841,8 @@ class ESGFCatalog:
         return df
 
     def variable_info(self, query: str, project: str = "CMIP6") -> pd.DataFrame:
-        """Return a dataframe with variable information from a query.
+        """
+        Return a dataframe with variable information from a query.
 
         If you are new to searching for data in ESGF, you may not know how to figure out
         what variables you need for your purpose.
@@ -811,6 +859,54 @@ class ESGFCatalog:
         df
             A dataframe with the possibly relevant variables, their units, and various
             name and description fields.
-
         """
         return variable_info(query, project)
+
+
+def _load_into_dsd(
+    dsd: dict[str, list[Path]], infos: list[dict]
+) -> dict[str, list[Path]]:
+    """
+    Insert the local path into the dictinoary if the file exists.
+
+    Parameters
+    ----------
+    dsd: dict[str,list[Path]]
+        A dictionary of a list of paths whose keys are datasets.
+    infos: list[dict]
+        A list of file info to parse.
+
+    Returns
+    -------
+    dict[str,list[Path]]
+        The dataset dictionary with paths from the file info loaded.
+    """
+    for info in infos:
+        try:
+            path = base.get_local_file(info["path"], intake_esgf.conf["local_cache"])
+        except Exception:
+            # This means that the file isn't there, will be reported down the line
+            continue
+        key = info["key"]
+        if key not in dsd:
+            dsd[key] = []
+        dsd[key] += [path]
+    return dsd
+
+
+def _minimal_key_format(
+    cat: ESGFCatalog, ignore_facets: list[str] | str | None = None
+) -> list[str]:
+    """ """
+    if ignore_facets is None:
+        ignore_facets = []
+    if isinstance(ignore_facets, str):
+        ignore_facets = [ignore_facets]
+    output_key_format = [
+        col
+        for col in cat.project.master_id_facets()
+        if ((cat.df[col].iloc[0] != cat.df[col]).any() and col not in ignore_facets)
+    ]
+    if not output_key_format:
+        output_key_format = [cat.project.variable_facet()]
+    return output_key_format

@@ -51,8 +51,10 @@ or through ``conda-forge``
    :caption: Features
 
    measures
+   stream
    modelgroups
    configure
+   paths
    reproduce
    dictkeys
    logging

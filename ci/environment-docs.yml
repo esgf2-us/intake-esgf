@@ -6,12 +6,12 @@ dependencies:
   - furo
   - numpydoc
   - xarray
-  - xarray-datatree
   - dask
   - distributed
   - netCDF4
   - matplotlib
   - ipywidgets
+  - nc-time-axis
   - pip
   - pip:
       - myst_nb
