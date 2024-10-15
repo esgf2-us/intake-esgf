@@ -2,6 +2,8 @@
 
 from pathlib import Path
 
+from globus_sdk import GlobusHTTPResponse
+
 
 class IntakeESGFException(Exception):
     """Exceptions from the intake-esgf package."""
@@ -51,3 +53,13 @@ class DatasetInitError(IntakeESGFException):
         return (
             f"xarray threw an exception while loading these keys: {self.problem_keys}"
         )
+
+
+class GlobusTransferError(IntakeESGFException):
+    """The globus task return a non-successful status."""
+
+    def __init__(self, task_doc: GlobusHTTPResponse):
+        self.task_doc = task_doc
+
+    def __str__(self):
+        return f"The Globus Transfer task is no longer active and was not successful: {self.task_doc}"
