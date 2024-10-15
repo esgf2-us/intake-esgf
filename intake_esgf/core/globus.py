@@ -1,5 +1,6 @@
 """A Globus-based ESGF1 style index."""
 
+import re
 import time
 from datetime import datetime
 from pathlib import Path
@@ -20,6 +21,7 @@ from globus_sdk.tokenstorage import SimpleJSONFileAdapter
 
 import intake_esgf
 import intake_esgf.base as base
+from intake_esgf.exceptions import GlobusTransferError
 from intake_esgf.projects import get_project_facets
 
 CLIENT_ID = "81a13009-8326-456e-a487-2d1557d8eb11"  # intake-esgf
@@ -262,7 +264,7 @@ You will have to login (or be logged in) to your Globus account. Globus will als
 
 
 def create_globus_transfer(
-    infos: list[dict], globus_endpoint: str, globus_path: Path = Path("")
+    infos: list[dict], globus_endpoint: str, globus_path: str | Path = ""
 ) -> list[GlobusHTTPResponse]:
     """
     Create
@@ -279,15 +281,11 @@ def create_globus_transfer(
     # is the destination endpoint active?
     client = get_authorized_transfer_client()
     try:
-        ep = client.get_endpoint(globus_endpoint)
+        client.get_endpoint(globus_endpoint)
     except TransferAPIError as exc:
         print(exc)
         raise ValueError(
             f"There was a Globus error associated with your destination endpoint: {globus_endpoint}"
-        )
-    if not ep["acl_available"]:
-        raise ValueError(
-            f"The provided destination endpoint {globus_endpoint} reports as unavailable."
         )
 
     # we want to launch as few tasks as we can, so let's see how many files are
@@ -300,7 +298,7 @@ def create_globus_transfer(
                 active_endpoints[uuid] = 0
             active_endpoints[uuid] += 1
 
-    # create globus transfers
+    # create globus transfers, starting with the endpoint that has the most files
     tasks = []
     for source_uuid in sorted(active_endpoints, key=active_endpoints.get, reverse=True):
         task_data = TransferData(
@@ -309,9 +307,13 @@ def create_globus_transfer(
         for i, info in enumerate(infos):
             if info["added"]:
                 continue
-            if source_uuid not in info["active_endpoints"]:
+            possible = [g for g in info["Globus"] if source_uuid in g]
+            if not possible:
                 continue
-            task_data.add_item(source_uuid, str(globus_path / info["path"]))
+            m = re.search(r"globus:/*([a-z0-9\-]+)/(.*)", possible[0])
+            if not m:
+                continue
+            task_data.add_item(m.group(2), str(Path(globus_path) / info["path"]))
             infos[i]["added"] = True
 
         # only submit the transfer if there is data
@@ -333,9 +335,10 @@ def monitor_globus_transfer(tasks: list[GlobusHTTPResponse]) -> None:
     client = get_authorized_transfer_client()
     for task_doc in tasks:
         time_interval = 5.0
-        while True:
-            response = client.get_task(task_doc["task_id"])
-            if response.data["status"] == "SUCCEEDED":
-                break
+        response = client.get_task(task_doc["task_id"])
+        while response["status"] == "ACTIVE":
             time.sleep(time_interval)
             time_interval = min(time_interval * 1.1, 30.0)
+            response = client.get_task(task_doc["task_id"])
+        if response.data["status"] != "SUCCEEDED":
+            raise GlobusTransferError(response)
