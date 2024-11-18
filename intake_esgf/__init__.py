@@ -21,10 +21,17 @@ def in_notebook() -> bool:
         return False  # Probably standard Python interpreter
 
 
+def supported_projects() -> list[str]:
+    """What projects are supported?"""
+    from intake_esgf.projects import projects
+
+    return list(projects.keys())
+
+
 IN_NOTEBOOK = in_notebook()
 
 from intake_esgf.catalog import ESGFCatalog  # noqa
 from intake_esgf.config import conf  # noqa
 from intake_esgf._version import __version__  # noqa
 
-__all__ = ["ESGFCatalog", "conf", "IN_NOTEBOOK"]
+__all__ = ["ESGFCatalog", "conf", "IN_NOTEBOOK", "supported_projects"]
