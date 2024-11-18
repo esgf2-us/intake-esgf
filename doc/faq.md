@@ -21,7 +21,7 @@ No, intake-esgf catalogs are initially empty and are populated only when you per
 
 ###### What projects does intake-esgf support?
 
-You can check the projects which projects are currently supported:
+You can check the projects which are currently supported:
 
 ```{code-cell}
 from intake_esgf import supported_projects
