@@ -17,7 +17,7 @@ Note that another reason for asymmetrical results is that an index may have fail
 
 ###### Are your catalogs CSV/JSON files?
 
-No, intake-esgf catalogs are initially empty and are populated only when you perform a faceted search. The intake-esgf package can be [configured](configure) to dynamically query a number of ESGF-developed index nodes. At the moment these include some Globus/ElasticSearch-based indices as well as the old Solr-based technologies.
+No, intake-esgf catalogs are initially empty and are populated only when you perform a faceted search by communicating with remote index nodes. The intake-esgf package can be [configured](configure) to dynamically query a number of ESGF-developed index nodes. At the moment these include some Globus/ElasticSearch-based indices as well as the old Solr-based technologies.
 
 ###### What projects does intake-esgf support?
 
