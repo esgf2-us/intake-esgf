@@ -43,6 +43,7 @@ or through ``conda-forge``
    :caption: User Guide
 
    beginner
+   intake
    quickstart
 
 .. toctree::
