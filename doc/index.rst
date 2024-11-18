@@ -45,6 +45,7 @@ or through ``conda-forge``
    beginner
    intake
    quickstart
+   faq
 
 .. toctree::
    :maxdepth: 2
