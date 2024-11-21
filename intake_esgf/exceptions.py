@@ -63,3 +63,14 @@ class GlobusTransferError(IntakeESGFException):
 
     def __str__(self):
         return f"The Globus Transfer task is no longer active and was not successful: {self.task_doc}"
+
+
+class ProjectHasNoFacet(IntakeESGFException):
+    """You tried to use a project function which needs a facet that it does not have."""
+
+    def __init__(self, project: str, facet: str):
+        self.project = project
+        self.facet = facet
+
+    def __str__(self):
+        return f"The '{self.project}' project does not have a '{self.facet}' facet"

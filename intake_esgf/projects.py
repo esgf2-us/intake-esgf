@@ -2,7 +2,7 @@
 
 from abc import ABC, abstractmethod
 
-from intake_esgf.exceptions import ProjectNotSupported
+from intake_esgf.exceptions import ProjectHasNoFacet, ProjectNotSupported
 
 
 class ESGFProject(ABC):
@@ -250,7 +250,102 @@ class CMIP3(ESGFProject):
         return None
 
 
-projects = {"cmip6": CMIP6(), "cmip5": CMIP5(), "cmip3": CMIP3()}
+class obs4MIPs(ESGFProject):
+    def __init__(self):
+        self.facets = [
+            "activity_id",
+            "institution_id",
+            "source_id",
+            "frequency",
+            "variable_id",
+            "grid_label",
+            "version",
+            "data_node",
+        ]
+
+    def master_id_facets(self) -> list[str]:
+        return self.facets[:-2]
+
+    def id_facets(self) -> list[str]:
+        return self.facets
+
+    def relaxation_facets(self) -> list[str]:
+        # NOTE: This is used to find cell measures that are closely related to a given
+        # set of facets and in this project do not make sense.
+        return []
+
+    def variable_description_facets(self) -> list[str]:
+        # NOTE: This is used to find cell measures that are closely related to a given
+        # set of facets and in this project do not make sense.
+        return []
+
+    def variable_facet(self) -> str:
+        return "variable_id"
+
+    def model_facet(self) -> str:
+        return "source_id"
+
+    def variant_facet(self) -> str:
+        raise ProjectHasNoFacet("obs4mips", "variant")
+
+    def grid_facet(self) -> str:
+        return "grid_label"
+
+
+class ProjectDownscale(ESGFProject):
+    def __init__(self):
+        self.facets = [
+            "mip_era",
+            "activity_id",
+            "region_id",
+            "downscaling_source_id",
+            "institution_id",
+            "driving_source_id",
+            "driving_experiment_id",
+            "driving_variant_label",
+            "source_id",
+            "frequency",
+            "variable_id",
+            "version",
+            "data_node",
+        ]
+
+    def master_id_facets(self) -> list[str]:
+        return self.facets[:-2]
+
+    def id_facets(self) -> list[str]:
+        return self.facets
+
+    def relaxation_facets(self) -> list[str]:
+        # NOTE: This is used to find cell measures that are closely related to a given
+        # set of facets and in this project do not make sense.
+        return []
+
+    def variable_description_facets(self) -> list[str]:
+        # NOTE: This is used to find cell measures that are closely related to a given
+        # set of facets and in this project do not make sense.
+        return []
+
+    def variable_facet(self) -> str:
+        return "variable_id"
+
+    def model_facet(self) -> str:
+        return "source_id"
+
+    def variant_facet(self) -> str:
+        raise ProjectHasNoFacet("ProjectDownscale", "variant")
+
+    def grid_facet(self) -> str:
+        raise ProjectHasNoFacet("ProjectDownscale", "grid_label")
+
+
+projects = {
+    "cmip6": CMIP6(),
+    "cmip5": CMIP5(),
+    "cmip3": CMIP3(),
+    "obs4mips": obs4MIPs(),
+    "projectdownscale": ProjectDownscale(),
+}
 
 
 def get_project_facets(content: dict[str, str | list[str]]) -> list[str]:

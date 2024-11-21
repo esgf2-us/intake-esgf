@@ -1,4 +1,6 @@
+import intake_esgf
 from intake_esgf import ESGFCatalog
+from intake_esgf.exceptions import ProjectHasNoFacet
 
 
 def test_cmip5():
@@ -21,3 +23,31 @@ def test_cmip3():
     )
     cat.remove_ensembles()
     assert len(cat.model_groups()) == 24
+
+
+def test_obs4mips():
+    # this project is only on LLNL for now
+    with intake_esgf.conf.set(indices={"esgf-node.llnl.gov": True}):
+        cat = ESGFCatalog().search(
+            project="obs4MIPs", institution_id="NASA-LaRC", variable_id="rlus"
+        )
+        try:  # this shouldn't work but fail nicely
+            cat.model_groups()
+        except ProjectHasNoFacet:
+            pass
+        assert len(cat.df) == 1
+
+
+def test_projectdownscale():
+    # this project is only on a dev index for now
+    intake_esgf.conf.set(indices={"esgf-fedtest.llnl.gov": True})
+    cat = intake_esgf.ESGFCatalog().search(
+        project="ProjectDownscale",
+        downscaling_source_id="LOCA2",
+        driving_source_id="MRI-ESM2-0",
+    )
+    try:  # this shouldn't work but fail nicely
+        cat.model_groups()
+    except ProjectHasNoFacet:
+        pass
+    assert len(cat.df) == 1

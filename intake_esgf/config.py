@@ -20,6 +20,7 @@ defaults = {
         "esgf-node.llnl.gov": False,
         "esgf.nci.org.au": False,
         "esgf-node.ornl.gov": False,
+        "esgf-fedtest.llnl.gov": False,
     },
     "additional_df_cols": [],
     "esg_dataroot": [
