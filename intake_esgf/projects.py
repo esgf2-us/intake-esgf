@@ -292,7 +292,7 @@ class obs4MIPs(ESGFProject):
         return "grid_label"
 
 
-class ProjectDownscale(ESGFProject):
+class DRCDP(ESGFProject):  # Downscaled Regional Climate Data Product
     def __init__(self):
         self.facets = [
             "mip_era",
@@ -333,10 +333,10 @@ class ProjectDownscale(ESGFProject):
         return "source_id"
 
     def variant_facet(self) -> str:
-        raise ProjectHasNoFacet("ProjectDownscale", "variant")
+        raise ProjectHasNoFacet("DRCDP", "variant")
 
     def grid_facet(self) -> str:
-        raise ProjectHasNoFacet("ProjectDownscale", "grid_label")
+        raise ProjectHasNoFacet("DRCDP", "grid_label")
 
 
 projects = {
@@ -344,7 +344,7 @@ projects = {
     "cmip5": CMIP5(),
     "cmip3": CMIP3(),
     "obs4mips": obs4MIPs(),
-    "projectdownscale": ProjectDownscale(),
+    "drcdp": DRCDP(),
 }
 
 
