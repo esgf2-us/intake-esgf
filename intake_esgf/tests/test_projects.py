@@ -40,11 +40,14 @@ def test_obs4mips():
 
 def test_projectdownscale():
     # this project is only on a dev index for now
-    intake_esgf.conf.set(indices={"esgf-fedtest.llnl.gov": True})
+    intake_esgf.conf.set(indices={"esgf-node.llnl.gov": True})
     cat = intake_esgf.ESGFCatalog().search(
         project="DRCDP",
         downscaling_source_id="LOCA2-1",
         driving_source_id="ACCESS-CM2",
+        driving_experiment_id="historical",
+        frequency="day",
+        variable_id="pr",
     )
     try:  # this shouldn't work but fail nicely
         cat.model_groups()
