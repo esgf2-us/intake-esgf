@@ -43,7 +43,7 @@ jobs:
         run: uv sync
 
       - name: Run Tests
-        run: python -m pytest
+        run: uv run pytest
 
       - name: Upload code coverage to Codecov
         uses: codecov/codecov-action@v3.1.4
