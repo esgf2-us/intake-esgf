@@ -30,7 +30,7 @@ dynamic=["version"]
 
 [dependency-groups]
 dev = [
-    "pytest-cov>=6.0.0",
+    "pytest-cov",
 ]
 
 [project.optional-dependencies]
