@@ -9,4 +9,4 @@ build:
     - asdf install uv latest
     - asdf global uv latest
     - uv sync --extra docs
-    - cd docs; uv run make
+    - uv run -m sphinx -T -b html -d doc/_build/doctrees -D language=en doc $READTHEDOCS_OUTPUT/html
