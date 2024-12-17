@@ -1,4 +1,54 @@
-# https://snarky.ca/what-the-heck-is-pyproject-toml/
+[project]
+name = "intake-esgf"
+description = "Programmatic access to the ESGF holdings"
+readme = "README.md"
+authors = [
+    { name = "Nathan Collier", email = "nathaniel.collier@gmail.com" }
+]
+classifiers = ["Development Status :: 4 - Beta",
+    "License :: OSI Approved :: BSD License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Intended Audience :: Science/Research",
+    "Topic :: Scientific/Engineering"]
+license = { file="LICENSE" }
+requires-python = ">=3.10"
+dependencies = [
+    "dask",
+    "globus-sdk",
+    "netcdf4",
+    "pandas",
+    "pyyaml",
+    "requests",
+    "tqdm",
+    "xarray",
+]
+dynamic=["version"]
+
+[dependency-groups]
+dev = [
+    "pytest-cov",
+]
+
+[project.optional-dependencies]
+docs = [
+    "distributed",
+    "furo",
+    "ipywidgets",
+    "matplotlib",
+    "myst-nb",
+    "nc-time-axis",
+    "numpydoc",
+    "sphinx-autosummary-accessors",
+    "sphinx-copybutton",
+]
+notebook = [
+    "ipywidgets",
+    "tqdm[notebook]",
+]
 
 [build-system]
 requires = ["setuptools", "setuptools_scm", "wheel"]
@@ -8,8 +58,8 @@ build-backend = "setuptools.build_meta"
 version_scheme = "no-guess-dev"
 local_scheme = "node-and-date"
 fallback_version = "0.0.0"
-write_to = "intake_esgf/_version.py"
-write_to_template = '__version__ = "{version}"'
+version_file = "intake_esgf/_version.py"
+version_file_template = '__version__ = "{version}"'
 
 [tool.pytest.ini_options]
 console_output_style = "count"
@@ -24,7 +74,7 @@ omit = ["*/intake_esgf/tests/*"]
 [tool.ruff]
 target-version = "py310"
 ignore = [
-    "E501", # line too long - let black worry about that
+    "E501", # let black worry about line length
 ]
 select = [
     "F",  # Pyflakes
