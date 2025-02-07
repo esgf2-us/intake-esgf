@@ -5,7 +5,7 @@ import pytest
 import intake_esgf
 from intake_esgf import ESGFCatalog
 from intake_esgf.base import partition_infos
-from intake_esgf.exceptions import NoSearchResults
+from intake_esgf.exceptions import MissingFileInformation, NoSearchResults
 
 SOLR_TEST = "esgf-node.llnl.gov"
 
@@ -196,3 +196,37 @@ def test_partition_infos_globus():
     infos_, _ = partition_infos(infos, False, True)
     assert max([len(infos_[p]) for p in ["exist", "stream", "https"]]) == 0
     assert len(infos_["globus"]) == 1
+
+
+def test_break():
+    with intake_esgf.conf.set(break_on_error=True):
+        try:
+            cat = (
+                ESGFCatalog()
+                .search(
+                    experiment_id="historical",
+                    frequency="mon",
+                    variable_id="gpp",
+                    source_id=["E3SM-1-1"],
+                )
+                .remove_ensembles()
+            )
+            cat.to_path_dict()
+        except MissingFileInformation:
+            pass
+
+
+def test_nobreak():
+    with intake_esgf.conf.set(break_on_error=False):
+        cat = (
+            ESGFCatalog()
+            .search(
+                experiment_id="historical",
+                frequency="mon",
+                variable_id="gpp",
+                source_id=["E3SM-1-1", "CanESM5"],
+            )
+            .remove_ensembles()
+        )
+        paths = cat.to_path_dict()
+        assert len(paths) == 1
