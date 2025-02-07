@@ -632,7 +632,11 @@ class ESGFCatalog:
                 row["key"]: separator.join(row[key_format])
                 for _, row in self.df.iterrows()
             }
-            dsd = {key_new: dsd[key_old] for key_old, key_new in key_map.items()}
+            dsd = {
+                key_new: dsd[key_old]
+                for key_old, key_new in key_map.items()
+                if key_old in dsd
+            }
 
         return dsd
 
