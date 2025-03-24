@@ -9,8 +9,9 @@ import yaml
 
 defaults = {
     "globus_indices": {
-        "anl-dev": True,
-        "ornl-dev": True,
+        "ESGF2-US-1.5-Catalog": True,
+        "anl-dev": False,
+        "ornl-dev": False,
     },
     "solr_indices": {
         "esgf.ceda.ac.uk": False,
@@ -81,7 +82,7 @@ class Config(dict):
         local_cache: list[str] | None = None,
         additional_df_cols: list[str] | None = None,
         num_threads: int | None = None,
-        break_on_error: bool | None = None
+        break_on_error: bool | None = None,
     ):
         """Change intake-esgf configuration options.
 

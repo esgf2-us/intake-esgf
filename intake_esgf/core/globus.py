@@ -29,6 +29,7 @@ CLIENT_ID = "81a13009-8326-456e-a487-2d1557d8eb11"  # intake-esgf
 
 class GlobusESGFIndex:
     GLOBUS_INDEX_IDS = {
+        "ESGF2-US-1.5-Catalog": "c0173b0c-5587-437a-a912-ef09b6d14e9c",
         "anl-dev": "d927e2d9-ccdb-48e4-b05d-adbc3d97bbc5",
         "ornl-dev": "ea4595f4-7b71-4da7-a1f0-e3f5d8f7f062",
     }
