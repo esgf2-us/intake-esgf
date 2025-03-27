@@ -9,11 +9,11 @@ import yaml
 
 defaults = {
     "stac_indices": {
-        "api.stac.ceda.ac.uk": True,
+        "api.stac.ceda.ac.uk": False,
     },
     "globus_indices": {
-        "anl-dev": False,
-        "ornl-dev": False,
+        "anl-dev": True,
+        "ornl-dev": True,
     },
     "solr_indices": {
         "esgf.ceda.ac.uk": False,
