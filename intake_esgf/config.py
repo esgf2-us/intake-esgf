@@ -8,6 +8,9 @@ from pathlib import Path
 import yaml
 
 defaults = {
+    "stac_indices": {
+        "api.stac.ceda.ac.uk": False,
+    },
     "globus_indices": {
         "anl-dev": True,
         "ornl-dev": True,
@@ -81,7 +84,7 @@ class Config(dict):
         local_cache: list[str] | None = None,
         additional_df_cols: list[str] | None = None,
         num_threads: int | None = None,
-        break_on_error: bool | None = None
+        break_on_error: bool | None = None,
     ):
         """Change intake-esgf configuration options.
 
