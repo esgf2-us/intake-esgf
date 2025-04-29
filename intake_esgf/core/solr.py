@@ -31,7 +31,7 @@ def esg_search(base_url, **search):
 
 
 class SolrESGFIndex:
-    def __init__(self, index_node: str = "esgf-node.llnl.gov", distrib: bool = False):
+    def __init__(self, index_node: str = "esgf-node.ornl.gov", distrib: bool = False):
         self.repr = f"SolrESGFIndex('{index_node}'{',distrib=True' if distrib else ''})"
         self.url = f"https://{index_node}"
         self.distrib = distrib

@@ -7,7 +7,7 @@ from intake_esgf import ESGFCatalog
 from intake_esgf.base import partition_infos
 from intake_esgf.exceptions import MissingFileInformation, NoSearchResults
 
-SOLR_TEST = "esgf-node.llnl.gov"
+SOLR_TEST = "esgf-node.ornl.gov"
 
 
 def test_search():
@@ -229,4 +229,4 @@ def test_nobreak():
             .remove_ensembles()
         )
         paths = cat.to_path_dict()
-        assert len(paths) == 1
+        assert len(paths) == 2
