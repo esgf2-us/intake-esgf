@@ -10,15 +10,12 @@ import yaml
 defaults = {
     "globus_indices": {
         "ESGF2-US-1.5-Catalog": True,
-        "anl-dev": False,
-        "ornl-dev": False,
     },
     "solr_indices": {
         "esgf.ceda.ac.uk": False,
         "esgf-data.dkrz.de": False,
         "esgf-node.ipsl.upmc.fr": False,
         "esg-dn1.nsc.liu.se": False,
-        "esgf-node.llnl.gov": False,
         "esgf.nci.org.au": False,
         "esgf-node.ornl.gov": False,
     },
