@@ -1,7 +1,7 @@
 from intake_esgf.core import SolrESGFIndex
 from intake_esgf.exceptions import NoSearchResults
 
-index = SolrESGFIndex("esgf-node.llnl.gov", distrib=False)
+index = SolrESGFIndex("esgf-node.ornl.gov", distrib=False)
 cmip6 = dict(
     experiment_id="historical",
     source_id="CanESM5",
@@ -34,7 +34,7 @@ def test_tracking_ids():
 
 
 def test_get_file_info():
-    dataset_id = "CMIP6.CMIP.CCCma.CanESM5.historical.r1i1p1f1.Amon.tas.gn.v20190429|aims3.llnl.gov"
+    dataset_id = "CMIP6.CMIP.CCCma.CanESM5.historical.r1i1p1f1.Amon.tas.gn.v20190429|esgf-node.ornl.gov"
     infos = index.get_file_info([dataset_id])
     assert isinstance(infos, list)
     assert len(infos) == 1
