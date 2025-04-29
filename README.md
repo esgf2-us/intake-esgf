@@ -11,6 +11,9 @@
 [![Conda][conda-badge]][conda-link]
 [![Zenodo][zenodo-badge]][zenodo-link]
 
+## Announcement
+
+ESGF is in the process of decomissioning the old index technology (Solr). While this process takes place, you may find some services may be broken or disappear completely. The information in the US-based Solr indices has been moved into a Globus (ElasticSearch) index which is this package's default index.
 
 ## Overview
 

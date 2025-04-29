@@ -25,7 +25,7 @@ A portion of the ESGF data archive is stored in public [Guest Collections](https
 
 ## Initiating the Transfer
 
-In this case we will use the [configuration](configure) options to only query the `anl-dev` globus-based index. This is just to keep the example script simple. There is Globus transfer information in several of the indices. For demonstration, we will search for a few files for a model whose file sizes are smaller.
+There is Globus transfer information in several of the indices, including the default. For demonstration, we will search for a few files for a model whose file sizes are smaller.
 
 ```{code-cell}
 :tags: [remove-cell]
@@ -34,19 +34,18 @@ from intake_esgf import ESGFCatalog
 ```
 
 ```{code-cell}
-with intake_esgf.conf.set(indices={"ornl-dev": False}):
-    cat = ESGFCatalog()
-    cat.search(
-        experiment_id="historical",
-        source_id="CanESM5",
-        frequency="mon",
-        variable_id=[
-            "pr",
-            "tas",
-            "gpp",
-        ],
-        member_id="r1i1p1f1",
-    )
+cat = ESGFCatalog()
+cat.search(
+    experiment_id="historical",
+    source_id="CanESM5",
+    frequency="mon",
+    variable_id=[
+        "pr",
+        "tas",
+        "gpp",
+    ],
+    member_id="r1i1p1f1",
+)
 ```
 
 This portion of the process what you would do normally. To use globus transfers where possible, you need to include additional arguments to `to_dataset_dict()`. The first is `globus_endpoint`, the `UUID` of the destination collection to which you will transfer the data. The second is `globus_path`, any additional path you wish to add to the root path of the destination collection.
