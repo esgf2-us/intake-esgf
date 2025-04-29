@@ -25,18 +25,18 @@ format. You will notice a few keywords:
 - `download_db` - the full path to the SQL database with download records.
 - `globus_indices` - a dictionary whose keys are the Globus index name and values map to a boolean indicating that the index is enabled.
 - `solr_indices` - a dictionary whose keys are the Solr index base url and values map to a boolean indicating that the index is enabled.
-- `additional_df_cols` - a list of additional columns to include in the search results DataFrame. Columns that are not part of the search response will be ignored. Defaults to `["datetime_start", "datetime_stop"]`.
+- `additional_df_cols` - a list of additional columns to include in the search results DataFrame. Columns that are not part of the search response will be ignored. 
 
 ## Indices
 
 Information about the datasets that may be downloaded as part of ESGF is located around the world. While many models have data records on more than one index, there is no single index that has information about all ESGF datasets. However, you will also find that some indices are slow to return a response and may not provide records that cannot be obtained elsewhere. For this reason, in `intake-esgf` indices may all be turned on and off as you desire. You will have to balance how long you are willing to wait with your need for complete information globally.
 
-If for example, you wish to include Lawrence Livermore National Laboratory's (LLNL) Solr index:
+If for example, you wish to include Oak Ridge National Laboratory's (ORNL) Solr index:
 
 ```{code-cell}
 from intake_esgf import ESGFCatalog
 
-intake_esgf.conf.set(indices={"esgf-node.llnl.gov":True})
+intake_esgf.conf.set(indices={"esgf-node.ornl.gov":True})
 cat = ESGFCatalog()
 for ind in cat.indices:
     print(ind)
