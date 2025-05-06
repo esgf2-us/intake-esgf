@@ -12,7 +12,7 @@ from globus_sdk import (
     NativeAppAuthClient,
     RefreshTokenAuthorizer,
     SearchClient,
-    SearchQuery,
+    SearchQueryV1,
     TransferAPIError,
     TransferClient,
     TransferData,
@@ -53,11 +53,16 @@ class GlobusESGFIndex:
 
         """
         # build up the query and search
-        query_data = SearchQuery("")
-        for key, val in search.items():
-            query_data.add_filter(
-                key, val if isinstance(val, list) else [val], type="match_any"
-            )
+        query_data = SearchQueryV1(
+            filters=[
+                {
+                    "field_name": key,
+                    "values": val if isinstance(val, list) else [val],
+                    "type": "match_any",
+                }
+                for key, val in search.items()
+            ]
+        )
 
         facets = get_project_facets(search) + intake_esgf.conf.get(
             "additional_df_cols", []
@@ -104,15 +109,28 @@ class GlobusESGFIndex:
         """Get file information for the given datasets."""
         response_time = time.time()
         sc = SearchClient()
-        query = (
-            SearchQuery("")
-            .add_filter("type", ["File"])
-            .add_filter("dataset_id", dataset_ids, type="match_any")
+        query = SearchQueryV1(
+            filters=[
+                {
+                    "field_name": "type",
+                    "values": ["File"],
+                    "type": "match_any",
+                },
+                {
+                    "field_name": "dataset_id",
+                    "values": dataset_ids,
+                    "type": "match_any",
+                },
+            ]
+            + [
+                {
+                    "field_name": facet,
+                    "values": val if isinstance(val, list) else [val],
+                    "type": "match_any",
+                }
+                for facet, val in facets.items()
+            ]
         )
-        for facet, val in facets.items():
-            query.add_filter(
-                facet, val if isinstance(val, list) else [val], type="match_any"
-            )
         paginator = sc.paginated.post_search(self.index_id, query)
         paginator.limit = 1000
         infos = []
@@ -149,7 +167,15 @@ class GlobusESGFIndex:
     def from_tracking_ids(self, tracking_ids: list[str]) -> pd.DataFrame:
         response = SearchClient().post_search(
             self.index_id,
-            SearchQuery("").add_filter("tracking_id", tracking_ids, type="match_any"),
+            SearchQueryV1(
+                filters=[
+                    {
+                        "field_name": "tracking_id",
+                        "values": tracking_ids,
+                        "type": "match_any",
+                    }
+                ]
+            ),
         )
         df = []
         for g in response["gmeta"]:
@@ -176,15 +202,32 @@ class GlobusESGFIndex:
 def variable_info(query: str, project: str = "CMIP6") -> pd.DataFrame:
     """Return a dataframe with variable information from a query."""
     # first we populate a list of related veriables
-    q = (
-        SearchQuery(query)
-        .add_filter("type", ["Dataset"])
-        .add_filter("project", [project])
-        .add_facet("variable_id", "variable_id")
-        .add_facet("variable", "variable")
-        .set_limit(0)
+    uuid = GlobusESGFIndex.GLOBUS_INDEX_IDS["ESGF2-US-1.5-Catalog"]
+    q = SearchQueryV1(
+        q=query,
+        limit=0,
+        filters=[
+            {
+                "field_name": "type",
+                "values": ["Dataset"],
+                "type": "match_any",
+            },
+            {
+                "field_name": "project",
+                "values": [project],
+                "type": "match_any",
+            },
+        ],
+        facets=[
+            {
+                "name": v,
+                "field_name": v,
+                "type": "terms",
+            }
+            for v in ["variable", "variable_id"]
+        ],
     )
-    response = SearchClient().post_search("ea4595f4-7b71-4da7-a1f0-e3f5d8f7f062", q)
+    response = SearchClient().post_search(uuid, q)
     variables = list(
         set(
             [
@@ -201,14 +244,28 @@ def variable_info(query: str, project: str = "CMIP6") -> pd.DataFrame:
     # then we loop through them and extract information for the user
     df = []
     for v in variables:
-        q = (
-            SearchQuery("")
-            .add_filter("type", ["Dataset"])
-            .add_filter("project", [project])
-            .add_filter(var_facet, [v])  # need to abstract this
-            .set_limit(1)
+        q = SearchQueryV1(
+            q=query,
+            limit=1,
+            filters=[
+                {
+                    "field_name": "type",
+                    "values": ["Dataset"],
+                    "type": "match_any",
+                },
+                {
+                    "field_name": "project",
+                    "values": [project],
+                    "type": "match_any",
+                },
+                {
+                    "field_name": var_facet,
+                    "values": [v],
+                    "type": "match_any",
+                },
+            ],
         )
-        response = SearchClient().post_search("ea4595f4-7b71-4da7-a1f0-e3f5d8f7f062", q)
+        response = SearchClient().post_search(uuid, q)
         for doc in response.get("gmeta"):
             content = doc["entries"][0]["content"]
             columns = [var_facet]
