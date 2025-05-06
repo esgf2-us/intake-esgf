@@ -2,10 +2,9 @@
 name = "intake-esgf"
 description = "Programmatic access to the ESGF holdings"
 readme = "README.md"
-authors = [
-    { name = "Nathan Collier", email = "nathaniel.collier@gmail.com" }
-]
-classifiers = ["Development Status :: 4 - Beta",
+authors = [{ name = "Nathan Collier", email = "nathaniel.collier@gmail.com" }]
+classifiers = [
+    "Development Status :: 4 - Beta",
     "License :: OSI Approved :: BSD License",
     "Operating System :: OS Independent",
     "Programming Language :: Python :: 3",
@@ -13,42 +12,36 @@ classifiers = ["Development Status :: 4 - Beta",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Intended Audience :: Science/Research",
-    "Topic :: Scientific/Engineering"]
-license = { file="LICENSE" }
+    "Topic :: Scientific/Engineering",
+]
+license = { file = "LICENSE" }
 requires-python = ">=3.10"
 dependencies = [
-    "dask",
-    "globus-sdk",
-    "netcdf4",
-    "pandas",
-    "pyyaml",
-    "requests",
-    "tqdm",
-    "xarray",
+    "dask>=2024.12.0",
+    "globus-sdk>=3.49.0",
+    "netcdf4>=1.7.2",
+    "pandas>=2.2.3",
+    "pyyaml>=6.0.2",
+    "requests>=2.32.3",
+    "tqdm>=4.67.1",
+    "xarray>=2024.11.0",
 ]
-dynamic=["version"]
+dynamic = ["version"]
 
 [dependency-groups]
-dev = [
-    "pytest-cov",
-]
-
-[project.optional-dependencies]
+dev = ["pytest>=8.3.4", "pytest-cov>=6.0.0"]
 docs = [
-    "distributed",
-    "furo",
-    "ipywidgets",
-    "matplotlib",
-    "myst-nb",
-    "nc-time-axis",
-    "numpydoc",
-    "sphinx-autosummary-accessors",
-    "sphinx-copybutton",
+    "distributed>=2024.12.0",
+    "furo>=2024.8.6",
+    "ipywidgets>=8.1.5",
+    "matplotlib>=3.10.0",
+    "myst-nb>=1.1.2",
+    "nc-time-axis>=1.4.1",
+    "numpydoc>=1.8.0",
+    "sphinx-autosummary-accessors>=2023.4.0",
+    "sphinx-copybutton>=0.5.2",
 ]
-notebook = [
-    "ipywidgets",
-    "tqdm[notebook]",
-]
+notebook = ["ipywidgets>=8.1.5", "tqdm[notebook]>=4.67.1"]
 
 [build-system]
 requires = ["setuptools", "setuptools_scm", "wheel"]
@@ -64,9 +57,7 @@ version_file_template = '__version__ = "{version}"'
 [tool.pytest.ini_options]
 console_output_style = "count"
 addopts = "--cov=intake_esgf --cov-report=xml --verbose -m 'not globus_auth'"
-markers = [
-    "globus_auth: tests which require globus authentication",
-]
+markers = ["globus_auth: tests which require globus authentication"]
 
 [tool.coverage.run]
 omit = ["*/intake_esgf/tests/*"]
