@@ -321,7 +321,9 @@ def parallel_download(
     # else we try to download it, first we sort links by the fastest host to you
     df_rate = get_download_rate_dataframe(download_db)
     info["HTTPServer"] = sorted(
-        info["HTTPServer"], key=partial(sort_download_links, df_rate=df_rate)
+        info["HTTPServer"],
+        key=partial(sort_download_links, df_rate=df_rate),
+        reverse=True,
     )
     # keep trying to download until one works out
     for url in info["HTTPServer"]:
