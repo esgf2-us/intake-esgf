@@ -26,9 +26,10 @@ def test_cmip3():
 
 
 def test_obs4mips():
-    cat = ESGFCatalog().search(
-        project="obs4MIPs", institution_id="NASA-LaRC", variable_id="rlus"
-    )
+    with intake_esgf.conf.set(indices={"ESGF2-US-1.5-Catalog": True}):
+        cat = ESGFCatalog().search(
+            project="obs4MIPs", institution_id="NASA-LaRC", variable_id="rlus"
+        )
     try:  # this shouldn't work but fail nicely
         cat.model_groups()
     except ProjectHasNoFacet:
@@ -37,14 +38,15 @@ def test_obs4mips():
 
 
 def test_projectdownscale():
-    cat = intake_esgf.ESGFCatalog().search(
-        project="DRCDP",
-        downscaling_source_id="LOCA2-1",
-        driving_source_id="ACCESS-CM2",
-        driving_experiment_id="historical",
-        frequency="day",
-        variable_id="pr",
-    )
+    with intake_esgf.conf.set(indices={"ESGF2-US-1.5-Catalog": True}):
+        cat = intake_esgf.ESGFCatalog().search(
+            project="DRCDP",
+            downscaling_source_id="LOCA2-1",
+            driving_source_id="ACCESS-CM2",
+            driving_experiment_id="historical",
+            frequency="day",
+            variable_id="pr",
+        )
     try:  # this shouldn't work but fail nicely
         cat.model_groups()
     except ProjectHasNoFacet:
