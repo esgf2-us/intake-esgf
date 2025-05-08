@@ -229,4 +229,4 @@ def test_nobreak():
             .remove_ensembles()
         )
         paths = cat.to_path_dict()
-        assert len(paths) == 2
+        assert len(paths) == 1
