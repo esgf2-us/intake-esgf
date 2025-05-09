@@ -151,17 +151,18 @@ def test_partition_infos():
 
 
 def test_partition_infos_stream():
+    VALID_OPENDAP_LINK = "https://esgf-data1.llnl.gov/thredds/dodsC/css03_data/CMIP6/CMIP/AS-RCEC/TaiESM1/historical/r1i1p1f1/day/tasmax/gn/v20210517/tasmax_day_TaiESM1_historical_r1i1p1f1_gn_20100101-20141231.nc"
     infos = [
         {
             "key": "dataset1",
             "path": Path("file1"),
-            "VirtualZarr": ["link1", "link2"],
+            "VirtualZarr": [VALID_OPENDAP_LINK, VALID_OPENDAP_LINK],
         },
         {
             "key": "dataset2",
             "path": Path("file1"),
             "HTTPServer": ["link1", "link2"],
-            "OPENDAP": ["link1", "link2"],
+            "OPENDAP": [VALID_OPENDAP_LINK, VALID_OPENDAP_LINK],
         },
     ]
     infos_, ds = partition_infos(infos, False, False)
