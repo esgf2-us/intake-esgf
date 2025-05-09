@@ -20,6 +20,7 @@ defaults = {
         "esg-dn1.nsc.liu.se": False,
         "esgf.nci.org.au": False,
         "esgf-node.ornl.gov": False,
+        "esgf-node.llnl.gov": False,
     },
     "additional_df_cols": [],
     "esg_dataroot": [
