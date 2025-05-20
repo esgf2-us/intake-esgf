@@ -546,3 +546,22 @@ def get_content_path(content: dict[str, Any]) -> Path:
     # try to fix records with case-insensitive paths
     path = match.group(1).replace(project.lower(), project)
     return Path(path)
+
+
+def get_time_extent(
+    filename: str,
+) -> tuple[pd.Timestamp, pd.Timestamp] | tuple[None, None]:
+    """
+    Parse the timespan out of the filename, if possible, using pandas Timestamp.
+    """
+
+    def _to_timestamp(s: str) -> str:
+        if len(s) == 6:
+            s += "01"
+        return pd.Timestamp(s)
+
+    match = re.search(r"_(\d+)-(\d+)", filename)
+    if not match:
+        return None, None
+
+    return _to_timestamp(match.group(1)), _to_timestamp(match.group(2))
