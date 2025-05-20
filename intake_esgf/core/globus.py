@@ -160,6 +160,10 @@ class GlobusESGFIndex:
                     ],
                 }
                 info["path"] = base.get_content_path(content)
+                tstart, tend = base.get_time_extent(str(info["path"]))
+                if tstart is not None:
+                    info["file_start"] = tstart
+                    info["file_end"] = tend
                 infos.append(info)
         response_time = time.time() - response_time
         logger = intake_esgf.conf.get_logger()
