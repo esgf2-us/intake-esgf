@@ -94,6 +94,8 @@ class ESGFCatalog:
         self.local_cache = []
         self.esg_dataroot = []
         self.download_db = None
+        self.file_start = None
+        self.file_end = None
         self._initialize()
 
     def __repr__(self) -> str:
@@ -275,7 +277,13 @@ class ESGFCatalog:
             .iloc[:, 0]
         )
 
-    def search(self, quiet: bool = False, **search) -> Self:
+    def search(
+        self,
+        quiet: bool = False,
+        file_start: str | None = None,
+        file_end: str | None = None,
+        **search,
+    ) -> Self:
         """
         Populate the catalog by specifying search facets and values.
 
@@ -283,10 +291,20 @@ class ESGFCatalog:
         ----------
         quiet
             Enable to silence the progress bar.
+        file_start, optional
+            A pandas Timestamp compatible string which will remove files whose
+            time range lies entirely before the given time.
+        file_end, optional
+            A pandas Timestamp compatible string which will remove files whose
+            time range lies entirely after the given time.
         **search
             Any number of facet keywords and values.
         """
         logger = intake_esgf.conf.get_logger()
+        if file_start is not None:
+            self.file_start = pd.Timestamp(file_start)
+        if file_end is not None:
+            self.file_end = pd.Timestamp(file_end)
 
         def _search(index):
             try:
@@ -512,6 +530,21 @@ class ESGFCatalog:
         combine_time = time.time()
         merged_info = {}
         for info in index_infos:
+            # If time ranges are given and files have a timestamp, filter them out
+            if (
+                self.file_start is not None
+                and info["file_end"] is not None
+                and info["file_end"] < self.file_start
+            ):
+                logger.info(f"Filtered for out of time range: {info['path']}")
+                continue
+            if (
+                self.file_end is not None
+                and info["file_start"] is not None
+                and info["file_start"] > self.file_end
+            ):
+                logger.info(f"Filtered for out of time range: {info['path']}")
+                continue
             path = info["path"]
             if path not in merged_info:
                 merged_info[path] = {"key": dataset_ids[info["dataset_id"]]}
