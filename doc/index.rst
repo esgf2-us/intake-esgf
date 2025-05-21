@@ -59,6 +59,7 @@ or through ``conda-forge``
 
    measures
    stream
+   time
    modelgroups
    configure
    paths
