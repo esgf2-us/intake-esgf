@@ -231,3 +231,17 @@ def test_nobreak():
         )
         paths = cat.to_path_dict()
         assert len(paths) == 1
+
+
+def test_file_timestamps():
+    cat = ESGFCatalog().search(
+        experiment_id="historical",
+        variable_id="msftmz",
+        source_id="NorESM2-LM",
+        variant_label="r2i1p1f1",
+        file_start="1960-01",
+        file_end="1979-12",
+    )
+    dpd = cat.to_path_dict()
+    paths = dpd[next(iter(dpd))]
+    assert len(paths) == 2
