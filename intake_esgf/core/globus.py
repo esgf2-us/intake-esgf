@@ -2,6 +2,7 @@
 
 import re
 import time
+import warnings
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -25,6 +26,7 @@ from intake_esgf.exceptions import GlobusTransferError
 from intake_esgf.projects import get_project_facets
 
 CLIENT_ID = "81a13009-8326-456e-a487-2d1557d8eb11"  # intake-esgf
+MAX_TOTAL_RECORDS = 10000
 
 
 class GlobusESGFIndex:
@@ -77,7 +79,16 @@ class GlobusESGFIndex:
         paginator = sc.paginated.post_search(self.index_id, query_data)
         paginator.limit = 1000
         df = []
+        have_warned = False
         for response in paginator:
+            if response["total"] > MAX_TOTAL_RECORDS and not have_warned:
+                have_warned = True
+                warnings.warn(
+                    "Your search has found a number of records which surpasses the Globus-imposed "
+                    f"maximum: {response['total']} > {MAX_TOTAL_RECORDS}. We will return all that "
+                    "are allowed, but your search will be incomplete. Try breaking it up into a "
+                    "sequence of smaller searches."
+                )
             for g in response["gmeta"]:
                 content = g["entries"][0]["content"]
                 record = {
@@ -136,7 +147,16 @@ class GlobusESGFIndex:
         paginator = sc.paginated.post_search(self.index_id, query)
         paginator.limit = 1000
         infos = []
+        have_warned = False
         for response in paginator:
+            if response["total"] > MAX_TOTAL_RECORDS and not have_warned:
+                have_warned = True
+                warnings.warn(
+                    "While getting file information, we have found a number of records which surpasses the Globus-imposed "
+                    f"maximum: {response['total']} > {MAX_TOTAL_RECORDS}. We will return all that "
+                    "are allowed, but your search will be incomplete. Try breaking it up into a "
+                    "sequence of smaller searches."
+                )
             for g in response.get("gmeta"):
                 assert len(g["entries"]) == 1
                 content = g["entries"][0]["content"]
