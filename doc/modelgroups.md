@@ -9,6 +9,7 @@ kernelspec:
 
 ```{code-cell}
 :tags: [remove-cell]
+import intake_esgf
 intake_esgf.conf.set(
     indices={"ornl-dev": True, "anl-dev": True, "ESGF2-US-1.5-Catalog": False}
 )
@@ -18,7 +19,7 @@ intake_esgf.conf.set(
 
 At a simple level, you can think of `intake-esgf` as analagous to the ESGF web [interface](https://aims2.llnl.gov/search) but where results are presented to you as a pandas dataframe in place of pages of web results. However, we believe that the user does not want to wade through either of these. Many times you want to see model results organized by unique combinations of `source_id`, `member_id`, and `grid_label`. That is to say, when you are going to perform an analysis, you would like your model outputs to be self-consistent and from the same run and grid, even across experiments. To assist you in honing in on what sets of results may be useful to your analysis, we introduce the notion of *model groups*.
 
-Consider the following search, motivated by a desire to study controls (temperature, precipitation, soil moisture) on the carbon cycle (gross primary productivty) across a number of historical and future scenarios.
+Consider the following search, motivated by a desire to study controls (temperature, precipitation) on the carbon cycle (gross primary productivty) across a number of historical and future scenarios.
 
 ```{code-cell}
 from intake_esgf import ESGFCatalog
