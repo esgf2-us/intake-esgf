@@ -86,6 +86,10 @@ def get_globus_endpoints(info: dict) -> list[str]:
             raise ValueError(f"Globus 'link' count not be parsed: {entry}")
         uuid = m.group(1)
         globus_endpoints.append(uuid)
+    # Blacklist the OLCF endpoint because the paths in the index are not correct
+    # and lead to file not found errors.
+    BLACKLIST = ["dea29ae8-bb92-4c63-bdbc-260522c92fe8"]
+    globus_endpoints = list(set(globus_endpoints) - set(BLACKLIST))
     return globus_endpoints
 
 
