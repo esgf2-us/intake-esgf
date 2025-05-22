@@ -57,6 +57,7 @@ def test_null():
     except NoSearchResults:
         pass
 
+
 @pytest.mark.globus_auth
 def test_globus_transfer():
     import os
@@ -68,7 +69,15 @@ def test_globus_transfer():
     # make sure this cache does not exist and set configuration
     local_cache = Path().home() / "esgf-test"
     os.system(f"rm -rf {local_cache}")
-    intake_esgf.conf.set(local_cache=[str(local_cache)])
+
+    indices = {
+        key: False
+        for key in (
+            intake_esgf.conf["globus_indices"] | intake_esgf.conf["solr_indices"]
+        )
+    }
+    indices["ESGF2-US-1.5-Catalog"] = True
+    intake_esgf.conf.set(indices=indices, local_cache=[str(local_cache)])
 
     dsd = (
         ESGFCatalog()
