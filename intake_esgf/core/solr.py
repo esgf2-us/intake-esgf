@@ -135,6 +135,7 @@ class SolrESGFIndex:
                     info[link_type].append(link)
                 infos.append(info)
                 tstart, tend = base.get_time_extent(str(info["path"]))
+                info["file_start"] = info["file_end"] = None
                 if tstart is not None:
                     info["file_start"] = tstart
                     info["file_end"] = tend

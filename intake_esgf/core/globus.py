@@ -181,6 +181,7 @@ class GlobusESGFIndex:
                 }
                 info["path"] = base.get_content_path(content)
                 tstart, tend = base.get_time_extent(str(info["path"]))
+                info["file_start"] = info["file_end"] = None
                 if tstart is not None:
                     info["file_start"] = tstart
                     info["file_end"] = tend
