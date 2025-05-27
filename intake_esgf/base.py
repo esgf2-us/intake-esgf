@@ -293,42 +293,48 @@ def download_and_verify(
     quiet: bool = False,
 ) -> None:
     """Download the url to a local file and check for validity, removing if not."""
+    # Initialize
+    MAX_FILENAME_LEN = 40
+    CHUNKSIZE = 2**20  # Mb
     logger = intake_esgf.conf.get_logger()
     if not isinstance(local_file, Path):
         local_file = Path(local_file)
-    max_file_length = 40
-    desc = (
-        local_file.name
-        if len(local_file.name) < max_file_length
-        else f"{local_file.name[:(max_file_length-3)]}..."
-    )
     local_file.parent.mkdir(parents=True, exist_ok=True)
+
+    # Begin download
+    transfer_time = time.time()
     resp = requests.get(url, stream=True, timeout=10)
     resp.raise_for_status()
-    transfer_time = time.time()
-    with open(local_file, "wb") as fdl:
+    tmp_file = local_file.with_suffix(".tmp")
+    with open(tmp_file, "wb") as fdl:
         with tqdm(
             disable=quiet,
             bar_format="{desc}: {percentage:3.0f}%|{bar}|{n_fmt}/{total_fmt} [{rate_fmt}{postfix}]",
             total=content_length,
             unit="B",
             unit_scale=True,
-            desc=desc,
-            ascii=False,
             leave=False,
+            desc=local_file.name
+            if len(local_file.name) < MAX_FILENAME_LEN
+            else f"{local_file.name[:(MAX_FILENAME_LEN-3)]}...",
         ) as pbar:
-            for chunk in resp.iter_content(chunk_size=1024):
+            for chunk in resp.iter_content(chunk_size=CHUNKSIZE):
                 if chunk:
                     fdl.write(chunk)
                     pbar.update(len(chunk))
+
+    # Verify
+    if get_file_hash(tmp_file, hash_algorithm) != hash:
+        logger.info(f"\x1b[91;20mHash error\033[0m {url}")
+        tmp_file.unlink()
+        raise ValueError("Hash does not match")
+    tmp_file.rename(local_file)
+
+    # Log transfer information
     transfer_time = time.time() - transfer_time
     rate = content_length * 1e-6 / transfer_time
-    if get_file_hash(local_file, hash_algorithm) != hash:
-        logger.info(f"\x1b[91;20mHash error\033[0m {url}")
-        local_file.unlink()
-        raise ValueError("Hash does not match")
-    logger.info(f"{transfer_time=:.2f} [s] at {rate:.2f} [Mb s-1] {url}")
     host = url[: url.index("/", 10)].replace("http://", "").replace("https://", "")
+    logger.info(f"{transfer_time=:.2f} [s] at {rate:.2f} [Mb s-1] {url}")
     log_download_information(download_db, host, transfer_time, content_length * 1e-6)
 
 
