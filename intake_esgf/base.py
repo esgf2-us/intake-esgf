@@ -172,7 +172,7 @@ def partition_infos(
             if key not in ds:
                 ds[key] = []
             ds[key].append(local_path)
-            infos_exist.append(info)  # maybe not needed
+            infos_exist.append(info)
             continue
         except FileNotFoundError:
             pass
@@ -191,13 +191,13 @@ def partition_infos(
                 # seen while downloading. If this fails, we revert to https.
                 try:
                     link = select_streaming_link(links, df_rate)
+                    if key not in ds:
+                        ds[key] = []
+                    ds[key].append(link)
+                    infos_stream.append(info)
+                    continue
                 except ValueError:
-                    break
-                if key not in ds:
-                    ds[key] = []
-                ds[key].append(link)
-                infos_stream.append(info)  # maybe not needed
-                continue
+                    pass
 
         # 3) does the user prefer to use globus transfer?
         if prefer_globus:
