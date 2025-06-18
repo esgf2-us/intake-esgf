@@ -27,7 +27,7 @@ from intake_esgf.exceptions import GlobusTransferError
 from intake_esgf.projects import get_project_facets
 
 CLIENT_ID = "81a13009-8326-456e-a487-2d1557d8eb11"  # intake-esgf
-RECORD_WARNING_THRESHOLD = 10000
+RECORD_WARNING_THRESHOLD = 20000
 
 
 class GlobusESGFIndex:
@@ -121,41 +121,29 @@ class GlobusESGFIndex:
         """Get file information for the given datasets."""
         response_time = time.time()
         sc = SearchClient()
-        query = SearchQueryV1(
-            filters=[
-                {
-                    "field_name": "type",
-                    "values": ["File"],
-                    "type": "match_any",
-                },
-                {
-                    "field_name": "dataset_id",
-                    "values": dataset_ids,
-                    "type": "match_any",
-                },
-            ]
-            + [
-                {
-                    "field_name": facet,
-                    "values": val if isinstance(val, list) else [val],
-                    "type": "match_any",
-                }
-                for facet, val in facets.items()
-            ]
+        query = (
+            SearchScrollQuery("")
+            .add_filter(
+                field_name="type",
+                values=["File"],
+                type="match_any",
+            )
+            .add_filter(
+                field_name="dataset_id",
+                values=dataset_ids,
+                type="match_any",
+            )
         )
-        paginator = sc.paginated.post_search(self.index_id, query)
-        paginator.limit = 1000
+        for facet, val in facets.items():
+            query.add_filter(
+                field_name=facet,
+                values=val if isinstance(val, list) else [val],
+                type="match_any",
+            )
+        query.set_limit(1000)
+        paginator = sc.paginated.scroll(self.index_id, query)
         infos = []
-        have_warned = False
         for response in paginator:
-            if response["total"] > 1 and not have_warned:
-                have_warned = True
-                warnings.warn(
-                    "While getting file information, we have found a number of records which surpasses the Globus-imposed "
-                    f"maximum: {response['total']} > {1}. We will return all that "
-                    "are allowed, but your search will be incomplete. Try breaking it up into a "
-                    "sequence of smaller searches."
-                )
             for g in response.get("gmeta"):
                 assert len(g["entries"]) == 1
                 content = g["entries"][0]["content"]
