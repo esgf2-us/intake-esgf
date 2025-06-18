@@ -14,6 +14,7 @@ from globus_sdk import (
     RefreshTokenAuthorizer,
     SearchClient,
     SearchQueryV1,
+    SearchScrollQuery,
     TransferAPIError,
     TransferClient,
     TransferData,
@@ -26,7 +27,7 @@ from intake_esgf.exceptions import GlobusTransferError
 from intake_esgf.projects import get_project_facets
 
 CLIENT_ID = "81a13009-8326-456e-a487-2d1557d8eb11"  # intake-esgf
-MAX_TOTAL_RECORDS = 10000
+RECORD_WARNING_THRESHOLD = 10000
 
 
 class GlobusESGFIndex:
@@ -56,38 +57,36 @@ class GlobusESGFIndex:
         entries.
 
         """
-        # build up the query and search
-        query_data = SearchQueryV1(
-            filters=[
-                {
-                    "field_name": key,
-                    "values": val if isinstance(val, list) else [val],
-                    "type": "match_any",
-                }
-                for key, val in search.items()
-            ]
-        )
+        # build up the query
+        query_data = SearchScrollQuery("")
+        for key, val in search.items():
+            query_data.add_filter(
+                key,
+                val if isinstance(val, list) else [val],
+                type="match_any",
+            )
+        query_data.set_limit(1000)
 
+        # which facets should be included in the resulting dataframe
         facets = get_project_facets(search) + intake_esgf.conf.get(
             "additional_df_cols", []
         )
         if "project" not in facets:
             facets = ["project"] + facets
 
+        # paginated search
         response_time = time.time()
         sc = SearchClient()
-        paginator = sc.paginated.post_search(self.index_id, query_data)
-        paginator.limit = 1000
+        paginator = sc.paginated.scroll(self.index_id, query_data)
         df = []
         have_warned = False
         for response in paginator:
-            if response["total"] > MAX_TOTAL_RECORDS and not have_warned:
+            if response["total"] > RECORD_WARNING_THRESHOLD and not have_warned:
                 have_warned = True
                 warnings.warn(
-                    "Your search has found a number of records which surpasses the Globus-imposed "
-                    f"maximum: {response['total']} > {MAX_TOTAL_RECORDS}. We will return all that "
-                    "are allowed, but your search will be incomplete. Try breaking it up into a "
-                    "sequence of smaller searches."
+                    f"We are processing your request but the search has returned {response['total']:,} "
+                    "records and it may take some time to complete. Your search will execute faster "
+                    "if you can add more search criteria."
                 )
             for g in response["gmeta"]:
                 content = g["entries"][0]["content"]
@@ -149,11 +148,11 @@ class GlobusESGFIndex:
         infos = []
         have_warned = False
         for response in paginator:
-            if response["total"] > MAX_TOTAL_RECORDS and not have_warned:
+            if response["total"] > 1 and not have_warned:
                 have_warned = True
                 warnings.warn(
                     "While getting file information, we have found a number of records which surpasses the Globus-imposed "
-                    f"maximum: {response['total']} > {MAX_TOTAL_RECORDS}. We will return all that "
+                    f"maximum: {response['total']} > {1}. We will return all that "
                     "are allowed, but your search will be incomplete. Try breaking it up into a "
                     "sequence of smaller searches."
                 )
