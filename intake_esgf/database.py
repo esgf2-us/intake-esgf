@@ -19,11 +19,12 @@ def create_download_database(path: Path) -> None:
     """
     if path.is_file():
         return
-    with sqlite3.connect(path) as con:
-        cur = con.cursor()
-        cur.execute(
-            "CREATE TABLE downloads(timestamp TEXT NULL DEFAULT (datetime('now', 'localtime')), host, transfer_time, transfer_size)"
-        )
+    con = sqlite3.connect(path)
+    cur = con.cursor()
+    cur.execute(
+        "CREATE TABLE downloads(timestamp TEXT NULL DEFAULT (datetime('now', 'localtime')), host, transfer_time, transfer_size)"
+    )
+    con.close()
 
 
 def log_download_information(
@@ -39,12 +40,13 @@ def log_download_information(
         The time the transfer took in seconds.
     transfer_size
         The number of Mb transferred"""
-    with sqlite3.connect(path) as con:
-        cur = con.cursor()
-        cur.execute(
-            f"INSERT INTO downloads ('host','transfer_time','transfer_size') VALUES ('{host}',{transfer_time},{transfer_size})"
-        )
-        con.commit()
+    con = sqlite3.connect(path)
+    cur = con.cursor()
+    cur.execute(
+        f"INSERT INTO downloads ('host','transfer_time','transfer_size') VALUES ('{host}',{transfer_time},{transfer_size})"
+    )
+    con.commit()
+    con.close()
 
 
 def get_download_rate_dataframe(
@@ -68,11 +70,12 @@ def get_download_rate_dataframe(
     if history is not None:
         condition.append(f"timestamp > datetime('now', '-1 {history}', 'localtime')")
     condition = " AND ".join(condition)
-    with sqlite3.connect(path) as con:
-        df = pd.read_sql_query(
-            f"SELECT * FROM downloads WHERE {condition}",
-            con,
-        )
+    con = sqlite3.connect(path)
+    df = pd.read_sql_query(
+        f"SELECT * FROM downloads WHERE {condition}",
+        con,
+    )
+    con.close()
     if not len(df):
         df = df.set_index("host")
         return df
