@@ -74,6 +74,13 @@ class ESGFCatalog:
     """
 
     def __init__(self):
+        # Solr technology is being deprecated, we warn users
+        if any([tf for _, tf in intake_esgf.conf["solr_indices"].items()]):
+            warnings.warn(
+                "You have enabled at least one index which uses the old Solr technology. "
+                "ESGF is moving away from this technology and you may find that some indices"
+                "fail to return a response."
+            )
         self.indices = []
         self.indices += [
             GlobusESGFIndex(ind)
