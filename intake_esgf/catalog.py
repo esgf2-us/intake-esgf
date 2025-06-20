@@ -357,19 +357,20 @@ class ESGFCatalog:
 
         # threaded search over indices
         search_time = time.time()
-        dfs = ThreadPool(len(self.indices)).imap_unordered(_search, self.indices)
-        self.df = base.combine_results(
-            tqdm(
-                dfs,
-                disable=quiet,
-                bar_format=base.bar_format,
-                unit="index",
-                unit_scale=False,
-                desc="Searching indices",
-                ascii=False,
-                total=len(self.indices),
+        with ThreadPool(len(self.indices)) as pool:
+            dfs = pool.imap_unordered(_search, self.indices)
+            self.df = base.combine_results(
+                tqdm(
+                    dfs,
+                    disable=quiet,
+                    bar_format=base.bar_format,
+                    unit="index",
+                    unit_scale=False,
+                    desc="Searching indices",
+                    ascii=False,
+                    total=len(self.indices),
+                )
             )
-        )
         self._set_project()
 
         # even though we are using latest=True, because the search is distributed, we
@@ -423,21 +424,20 @@ class ESGFCatalog:
 
         # threaded search over indices
         search_time = time.time()
-        dfs = ThreadPool(len(self.indices)).imap_unordered(
-            _from_tracking_ids, self.indices
-        )
-        self.df = base.combine_results(
-            tqdm(
-                dfs,
-                disable=quiet,
-                bar_format=base.bar_format,
-                unit="index",
-                unit_scale=False,
-                desc="Searching indices",
-                ascii=False,
-                total=len(self.indices),
+        with ThreadPool(len(self.indices)) as pool:
+            dfs = pool.imap_unordered(_from_tracking_ids, self.indices)
+            self.df = base.combine_results(
+                tqdm(
+                    dfs,
+                    disable=quiet,
+                    bar_format=base.bar_format,
+                    unit="index",
+                    unit_scale=False,
+                    desc="Searching indices",
+                    ascii=False,
+                    total=len(self.indices),
+                )
             )
-        )
         search_time = time.time() - search_time
         if len(self.df) != len(tracking_ids):
             logger.info("One or more of the tracking_ids resolve to multiple files.")
@@ -514,22 +514,23 @@ class ESGFCatalog:
         # The index nodes are again queried for file information. Each file points back
         # to the dataset_id to which it belongs.
         info_time = time.time()
-        get_file_info = ThreadPool(len(self.indices)).imap_unordered(
-            partial(_get_file_info, dataset_ids=dataset_ids, **search_facets),
-            self.indices,
-        )
-        index_infos = list(
-            tqdm(
-                get_file_info,
-                disable=quiet,
-                bar_format=base.bar_format,
-                unit="index",
-                unit_scale=False,
-                desc="Get file information",
-                ascii=False,
-                total=len(self.indices),
+        with ThreadPool(len(self.indices)) as pool:
+            get_file_info = pool.imap_unordered(
+                partial(_get_file_info, dataset_ids=dataset_ids, **search_facets),
+                self.indices,
             )
-        )
+            index_infos = list(
+                tqdm(
+                    get_file_info,
+                    disable=quiet,
+                    bar_format=base.bar_format,
+                    unit="index",
+                    unit_scale=False,
+                    desc="Get file information",
+                    ascii=False,
+                    total=len(self.indices),
+                )
+            )
         index_infos = [info for index_info in index_infos for info in index_info]
 
         # Now we merge the access/validation information, but where the primary key is
@@ -634,20 +635,20 @@ class ESGFCatalog:
                 download_unit = "Gb"
             if not quiet:
                 print(f"Downloading {download_size:.1f} [{download_unit}]...")
-
-            list(
-                ThreadPool(
-                    min(intake_esgf.conf["num_threads"], len(infos["https"]))
-                ).imap_unordered(
-                    partial(
-                        base.parallel_download,
-                        local_cache=self.local_cache,
-                        download_db=self.download_db,
-                        esg_dataroot=self.esg_dataroot,
-                    ),
-                    infos["https"],
+            with ThreadPool(
+                min(intake_esgf.conf["num_threads"], len(infos["https"]))
+            ) as pool:
+                list(
+                    pool.imap_unordered(
+                        partial(
+                            base.parallel_download,
+                            local_cache=self.local_cache,
+                            download_db=self.download_db,
+                            esg_dataroot=self.esg_dataroot,
+                        ),
+                        infos["https"],
+                    )
                 )
-            )
 
         # unpack the https files which should now exist in local cache
         dsd = _load_into_dsd(dsd, infos["https"])
