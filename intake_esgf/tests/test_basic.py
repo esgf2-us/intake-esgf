@@ -7,12 +7,10 @@ from intake_esgf import ESGFCatalog
 from intake_esgf.base import partition_infos
 from intake_esgf.exceptions import MissingFileInformation, NoSearchResults
 
-SOLR_TEST = "esgf-node.ornl.gov"
-
 
 def test_search():
     extra = ["datetime_start", "datetime_stop"]
-    with intake_esgf.conf.set(indices={SOLR_TEST: True}, additional_df_cols=extra):
+    with intake_esgf.conf.set(additional_df_cols=extra):
         cat = ESGFCatalog().search(
             experiment_id="historical",
             source_id="CanESM5",
@@ -52,11 +50,6 @@ def test_noresults():
 
 
 def test_tracking_ids():
-    with intake_esgf.conf.set(indices={SOLR_TEST: True}):
-        cat = ESGFCatalog().from_tracking_ids(
-            "hdl:21.14100/0577d84f-9954-494f-8cc8-465aa4fd910e"
-        )
-        assert len(cat.df) == 1
     cat = ESGFCatalog().from_tracking_ids(
         [
             "hdl:21.14100/0577d84f-9954-494f-8cc8-465aa4fd910e",
@@ -232,6 +225,7 @@ def test_nobreak():
             )
             .remove_ensembles()
         )
+        cat.df.loc[cat.df.index[0], "id"] = []  # fake there being no paths to download
         paths = cat.to_path_dict()
         assert len(paths) == 1
 

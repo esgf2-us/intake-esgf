@@ -29,7 +29,7 @@ cat = ESGFCatalog().search(
     experiment_id="historical",
     source_id="CanESM5",
     frequency="mon",
-    variable_id=["gpp", "tas", "pr"],
+    variable_id=["tas","gpp"],
     member_id="r1i1p1f1",
 )
 ```
@@ -48,7 +48,7 @@ cat = ESGFCatalog().search(
     experiment_id="historical",
     source_id="CanESM5",
     frequency="mon",
-    variable_id=["cSoil"],
+    variable_id="pr",
     member_id="r1i1p1f1",
 )
 paths = cat.to_path_dict(prefer_streaming=True)

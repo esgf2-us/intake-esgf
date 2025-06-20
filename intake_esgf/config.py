@@ -9,9 +9,9 @@ import yaml
 
 defaults = {
     "globus_indices": {
-        "anl-dev": True,
-        "ornl-dev": True,
-        "ESGF2-US-1.5-Catalog": False,
+        "ESGF2-US-1.5-Catalog": True,
+        "anl-dev": False,
+        "ornl-dev": False,
     },
     "solr_indices": {
         "esgf.ceda.ac.uk": False,
