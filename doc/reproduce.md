@@ -27,7 +27,7 @@ show the results of the search.
 cat = ESGFCatalog().search(
     experiment_id="historical",
     source_id="CanESM5",
-    variable_id=["gpp", "tas", "nbp"],
+    variable_id=["gpp", "tas"],
     variant_label=["r1i1p1f1"],
     frequency="mon",
 )

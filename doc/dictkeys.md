@@ -17,7 +17,7 @@ cat = ESGFCatalog().search(
     experiment_id="historical",
     variant_label="r1i1p1f1",
     frequency="mon",
-    source_id=["CESM2", "CanESM5"],
+    source_id=["IPSL-CM6A-LR", "CanESM5"],
     variable_id=["tas", "gpp"],
 )
 print(cat)
@@ -53,7 +53,7 @@ for key in ds.keys():
 
 ## Change the Separator
 
-You may also use a different separator. By default use the `.` symbol, but you may choose any character. This can be useful if you wish to use `xarray-datatree` to pass into their `DataTree` contructor.
+You may also use a different separator. By default use the `.` symbol, but you may choose any character. This can be useful if you wish to use [`xarray.DataTree`](https://docs.xarray.dev/en/latest/user-guide/data-structures.html#datatree).
 
 ```{code-cell}
 ds = cat.to_dataset_dict(minimal_keys=False,separator="/")
