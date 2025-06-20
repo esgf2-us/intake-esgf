@@ -845,7 +845,8 @@ class ESGFCatalog:
         """
         Return the log since the instantiation of this catalog.
         """
-        log = open(Path(intake_esgf.conf["logfile"]).expanduser()).readlines()[::-1]
+        with open(Path(intake_esgf.conf["logfile"]).expanduser()) as fin:
+            log = fin.readlines()[::-1]
         for n, line in enumerate(log):
             m = re.search(r"\x1b\[36;20m(.*)\s\033\[0m", line)
             if not m:
