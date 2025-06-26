@@ -2,6 +2,7 @@
 
 import re
 import time
+import warnings
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -12,7 +13,8 @@ from globus_sdk import (
     NativeAppAuthClient,
     RefreshTokenAuthorizer,
     SearchClient,
-    SearchQuery,
+    SearchQueryV1,
+    SearchScrollQuery,
     TransferAPIError,
     TransferClient,
     TransferData,
@@ -25,10 +27,12 @@ from intake_esgf.exceptions import GlobusTransferError
 from intake_esgf.projects import get_project_facets
 
 CLIENT_ID = "81a13009-8326-456e-a487-2d1557d8eb11"  # intake-esgf
+RECORD_WARNING_THRESHOLD = 20000
 
 
 class GlobusESGFIndex:
     GLOBUS_INDEX_IDS = {
+        "ESGF2-US-1.5-Catalog": "a8ef4320-9e5a-4793-837b-c45161ca1845",
         "anl-dev": "d927e2d9-ccdb-48e4-b05d-adbc3d97bbc5",
         "ornl-dev": "ea4595f4-7b71-4da7-a1f0-e3f5d8f7f062",
     }
@@ -53,31 +57,37 @@ class GlobusESGFIndex:
         entries.
 
         """
-        # the ALCF index encodes booleans as strings
-        if "anl-dev" in self.repr:
-            for key, val in search.items():
-                if isinstance(val, bool):
-                    search[key] = str(val)
-
-        # build up the query and search
-        query_data = SearchQuery("")
+        # build up the query
+        query_data = SearchScrollQuery("")
         for key, val in search.items():
             query_data.add_filter(
-                key, val if isinstance(val, list) else [val], type="match_any"
+                key,
+                val if isinstance(val, list) else [val],
+                type="match_any",
             )
+        query_data.set_limit(1000)
 
+        # which facets should be included in the resulting dataframe
         facets = get_project_facets(search) + intake_esgf.conf.get(
             "additional_df_cols", []
         )
         if "project" not in facets:
             facets = ["project"] + facets
 
+        # paginated search
         response_time = time.time()
         sc = SearchClient()
-        paginator = sc.paginated.post_search(self.index_id, query_data)
-        paginator.limit = 1000
+        paginator = sc.paginated.scroll(self.index_id, query_data)
         df = []
+        have_warned = False
         for response in paginator:
+            if response["total"] > RECORD_WARNING_THRESHOLD and not have_warned:
+                have_warned = True
+                warnings.warn(
+                    f"We are processing your request but the search has returned {response['total']:,} "
+                    "records and it may take some time to complete. Your search will execute faster "
+                    "if you can add more search criteria."
+                )
             for g in response["gmeta"]:
                 content = g["entries"][0]["content"]
                 record = {
@@ -112,16 +122,26 @@ class GlobusESGFIndex:
         response_time = time.time()
         sc = SearchClient()
         query = (
-            SearchQuery("")
-            .add_filter("type", ["File"])
-            .add_filter("dataset_id", dataset_ids, type="match_any")
+            SearchScrollQuery("")
+            .add_filter(
+                field_name="type",
+                values=["File"],
+                type="match_any",
+            )
+            .add_filter(
+                field_name="dataset_id",
+                values=dataset_ids,
+                type="match_any",
+            )
         )
         for facet, val in facets.items():
             query.add_filter(
-                facet, val if isinstance(val, list) else [val], type="match_any"
+                field_name=facet,
+                values=val if isinstance(val, list) else [val],
+                type="match_any",
             )
-        paginator = sc.paginated.post_search(self.index_id, query)
-        paginator.limit = 1000
+        query.set_limit(1000)
+        paginator = sc.paginated.scroll(self.index_id, query)
         infos = []
         for response in paginator:
             for g in response.get("gmeta"):
@@ -147,6 +167,11 @@ class GlobusESGFIndex:
                     ],
                 }
                 info["path"] = base.get_content_path(content)
+                tstart, tend = base.get_time_extent(str(info["path"]))
+                info["file_start"] = info["file_end"] = None
+                if tstart is not None:
+                    info["file_start"] = tstart
+                    info["file_end"] = tend
                 infos.append(info)
         response_time = time.time() - response_time
         logger = intake_esgf.conf.get_logger()
@@ -156,7 +181,15 @@ class GlobusESGFIndex:
     def from_tracking_ids(self, tracking_ids: list[str]) -> pd.DataFrame:
         response = SearchClient().post_search(
             self.index_id,
-            SearchQuery("").add_filter("tracking_id", tracking_ids, type="match_any"),
+            SearchQueryV1(
+                filters=[
+                    {
+                        "field_name": "tracking_id",
+                        "values": tracking_ids,
+                        "type": "match_any",
+                    }
+                ]
+            ),
         )
         df = []
         for g in response["gmeta"]:
@@ -183,15 +216,32 @@ class GlobusESGFIndex:
 def variable_info(query: str, project: str = "CMIP6") -> pd.DataFrame:
     """Return a dataframe with variable information from a query."""
     # first we populate a list of related veriables
-    q = (
-        SearchQuery(query)
-        .add_filter("type", ["Dataset"])
-        .add_filter("project", [project])
-        .add_facet("variable_id", "variable_id")
-        .add_facet("variable", "variable")
-        .set_limit(0)
+    uuid = GlobusESGFIndex.GLOBUS_INDEX_IDS["ESGF2-US-1.5-Catalog"]
+    q = SearchQueryV1(
+        q=query,
+        limit=0,
+        filters=[
+            {
+                "field_name": "type",
+                "values": ["Dataset"],
+                "type": "match_any",
+            },
+            {
+                "field_name": "project",
+                "values": [project],
+                "type": "match_any",
+            },
+        ],
+        facets=[
+            {
+                "name": v,
+                "field_name": v,
+                "type": "terms",
+            }
+            for v in ["variable", "variable_id"]
+        ],
     )
-    response = SearchClient().post_search("ea4595f4-7b71-4da7-a1f0-e3f5d8f7f062", q)
+    response = SearchClient().post_search(uuid, q)
     variables = list(
         set(
             [
@@ -208,14 +258,28 @@ def variable_info(query: str, project: str = "CMIP6") -> pd.DataFrame:
     # then we loop through them and extract information for the user
     df = []
     for v in variables:
-        q = (
-            SearchQuery("")
-            .add_filter("type", ["Dataset"])
-            .add_filter("project", [project])
-            .add_filter(var_facet, [v])  # need to abstract this
-            .set_limit(1)
+        q = SearchQueryV1(
+            q=query,
+            limit=1,
+            filters=[
+                {
+                    "field_name": "type",
+                    "values": ["Dataset"],
+                    "type": "match_any",
+                },
+                {
+                    "field_name": "project",
+                    "values": [project],
+                    "type": "match_any",
+                },
+                {
+                    "field_name": var_facet,
+                    "values": [v],
+                    "type": "match_any",
+                },
+            ],
         )
-        response = SearchClient().post_search("ea4595f4-7b71-4da7-a1f0-e3f5d8f7f062", q)
+        response = SearchClient().post_search(uuid, q)
         for doc in response.get("gmeta"):
             content = doc["entries"][0]["content"]
             columns = [var_facet]

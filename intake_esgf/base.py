@@ -86,7 +86,32 @@ def get_globus_endpoints(info: dict) -> list[str]:
             raise ValueError(f"Globus 'link' count not be parsed: {entry}")
         uuid = m.group(1)
         globus_endpoints.append(uuid)
+    # Blacklist the OLCF endpoint because the paths in the index are not correct
+    # and lead to file not found errors.
+    BLACKLIST = ["dea29ae8-bb92-4c63-bdbc-260522c92fe8"]
+    globus_endpoints = list(set(globus_endpoints) - set(BLACKLIST))
     return globus_endpoints
+
+
+def select_streaming_link(links: list[str], df_rate: pd.DataFrame) -> str:
+    """
+    Select a streaming link from a list of options based on fastest download speeds.
+    """
+    # There are some .nc and .nc.html links in these records, only the .nc links
+    # can be read by xarray.
+    links = [link for link in links if link.endswith(".nc")]
+    # Sort the links by the fastest hostname we have seen when transferring.
+    links = sorted(
+        links, key=partial(sort_download_links, df_rate=df_rate), reverse=True
+    )
+    # Return the first of these links whose html page returns a valid response.
+    # This is particular to OPENDAP and will need rethought for other virtual
+    # methods.
+    for link in links:
+        resp = requests.head(link + ".html", timeout=10)
+        if resp.status_code == 200:
+            return link
+    raise ValueError(f"None of these links appears functional {links}")
 
 
 def partition_infos(
@@ -132,6 +157,9 @@ def partition_infos(
     active_endpoints = set()
 
     # Partition and setup all the file infos based on a priority
+    df_rate = get_download_rate_dataframe(
+        Path(intake_esgf.conf["download_db"]).expanduser()
+    )
     for i, info in enumerate(infos):
         key = info["key"]
 
@@ -144,14 +172,14 @@ def partition_infos(
             if key not in ds:
                 ds[key] = []
             ds[key].append(local_path)
-            infos_exist.append(info)  # maybe not needed
+            infos_exist.append(info)
             continue
         except FileNotFoundError:
             pass
 
         # 2) does the user prefer to stream data?
         if prefer_streaming:
-            # how do we choose a link?
+            # What possible links are there to stream from?
             preferred_sources = ["VirtualZarr", "OPENDAP"]  # move to configure
             links = [
                 link
@@ -159,10 +187,17 @@ def partition_infos(
                 for link in info[src]
             ]
             if links:
-                # for now just use first link, we need to do better
-                ds[key] = [links[0]]
-                infos_stream.append(info)  # maybe not needed
-                continue
+                # Try to find a streaming link from the fastest servers we have
+                # seen while downloading. If this fails, we revert to https.
+                try:
+                    link = select_streaming_link(links, df_rate)
+                    if key not in ds:
+                        ds[key] = []
+                    ds[key].append(link)
+                    infos_stream.append(info)
+                    continue
+                except ValueError:
+                    pass
 
         # 3) does the user prefer to use globus transfer?
         if prefer_globus:
@@ -258,42 +293,48 @@ def download_and_verify(
     quiet: bool = False,
 ) -> None:
     """Download the url to a local file and check for validity, removing if not."""
+    # Initialize
+    MAX_FILENAME_LEN = 40
+    CHUNKSIZE = 2**20  # Mb
     logger = intake_esgf.conf.get_logger()
     if not isinstance(local_file, Path):
         local_file = Path(local_file)
-    max_file_length = 40
-    desc = (
-        local_file.name
-        if len(local_file.name) < max_file_length
-        else f"{local_file.name[:(max_file_length-3)]}..."
-    )
     local_file.parent.mkdir(parents=True, exist_ok=True)
+
+    # Begin download
+    transfer_time = time.time()
     resp = requests.get(url, stream=True, timeout=10)
     resp.raise_for_status()
-    transfer_time = time.time()
-    with open(local_file, "wb") as fdl:
+    tmp_file = local_file.with_suffix(".tmp")
+    with open(tmp_file, "wb") as fdl:
         with tqdm(
             disable=quiet,
             bar_format="{desc}: {percentage:3.0f}%|{bar}|{n_fmt}/{total_fmt} [{rate_fmt}{postfix}]",
             total=content_length,
             unit="B",
             unit_scale=True,
-            desc=desc,
-            ascii=False,
             leave=False,
+            desc=local_file.name
+            if len(local_file.name) < MAX_FILENAME_LEN
+            else f"{local_file.name[:(MAX_FILENAME_LEN-3)]}...",
         ) as pbar:
-            for chunk in resp.iter_content(chunk_size=1024):
+            for chunk in resp.iter_content(chunk_size=CHUNKSIZE):
                 if chunk:
                     fdl.write(chunk)
                     pbar.update(len(chunk))
+
+    # Verify
+    if get_file_hash(tmp_file, hash_algorithm) != hash:
+        logger.info(f"\x1b[91;20mHash error\033[0m {url}")
+        tmp_file.unlink()
+        raise ValueError("Hash does not match")
+    tmp_file.rename(local_file)
+
+    # Log transfer information
     transfer_time = time.time() - transfer_time
     rate = content_length * 1e-6 / transfer_time
-    if get_file_hash(local_file, hash_algorithm) != hash:
-        logger.info(f"\x1b[91;20mHash error\033[0m {url}")
-        local_file.unlink()
-        raise ValueError("Hash does not match")
-    logger.info(f"{transfer_time=:.2f} [s] at {rate:.2f} [Mb s-1] {url}")
     host = url[: url.index("/", 10)].replace("http://", "").replace("https://", "")
+    logger.info(f"{transfer_time=:.2f} [s] at {rate:.2f} [Mb s-1] {url}")
     log_download_information(download_db, host, transfer_time, content_length * 1e-6)
 
 
@@ -321,7 +362,9 @@ def parallel_download(
     # else we try to download it, first we sort links by the fastest host to you
     df_rate = get_download_rate_dataframe(download_db)
     info["HTTPServer"] = sorted(
-        info["HTTPServer"], key=partial(sort_download_links, df_rate=df_rate)
+        info["HTTPServer"],
+        key=partial(sort_download_links, df_rate=df_rate),
+        reverse=True,
     )
     # keep trying to download until one works out
     for url in info["HTTPServer"]:
@@ -513,3 +556,22 @@ def get_content_path(content: dict[str, Any]) -> Path:
     # try to fix records with case-insensitive paths
     path = match.group(1).replace(project.lower(), project)
     return Path(path)
+
+
+def get_time_extent(
+    filename: str,
+) -> tuple[pd.Timestamp, pd.Timestamp] | tuple[None, None]:
+    """
+    Parse the timespan out of the filename, if possible, using pandas Timestamp.
+    """
+
+    def _to_timestamp(s: str) -> str:
+        if len(s) == 6:
+            s += "01"
+        return pd.Timestamp(s)
+
+    match = re.search(r"_(\d+)-(\d+)", filename)
+    if not match:
+        return None, None
+
+    return _to_timestamp(match.group(1)), _to_timestamp(match.group(2))

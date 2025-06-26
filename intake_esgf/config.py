@@ -12,17 +12,18 @@ defaults = {
         "api.stac.ceda.ac.uk": False,
     },
     "globus_indices": {
-        "anl-dev": True,
-        "ornl-dev": True,
+        "ESGF2-US-1.5-Catalog": True,
+        "anl-dev": False,
+        "ornl-dev": False,
     },
     "solr_indices": {
         "esgf.ceda.ac.uk": False,
         "esgf-data.dkrz.de": False,
         "esgf-node.ipsl.upmc.fr": False,
         "esg-dn1.nsc.liu.se": False,
-        "esgf-node.llnl.gov": False,
         "esgf.nci.org.au": False,
         "esgf-node.ornl.gov": False,
+        "esgf-node.llnl.gov": False,
     },
     "additional_df_cols": [],
     "esg_dataroot": [

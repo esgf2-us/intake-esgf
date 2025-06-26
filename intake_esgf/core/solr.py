@@ -31,7 +31,7 @@ def esg_search(base_url, **search):
 
 
 class SolrESGFIndex:
-    def __init__(self, index_node: str = "esgf-node.llnl.gov", distrib: bool = False):
+    def __init__(self, index_node: str = "esgf-node.ornl.gov", distrib: bool = False):
         self.repr = f"SolrESGFIndex('{index_node}'{',distrib=True' if distrib else ''})"
         self.url = f"https://{index_node}"
         self.distrib = distrib
@@ -134,6 +134,11 @@ class SolrESGFIndex:
                         info[link_type] = []
                     info[link_type].append(link)
                 infos.append(info)
+                tstart, tend = base.get_time_extent(str(info["path"]))
+                info["file_start"] = info["file_end"] = None
+                if tstart is not None:
+                    info["file_start"] = tstart
+                    info["file_end"] = tend
         response_time = time.time() - response_time
         logger.info(f"└─{self} results={len(infos)} {response_time=:.2f}")
         return infos

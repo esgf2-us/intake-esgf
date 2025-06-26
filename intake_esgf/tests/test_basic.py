@@ -7,12 +7,10 @@ from intake_esgf import ESGFCatalog
 from intake_esgf.base import partition_infos
 from intake_esgf.exceptions import MissingFileInformation, NoSearchResults
 
-SOLR_TEST = "esgf-node.llnl.gov"
-
 
 def test_search():
     extra = ["datetime_start", "datetime_stop"]
-    with intake_esgf.conf.set(indices={SOLR_TEST: True}, additional_df_cols=extra):
+    with intake_esgf.conf.set(additional_df_cols=extra):
         cat = ESGFCatalog().search(
             experiment_id="historical",
             source_id="CanESM5",
@@ -52,11 +50,6 @@ def test_noresults():
 
 
 def test_tracking_ids():
-    with intake_esgf.conf.set(indices={SOLR_TEST: True}):
-        cat = ESGFCatalog().from_tracking_ids(
-            "hdl:21.14100/0577d84f-9954-494f-8cc8-465aa4fd910e"
-        )
-        assert len(cat.df) == 1
     cat = ESGFCatalog().from_tracking_ids(
         [
             "hdl:21.14100/0577d84f-9954-494f-8cc8-465aa4fd910e",
@@ -151,27 +144,31 @@ def test_partition_infos():
 
 
 def test_partition_infos_stream():
+    VALID_OPENDAP_LINK = "https://esgf-data1.llnl.gov/thredds/dodsC/css03_data/CMIP6/CMIP/AS-RCEC/TaiESM1/historical/r1i1p1f1/day/tasmax/gn/v20210517/tasmax_day_TaiESM1_historical_r1i1p1f1_gn_20100101-20141231.nc"
     infos = [
         {
             "key": "dataset1",
             "path": Path("file1"),
-            "VirtualZarr": ["link1", "link2"],
+            "VirtualZarr": [VALID_OPENDAP_LINK, VALID_OPENDAP_LINK],
         },
         {
             "key": "dataset2",
             "path": Path("file1"),
             "HTTPServer": ["link1", "link2"],
-            "OPENDAP": ["link1", "link2"],
+            "OPENDAP": [VALID_OPENDAP_LINK, VALID_OPENDAP_LINK],
         },
     ]
     infos_, ds = partition_infos(infos, False, False)
     assert max([len(infos_[p]) for p in ["exist", "stream", "globus"]]) == 0
     assert len(infos_["https"]) == 2
     assert len(ds) == 0
+    # The following is meant to test that if streaming is requested, you will
+    # get those links. However, the issue is that the code checks that the link
+    # is valid and many times OPENDAP fails.
     infos_, ds = partition_infos(infos, True, True)
-    assert max([len(infos_[p]) for p in ["exist", "globus", "https"]]) == 0
-    assert len(infos_["stream"]) == 2
-    assert len(ds) == 2
+    assert max([len(infos_[p]) for p in ["exist", "globus"]]) == 0
+    assert len(infos_["stream"] + infos_["https"]) == 2
+    assert len(ds) == len(infos_["stream"])
 
 
 @pytest.mark.globus_auth
@@ -228,5 +225,20 @@ def test_nobreak():
             )
             .remove_ensembles()
         )
+        cat.df.loc[cat.df.index[0], "id"] = []  # fake there being no paths to download
         paths = cat.to_path_dict()
         assert len(paths) == 1
+
+
+def test_file_timestamps():
+    cat = ESGFCatalog().search(
+        experiment_id="historical",
+        variable_id="msftmz",
+        source_id="NorESM2-LM",
+        variant_label="r2i1p1f1",
+        file_start="1960-01",
+        file_end="1979-12",
+    )
+    dpd = cat.to_path_dict()
+    paths = dpd[next(iter(dpd))]
+    assert len(paths) == 2

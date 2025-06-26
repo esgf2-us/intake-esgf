@@ -74,6 +74,13 @@ class ESGFCatalog:
     """
 
     def __init__(self):
+        # Solr technology is being deprecated, we warn users
+        if any([tf for _, tf in intake_esgf.conf["solr_indices"].items()]):
+            warnings.warn(
+                "You have enabled at least one index which uses the old Solr technology. "
+                "ESGF is moving away from this technology and you may find that some indices"
+                "fail to return a response."
+            )
         self.indices = []
         self.indices += [
             GlobusESGFIndex(ind)
@@ -94,6 +101,8 @@ class ESGFCatalog:
         self.local_cache = []
         self.esg_dataroot = []
         self.download_db = None
+        self.file_start = None
+        self.file_end = None
         self._initialize()
 
     def __repr__(self) -> str:
@@ -275,7 +284,13 @@ class ESGFCatalog:
             .iloc[:, 0]
         )
 
-    def search(self, quiet: bool = False, **search) -> Self:
+    def search(
+        self,
+        quiet: bool = False,
+        file_start: str | None = None,
+        file_end: str | None = None,
+        **search,
+    ) -> Self:
         """
         Populate the catalog by specifying search facets and values.
 
@@ -283,10 +298,20 @@ class ESGFCatalog:
         ----------
         quiet
             Enable to silence the progress bar.
+        file_start, optional
+            A pandas Timestamp compatible string which will remove files whose
+            time range lies entirely before the given time.
+        file_end, optional
+            A pandas Timestamp compatible string which will remove files whose
+            time range lies entirely after the given time.
         **search
             Any number of facet keywords and values.
         """
         logger = intake_esgf.conf.get_logger()
+        if file_start is not None:
+            self.file_start = pd.Timestamp(file_start)
+        if file_end is not None:
+            self.file_end = pd.Timestamp(file_end)
 
         def _search(index):
             try:
@@ -332,19 +357,20 @@ class ESGFCatalog:
 
         # threaded search over indices
         search_time = time.time()
-        dfs = ThreadPool(len(self.indices)).imap_unordered(_search, self.indices)
-        self.df = base.combine_results(
-            tqdm(
-                dfs,
-                disable=quiet,
-                bar_format=base.bar_format,
-                unit="index",
-                unit_scale=False,
-                desc="Searching indices",
-                ascii=False,
-                total=len(self.indices),
+        with ThreadPool(len(self.indices)) as pool:
+            dfs = pool.imap_unordered(_search, self.indices)
+            self.df = base.combine_results(
+                tqdm(
+                    dfs,
+                    disable=quiet,
+                    bar_format=base.bar_format,
+                    unit="index",
+                    unit_scale=False,
+                    desc="Searching indices",
+                    ascii=False,
+                    total=len(self.indices),
+                )
             )
-        )
         self._set_project()
 
         # even though we are using latest=True, because the search is distributed, we
@@ -398,21 +424,20 @@ class ESGFCatalog:
 
         # threaded search over indices
         search_time = time.time()
-        dfs = ThreadPool(len(self.indices)).imap_unordered(
-            _from_tracking_ids, self.indices
-        )
-        self.df = base.combine_results(
-            tqdm(
-                dfs,
-                disable=quiet,
-                bar_format=base.bar_format,
-                unit="index",
-                unit_scale=False,
-                desc="Searching indices",
-                ascii=False,
-                total=len(self.indices),
+        with ThreadPool(len(self.indices)) as pool:
+            dfs = pool.imap_unordered(_from_tracking_ids, self.indices)
+            self.df = base.combine_results(
+                tqdm(
+                    dfs,
+                    disable=quiet,
+                    bar_format=base.bar_format,
+                    unit="index",
+                    unit_scale=False,
+                    desc="Searching indices",
+                    ascii=False,
+                    total=len(self.indices),
+                )
             )
-        )
         search_time = time.time() - search_time
         if len(self.df) != len(tracking_ids):
             logger.info("One or more of the tracking_ids resolve to multiple files.")
@@ -489,22 +514,23 @@ class ESGFCatalog:
         # The index nodes are again queried for file information. Each file points back
         # to the dataset_id to which it belongs.
         info_time = time.time()
-        get_file_info = ThreadPool(len(self.indices)).imap_unordered(
-            partial(_get_file_info, dataset_ids=dataset_ids, **search_facets),
-            self.indices,
-        )
-        index_infos = list(
-            tqdm(
-                get_file_info,
-                disable=quiet,
-                bar_format=base.bar_format,
-                unit="index",
-                unit_scale=False,
-                desc="Get file information",
-                ascii=False,
-                total=len(self.indices),
+        with ThreadPool(len(self.indices)) as pool:
+            get_file_info = pool.imap_unordered(
+                partial(_get_file_info, dataset_ids=dataset_ids, **search_facets),
+                self.indices,
             )
-        )
+            index_infos = list(
+                tqdm(
+                    get_file_info,
+                    disable=quiet,
+                    bar_format=base.bar_format,
+                    unit="index",
+                    unit_scale=False,
+                    desc="Get file information",
+                    ascii=False,
+                    total=len(self.indices),
+                )
+            )
         index_infos = [info for index_info in index_infos for info in index_info]
 
         # Now we merge the access/validation information, but where the primary key is
@@ -512,6 +538,21 @@ class ESGFCatalog:
         combine_time = time.time()
         merged_info = {}
         for info in index_infos:
+            # If time ranges are given and files have a timestamp, filter them out
+            if (
+                self.file_start is not None
+                and info["file_end"] is not None
+                and info["file_end"] < self.file_start
+            ):
+                logger.info(f"Filtered for out of time range: {info['path']}")
+                continue
+            if (
+                self.file_end is not None
+                and info["file_start"] is not None
+                and info["file_start"] > self.file_end
+            ):
+                logger.info(f"Filtered for out of time range: {info['path']}")
+                continue
             path = info["path"]
             if path not in merged_info:
                 merged_info[path] = {"key": dataset_ids[info["dataset_id"]]}
@@ -594,20 +635,20 @@ class ESGFCatalog:
                 download_unit = "Gb"
             if not quiet:
                 print(f"Downloading {download_size:.1f} [{download_unit}]...")
-
-            list(
-                ThreadPool(
-                    min(intake_esgf.conf["num_threads"], len(infos["https"]))
-                ).imap_unordered(
-                    partial(
-                        base.parallel_download,
-                        local_cache=self.local_cache,
-                        download_db=self.download_db,
-                        esg_dataroot=self.esg_dataroot,
-                    ),
-                    infos["https"],
+            with ThreadPool(
+                min(intake_esgf.conf["num_threads"], len(infos["https"]))
+            ) as pool:
+                list(
+                    pool.imap_unordered(
+                        partial(
+                            base.parallel_download,
+                            local_cache=self.local_cache,
+                            download_db=self.download_db,
+                            esg_dataroot=self.esg_dataroot,
+                        ),
+                        infos["https"],
+                    )
                 )
-            )
 
         # unpack the https files which should now exist in local cache
         dsd = _load_into_dsd(dsd, infos["https"])
@@ -804,7 +845,8 @@ class ESGFCatalog:
         """
         Return the log since the instantiation of this catalog.
         """
-        log = open(Path(intake_esgf.conf["logfile"]).expanduser()).readlines()[::-1]
+        with open(Path(intake_esgf.conf["logfile"]).expanduser()) as fin:
+            log = fin.readlines()[::-1]
         for n, line in enumerate(log):
             m = re.search(r"\x1b\[36;20m(.*)\s\033\[0m", line)
             if not m:

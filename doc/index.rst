@@ -26,6 +26,11 @@ index nodes and puts together a global view of where the datasets may be found.
 If you are familiar with the interface for ``intake-esm``, then using this
 package should be straightforward.
 
+Announcement
+------------
+
+ESGF is in the process of decomissioning the old index technology (Solr). While this process takes place, you may find some services may be broken or disappear completely. The information in the US-based Solr indices has been moved into a Globus (ElasticSearch) index which is this package's default index.
+
 Installing
 ----------
 
@@ -54,6 +59,7 @@ or through ``conda-forge``
 
    measures
    stream
+   time
    modelgroups
    configure
    paths

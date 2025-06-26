@@ -3,7 +3,7 @@ import pytest
 from intake_esgf.core import GlobusESGFIndex
 from intake_esgf.exceptions import NoSearchResults
 
-index = GlobusESGFIndex("ornl-dev")
+index = GlobusESGFIndex("ESGF2-US-1.5-Catalog")
 cmip6 = dict(
     experiment_id="historical",
     source_id="CanESM5",
@@ -58,13 +58,6 @@ def test_null():
         pass
 
 
-# because anl encodes booleans as strings
-def test_anl():
-    index = GlobusESGFIndex("anl-dev")
-    df = index.search(latest=True, **cmip6)
-    assert len(df) > 0
-
-
 @pytest.mark.globus_auth
 def test_globus_transfer():
     import os
@@ -76,7 +69,15 @@ def test_globus_transfer():
     # make sure this cache does not exist and set configuration
     local_cache = Path().home() / "esgf-test"
     os.system(f"rm -rf {local_cache}")
-    intake_esgf.conf.set(local_cache=[str(local_cache)], indices={"ornl-dev": False})
+
+    indices = {
+        key: False
+        for key in (
+            intake_esgf.conf["globus_indices"] | intake_esgf.conf["solr_indices"]
+        )
+    }
+    indices["ESGF2-US-1.5-Catalog"] = True
+    intake_esgf.conf.set(indices=indices, local_cache=[str(local_cache)])
 
     dsd = (
         ESGFCatalog()
