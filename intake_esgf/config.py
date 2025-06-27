@@ -8,6 +8,9 @@ from pathlib import Path
 import yaml
 
 defaults = {
+    "stac_indices": {
+        "api.stac.ceda.ac.uk": False,
+    },
     "globus_indices": {
         "ESGF2-US-1.5-Catalog": True,
         "anl-dev": False,
@@ -77,6 +80,7 @@ class Config(dict):
         self,
         *,
         indices: dict[str, bool] = {},
+        no_indices: bool = False,
         all_indices: bool = False,
         esg_dataroot: list[str] | None = None,
         local_cache: list[str] | None = None,
@@ -90,6 +94,9 @@ class Config(dict):
         ----------
         indices: dict
             Indices whose use status you wish to change.
+        no_indices: bool
+            Enable to disable all indices, useful when you want to subsequently
+            enable a single index that isn't on by default.
         all_indices: bool
             Enable to check all indices for dataset information.
         esg_dataroot: list
@@ -98,8 +105,8 @@ class Config(dict):
             Locations where we read and write data to, prefering the first
             entry.
         additional_df_cols: list
-            Additional columns to include in the dataframe. Must be part
-            of the search results.
+            Additional columns to include in the dataframe. Must be part of the
+            search results.
         num_threads: int
             The number of threads to use when downloading via https.
         break_on_error: bool
@@ -111,6 +118,10 @@ class Config(dict):
 
         """
         temp = copy.deepcopy(self)
+        if no_indices:
+            for index_type in ["globus_indices", "solr_indices", "stac_indices"]:
+                for key in self[index_type]:
+                    self[index_type][key] = False
         self["globus_indices"].update(
             {
                 key: value
@@ -125,11 +136,17 @@ class Config(dict):
                 if key in self["solr_indices"]
             }
         )
+        self["stac_indices"].update(
+            {
+                key: value
+                for key, value in indices.items()
+                if key in self["stac_indices"]
+            }
+        )
         if all_indices:
-            for key in self["globus_indices"]:
-                self["globus_indices"][key] = True
-            for key in self["solr_indices"]:
-                self["solr_indices"][key] = True
+            for index_type in ["globus_indices", "solr_indices", "stac_indices"]:
+                for key in self[index_type]:
+                    self[index_type][key] = True
         if esg_dataroot is not None:
             self["esg_dataroot"] = (
                 esg_dataroot if isinstance(esg_dataroot, list) else [esg_dataroot]
