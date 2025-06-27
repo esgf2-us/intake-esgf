@@ -1,11 +1,24 @@
-"""An ESGF STAC index class."""
+"""An ESGF STAC index class.
 
+Roadblocks
+----------
+- I cannot include `latest` in a filter. I do not see it in the stac extension
+  (but neither is `retracted`, which I can query).
+- How am I supposed to distinguish between assets in the index? Do I assume if
+  it ends in .json it is Kerchunk? `reference_file` is not very descriptive.
+- There is no checksum or size information stored in the assets. CEDA is
+  assuming people will use kerchunk and not need these things.
+"""
+
+import re
 import time
+from pathlib import Path
 from typing import Any
 
 import pandas as pd
 from pystac_client import Client, ItemSearch
 
+import intake_esgf.base as base
 from intake_esgf.projects import projects
 
 # the stac extension additions that need `properties.cmip6:` prepended
@@ -21,6 +34,7 @@ CMIP6_PREPENDS = [
     "institution_id",
     "mip_era",
     "nominal_resolution",
+    "retracted",
     "source_id",
     "source_type",
     "table_id",
@@ -34,9 +48,8 @@ def add_defaults(**search_facets: str | list[str]) -> dict[str, str | list[str]]
     """
     Safely add some default search behavior.
     """
-    return search_facets
-    if "latest" not in search_facets:
-        search_facets["latest"] = True
+    # if "latest" not in search_facets:
+    #    search_facets["latest"] = True
     if "retracted" not in search_facets:
         search_facets["retracted"] = False
     return search_facets
@@ -79,6 +92,7 @@ def search_cmip6(
             for facet, facet_values in search_facets.items()
         ],
     }
+
     # Initialize the client and search
     results = Client.open(base_url).search(
         collections="cmip6", limit=items_per_page, filter=cql_filter
@@ -86,9 +100,20 @@ def search_cmip6(
     return results
 
 
+def get_content_path(url: str, project: str) -> Path:
+    """
+    Return the local file path parsed from a https url.
+    """
+    match = re.search(rf".*({project}.*.nc)|.*", url)
+    if not match:
+        raise ValueError(f"Could not parse out the path from {url}")
+    return Path(match.group(1))
+
+
 class STACESGFIndex:
     def __init__(self, url: str = "api.stac.ceda.ac.uk"):
         self.url = url
+        self.cache = {}
 
     def __repr__(self):
         return f"STACESGFIndex('{self.url}')"
@@ -127,7 +152,9 @@ class STACESGFIndex:
                 row["project"] = "cmip6"
                 row["version"] = item.id.split(".")[-1]
                 row["data_node"] = self.url
+                row["id"] = f"{item.id}|{row['data_node']}"
                 df += [row]
+                self.cache[row["id"]] = item
 
         df = pd.DataFrame(df)
         total_time = time.time() - total_time
@@ -136,20 +163,45 @@ class STACESGFIndex:
     def from_tracking_ids(self, tracking_ids: list[str]) -> pd.DataFrame:
         raise NotImplementedError
 
-    def get_file_info(self, dataset_ids: list[str], **facets) -> dict[str, Any]:
-        raise NotImplementedError
+    def get_file_info(self, dataset_ids: list[str], **facets) -> list[dict[str, Any]]:
+        infos = {}
+        for dataset_id in dataset_ids:
+            # Load the file info from the saved items
+            if dataset_id not in self.cache:
+                raise ValueError(f"{dataset_id=} not in the STAC index cache")
+            item = self.cache[dataset_id]
+            for asset_id, asset in item.assets.items():
+                # Only files for now
+                if not asset.href.endswith(".nc"):
+                    continue
 
+                url = str(asset.href)
+                path = get_content_path(asset.href, "CMIP6")
 
-if __name__ == "__main__":
-    ind = STACESGFIndex()
-    df = ind.search(
-        mip_era="CMIP6",
-        activity_id="CMIP",
-        institution_id="AS-RCEC",
-        source_id="TaiESM1",
-        experiment_id="historical",
-        variant_label="r1i1p1f1",
-        # frequency="mon",
-        # variable_id="clt",
-        limit=1,
-    )
+                # We could need to append to an existing location
+                if str(path) in infos:
+                    info = infos[str(path)]
+                else:
+                    info = {}
+
+                # Append location information
+                info["dataset_id"] = dataset_id
+                if "HTTPServer" not in info:
+                    info["HTTPServer"] = []
+                info["HTTPServer"] += [url]
+                info["path"] = path
+
+                # Not currently part of the STAC item
+                info["checksum_type"] = None
+                info["checksum"] = None
+                info["size"] = None
+
+                # Parse out the file time begin/end from the filename
+                tstart, tend = base.get_time_extent(str(info["path"]))
+                info["file_start"] = info["file_end"] = None
+                if tstart is not None:
+                    info["file_start"] = tstart
+                    info["file_end"] = tend
+                infos[str(path)] = info
+        infos = [info for _, info in infos.items()]
+        return infos
