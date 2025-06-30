@@ -24,7 +24,7 @@ import xarray as xr
 import intake_esgf
 import intake_esgf.base as base
 from intake_esgf import IN_NOTEBOOK
-from intake_esgf.core import GlobusESGFIndex, SolrESGFIndex
+from intake_esgf.core import GlobusESGFIndex, SolrESGFIndex, STACESGFIndex
 from intake_esgf.core.globus import (
     create_globus_transfer,
     monitor_globus_transfer,
@@ -91,6 +91,11 @@ class ESGFCatalog:
             SolrESGFIndex(ind)
             for ind in intake_esgf.conf["solr_indices"]
             if intake_esgf.conf["solr_indices"][ind]
+        ]
+        self.indices += [
+            STACESGFIndex(ind)
+            for ind in intake_esgf.conf["stac_indices"]
+            if intake_esgf.conf["stac_indices"][ind]
         ]
         if not self.indices:
             raise ValueError("You must have at least 1 search index configured")
