@@ -323,12 +323,21 @@ def download_and_verify(
                     fdl.write(chunk)
                     pbar.update(len(chunk))
 
-    # Verify
-    if get_file_hash(tmp_file, hash_algorithm) != hash:
-        logger.info(f"\x1b[91;20mHash error\033[0m {url}")
-        tmp_file.unlink()
-        raise ValueError("Hash does not match")
+    # Verify if hash information is given.
+    if hash_algorithm is not None and hash is not None:
+        if get_file_hash(tmp_file, hash_algorithm) != hash:
+            logger.info(f"\x1b[91;20mHash error\033[0m {url}")
+            tmp_file.unlink()
+            raise ValueError("Hash does not match")
+    else:
+        logger.info(
+            f"\x1b[91;20m{local_file=} could not be verified with given {hash_algorithm=} and {hash=}, skipping.\033[0m"
+        )
     tmp_file.rename(local_file)
+
+    # If sizes not given, read it from the file for logging purposes
+    if content_length < 1e-6:
+        content_length = local_file.stat().st_size
 
     # Log transfer information
     transfer_time = time.time() - transfer_time

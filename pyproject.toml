@@ -21,6 +21,7 @@ dependencies = [
     "globus-sdk>=3.49.0",
     "netcdf4>=1.7.2",
     "pandas>=2.2.3",
+    "pystac-client>=0.8.6",
     "pyyaml>=6.0.2",
     "requests>=2.32.3",
     "tqdm>=4.67.1",

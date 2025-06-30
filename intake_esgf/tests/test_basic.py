@@ -242,3 +242,36 @@ def test_file_timestamps():
     dpd = cat.to_path_dict()
     paths = dpd[next(iter(dpd))]
     assert len(paths) == 2
+
+
+def test_config():
+    # All off
+    intake_esgf.conf.set(no_indices=True)
+    num_on = sum(
+        [
+            enabled
+            for index_type in ["globus_indices", "solr_indices", "stac_indices"]
+            for _, enabled in intake_esgf.conf[index_type].items()
+        ]
+    )
+    assert num_on == 0
+    # All on
+    intake_esgf.conf.set(all_indices=True)
+    num_off = sum(
+        [
+            not enabled
+            for index_type in ["globus_indices", "solr_indices", "stac_indices"]
+            for _, enabled in intake_esgf.conf[index_type].items()
+        ]
+    )
+    assert num_off == 0
+    # All back off and then enable one
+    intake_esgf.conf.set(no_indices=True, indices={"ESGF2-US-1.5-Catalog": True})
+    num_on = sum(
+        [
+            enabled
+            for index_type in ["globus_indices", "solr_indices", "stac_indices"]
+            for _, enabled in intake_esgf.conf[index_type].items()
+        ]
+    )
+    assert num_on == 1
