@@ -1,13 +1,19 @@
 """An ESGF STAC index class.
 
-Roadblocks
-----------
-- I cannot include `latest` in a filter. I do not see it in the stac extension
-  (but neither is `retracted`, which I can query).
+Issues
+------
+- I cannot include `latest` in a filter. According to the STAC extension README,
+  it should be there, but I do not see it in the extension schema (but neither
+  is `retracted`, which I can query).
 - How am I supposed to distinguish between assets in the index? Do I assume if
   it ends in .json it is Kerchunk? `reference_file` is not very descriptive.
-- There is no checksum or size information stored in the assets. CEDA is
-  assuming people will use kerchunk and not need these things.
+- There is no checksum or size information stored in the assets. CEDA has
+  assumed people will use kerchunk and not need these things.
+- There is no `member_id` in CEDA's index. I am guesing that CEDA saw that
+  `variant_label` is often the same (but not always) and removed one if favor of
+  the other. The problem is that the former is part of the IDs of the records
+  and needed so I have to hack it.
+
 """
 
 import re
@@ -44,12 +50,26 @@ CMIP6_PREPENDS = [
 ]
 
 
+def metadata_fixes(**search_facets: str | list[str]) -> dict[str, str | list[str]]:
+    """
+    Remove
+    """
+    # FIX: `latest` is not in the STAC record
+    if "latest" in search_facets:
+        search_facets.pop("latest")
+    # FIX: the CMIP6 stac extension does not include `member_id`
+    if "member_id" in search_facets and "variant_label" not in search_facets:
+        search_facets["variant_label"] = search_facets.pop("member_id")
+    # There is no such thing as Dataset/File 'types'
+    if "type" in search_facets:
+        search_facets.pop("type")
+    return search_facets
+
+
 def add_defaults(**search_facets: str | list[str]) -> dict[str, str | list[str]]:
     """
     Safely add some default search behavior.
     """
-    # if "latest" not in search_facets:
-    #    search_facets["latest"] = True
     if "retracted" not in search_facets:
         search_facets["retracted"] = False
     return search_facets
@@ -127,11 +147,8 @@ class STACESGFIndex:
         if project.lower() != "cmip6":
             raise ValueError("STAC index only for CMIP6")
 
-        # the CMIP6 stac extension does not include `member_id`
-        if "member_id" in search and "variant_label" not in search:
-            search["variant_label"] = search.pop("member_id")
-
         # add some default facets if not given
+        search = metadata_fixes(**search)
         search = add_defaults(**search)
         items = search_cmip6(f"https://{self.url}", limit, **search)
 
@@ -144,7 +161,7 @@ class STACESGFIndex:
             for item in page.items:
                 row = {}
                 for col in facets[:-2]:
-                    lhs = col.replace("member_id", "variant_label")
+                    lhs = col  # .replace("member_id", "variant_label")
                     rhs = "cmip6:" + col.replace("member_id", "variant_label").replace(
                         "activity_drs", "activity_id"
                     )
@@ -161,7 +178,9 @@ class STACESGFIndex:
         return df
 
     def from_tracking_ids(self, tracking_ids: list[str]) -> pd.DataFrame:
-        raise NotImplementedError
+        raise NotImplementedError(
+            "The STAC catalogs don't even have tracking ids in the items."
+        )
 
     def get_file_info(self, dataset_ids: list[str], **facets) -> list[dict[str, Any]]:
         infos = {}
@@ -170,7 +189,7 @@ class STACESGFIndex:
             if dataset_id not in self.cache:
                 raise ValueError(f"{dataset_id=} not in the STAC index cache")
             item = self.cache[dataset_id]
-            for asset_id, asset in item.assets.items():
+            for _, asset in item.assets.items():
                 # Only files for now
                 if not asset.href.endswith(".nc"):
                     continue
@@ -194,7 +213,7 @@ class STACESGFIndex:
                 # Not currently part of the STAC item
                 info["checksum_type"] = None
                 info["checksum"] = None
-                info["size"] = None
+                info["size"] = 0
 
                 # Parse out the file time begin/end from the filename
                 tstart, tend = base.get_time_extent(str(info["path"]))
