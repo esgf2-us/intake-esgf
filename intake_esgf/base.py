@@ -316,7 +316,7 @@ def download_and_verify(
             leave=False,
             desc=local_file.name
             if len(local_file.name) < MAX_FILENAME_LEN
-            else f"{local_file.name[:(MAX_FILENAME_LEN-3)]}...",
+            else f"{local_file.name[: (MAX_FILENAME_LEN - 3)]}...",
         ) as pbar:
             for chunk in resp.iter_content(chunk_size=CHUNKSIZE):
                 if chunk:

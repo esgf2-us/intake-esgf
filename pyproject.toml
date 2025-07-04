@@ -30,7 +30,11 @@ dependencies = [
 dynamic = ["version"]
 
 [dependency-groups]
-dev = ["pytest>=8.3.4", "pytest-cov>=6.0.0"]
+dev = [
+    "pre-commit>=4.2.0",
+    "pytest>=8.3.4",
+    "pytest-cov>=6.0.0",
+]
 docs = [
     "distributed>=2024.12.0",
     "furo>=2024.8.6",
@@ -66,10 +70,9 @@ markers = [
 [tool.coverage.run]
 omit = ["*/intake_esgf/tests/*"]
 
-[tool.ruff]
-target-version = "py310"
+[tool.ruff.lint]
 ignore = [
-    "E501", # let black worry about line length
+    "E501", # let ruff worry about line length
 ]
 select = [
     "F",  # Pyflakes
@@ -79,5 +82,5 @@ select = [
     "UP", # Pyupgrade
 ]
 
-[tool.ruff.isort]
+[tool.ruff.lint.isort]
 known-first-party = ["intake_esgf"]
