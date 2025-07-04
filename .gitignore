@@ -1,0 +1,13 @@
+# Automatically generated version file
+intake_esgf/_version.py
+
+# Compiled Python files
+__pycache__/
+
+# Packaging
+*.egg-info
+
+# Testing
+.coverage
+.pytest_cache/
+coverage.xml

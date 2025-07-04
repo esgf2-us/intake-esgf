@@ -354,7 +354,7 @@ class ESGFCatalog:
         # log what is being searched for
         search_str = ", ".join(
             [
-                f"{key}={val if isinstance(val,list) else [val]}"
+                f"{key}={val if isinstance(val, list) else [val]}"
                 for key, val in search.items()
             ]
         )
