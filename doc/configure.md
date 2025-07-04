@@ -25,7 +25,7 @@ format. You will notice a few keywords:
 - `download_db` - the full path to the SQL database with download records.
 - `globus_indices` - a dictionary whose keys are the Globus index name and values map to a boolean indicating that the index is enabled.
 - `solr_indices` - a dictionary whose keys are the Solr index base url and values map to a boolean indicating that the index is enabled.
-- `additional_df_cols` - a list of additional columns to include in the search results DataFrame. Columns that are not part of the search response will be ignored. 
+- `additional_df_cols` - a list of additional columns to include in the search results DataFrame. Columns that are not part of the search response will be ignored.
 
 ## Indices
 

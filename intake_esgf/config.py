@@ -3,6 +3,7 @@
 import contextlib
 import copy
 import logging
+from datetime import datetime, timedelta
 from pathlib import Path
 
 import yaml
@@ -34,6 +35,8 @@ defaults = {
     "local_cache": [
         "~/.esgf/",
     ],
+    "requests_cache_expire_after": 3600,  # 1 hour,
+    "requests_cache_path": "~/.cache/intake-esgf/requests-cache",
     "logfile": "~/.config/intake-esgf/esgf.log",
     "download_db": "~/.config/intake-esgf/download.db",
     "num_threads": 6,
@@ -84,6 +87,13 @@ class Config(dict):
         all_indices: bool = False,
         esg_dataroot: list[str] | None = None,
         local_cache: list[str] | None = None,
+        requests_cache_expire_after: int
+        | float
+        | timedelta
+        | datetime
+        | str
+        | None = None,
+        requests_cache_path: str | None = None,
         additional_df_cols: list[str] | None = None,
         num_threads: int | None = None,
         break_on_error: bool | None = None,
@@ -104,6 +114,18 @@ class Config(dict):
         local_cache: list
             Locations where we read and write data to, prefering the first
             entry.
+        requests_cache_expire_after:
+            Time after which the requests cache expires. Can be any of the
+            following time values:
+            - A positive number (in seconds)
+            - A timedelta
+            - A datetime
+            Or one of the following special values:
+            - "DO_NOT_CACHE": Skip both reading from and writing to the cache
+            - "EXPIRE_IMMEDIATELY": Consider the response already expired, but potentially usable
+            - "NEVER_EXPIRE": Store responses indefinitely
+        requests_cache_path:
+            The directory in which the requests cache is stored.
         additional_df_cols: list
             Additional columns to include in the dataframe. Must be part of the
             search results.
@@ -155,6 +177,10 @@ class Config(dict):
             self["local_cache"] = (
                 local_cache if isinstance(local_cache, list) else [local_cache]
             )
+        if requests_cache_expire_after is not None:
+            self["requests_cache_expire_after"] = requests_cache_expire_after
+        if requests_cache_path is not None:
+            self["requests_cache_path"] = requests_cache_path
         if additional_df_cols is not None:
             self["additional_df_cols"] = (
                 additional_df_cols

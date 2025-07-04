@@ -22,7 +22,9 @@ from pathlib import Path
 from typing import Any
 
 import pandas as pd
+import requests
 from pystac_client import Client, ItemSearch
+from pystac_client.stac_api_io import StacApiIO
 
 import intake_esgf.base as base
 from intake_esgf.projects import projects
@@ -76,13 +78,18 @@ def add_defaults(**search_facets: str | list[str]) -> dict[str, str | list[str]]
 
 
 def search_cmip6(
-    base_url: str, items_per_page: int = 100, **search_facets: str | list[str]
+    session: requests.Session,
+    base_url: str,
+    items_per_page: int = 100,
+    **search_facets: str | list[str],
 ) -> ItemSearch:
     """
     Returns a STAC client item search filtered by the search facets.
 
     Parameters
     ----------
+    session:
+        The requests session to use for the STAC API.
     base_url : str
         The URL of the STAC API.
     items_per_page : int, optional
@@ -114,7 +121,9 @@ def search_cmip6(
     }
 
     # Initialize the client and search
-    results = Client.open(base_url).search(
+    stac_io = StacApiIO()
+    stac_io.session = session
+    results = Client.open(base_url, stac_io=stac_io).search(
         collections="cmip6", limit=items_per_page, filter=cql_filter
     )
     return results
@@ -134,6 +143,7 @@ class STACESGFIndex:
     def __init__(self, url: str = "api.stac.ceda.ac.uk"):
         self.url = url
         self.cache = {}
+        self.session = requests.Session()
 
     def __repr__(self):
         return f"STACESGFIndex('{self.url}')"
@@ -150,7 +160,7 @@ class STACESGFIndex:
         # add some default facets if not given
         search = metadata_fixes(**search)
         search = add_defaults(**search)
-        items = search_cmip6(f"https://{self.url}", limit, **search)
+        items = search_cmip6(self.session, f"https://{self.url}", limit, **search)
 
         # what facets do we expect?
         facets = projects[project.lower()].id_facets()
