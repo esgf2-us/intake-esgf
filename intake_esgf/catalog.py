@@ -19,6 +19,7 @@ else:
 
 import pandas as pd
 import requests
+import requests_cache
 import xarray as xr
 
 import intake_esgf
@@ -47,6 +48,17 @@ if IN_NOTEBOOK:
 else:
     from tqdm import tqdm
 
+def _get_session() -> requests_cache.CachedSession:
+    """
+    Return a requests session with the configured cache.
+    """
+    expire_after = intake_esgf.conf["requests_cache_expire_after"]
+    if expire_after in ("DO_NOT_CACHE", "EXPIRE_IMMEDIATELY", "NEVER_EXPIRE"):
+        expire_after = getattr(requests_cache, expire_after)
+    return requests_cache.CachedSession(
+        intake_esgf.conf["requests_cache_path"],
+        expire_after=expire_after,
+    )
 
 class ESGFCatalog:
     """
@@ -97,6 +109,9 @@ class ESGFCatalog:
             for ind in intake_esgf.conf["stac_indices"]
             if intake_esgf.conf["stac_indices"][ind]
         ]
+        session = _get_session()
+        for ind in self.indices:
+            ind.session = session
         if not self.indices:
             raise ValueError("You must have at least 1 search index configured")
         self.df = None
@@ -148,6 +163,10 @@ class ESGFCatalog:
                 self.local_cache.append(path)
         if not self.local_cache:
             raise LocalCacheNotWritable(intake_esgf.conf["local_cache"])
+
+        # ensure the requests cache directory exists
+        requests_cache_path = Path(intake_esgf.conf["requests_cache_path"]).expanduser()
+        requests_cache_path.parent.mkdir(parents=True, exist_ok=True)
 
         # check which esg_dataroot's exist and store with catalog
         for path in intake_esgf.conf["esg_dataroot"]:
@@ -911,7 +930,7 @@ class ESGFCatalog:
             A dataframe with the possibly relevant variables, their units, and various
             name and description fields.
         """
-        return variable_info(query, project)
+        return variable_info(_get_session(), query, project)
 
 
 def _load_into_dsd(
