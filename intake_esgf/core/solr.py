@@ -17,7 +17,7 @@ def esg_search(base_url, **search):
     if "format" not in search:
         search["format"] = "application/solr+json"
     offset = search.get("offset", 0)
-    limit = search.get("limit", 10)
+    limit = search.get("limit", 1000)
     total = offset + limit + 1
     while (offset + limit) < total:
         response = requests.get(f"{base_url}/esg-search/search", params=search)
