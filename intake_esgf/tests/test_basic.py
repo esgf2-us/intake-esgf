@@ -226,7 +226,11 @@ def test_nobreak():
             .remove_ensembles()
         )
         cat.df.loc[cat.df.index[0], "id"] = []  # fake there being no paths to download
-        paths = cat.to_path_dict()
+        with pytest.warns(
+            UserWarning,
+            match="We could not download your entire catalog, missed={'CMIP6.CMIP.CCCma.CanESM5.historical.r1i1p1f1.Lmon.gpp.gn'}",
+        ):
+            paths = cat.to_path_dict()
         assert len(paths) == 1
 
 
