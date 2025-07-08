@@ -40,7 +40,7 @@ jobs:
         run: uv python install ${{ matrix.python-version }}
 
       - name: Install intake-esgf and dependencies
-        run: uv sync
+        run: uv sync --group dev
 
       - name: Run pre-commit checks
         run: pre-commit run -a
