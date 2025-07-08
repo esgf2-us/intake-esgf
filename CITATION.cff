@@ -22,6 +22,11 @@ authors:
     orcid: "https://orcid.org/0000-0003-0311-5498"
     website: https://github.com/huard
     affiliation: Ouranos
+  - family-names: Andela
+    given-names: Bouwe
+    orcid: https://orcid.org/0000-0001-9005-8940
+    website: https://github.com/bouweandela
+    affiliation: Netherlands eScience Center
 
 title: "intake-esgf"
 abstract: "Programmatic access to the Earth System Grid Federation (ESGF) holdings"
