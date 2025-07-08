@@ -1,6 +1,7 @@
 from pathlib import Path
 
 import pytest
+from requests_cache import CachedSession
 
 import intake_esgf
 from intake_esgf import ESGFCatalog
@@ -24,6 +25,14 @@ def test_search():
         ds = cat.to_dataset_dict()
         assert "gpp" in ds
         assert "sftlf" in ds["gpp"]
+
+
+def test_indices_are_cached():
+    with intake_esgf.conf.set(all_indices=True):
+        cat = ESGFCatalog()
+        assert len(cat.indices) > 1
+        for ind in cat.indices:
+            assert isinstance(ind.session, CachedSession)
 
 
 def test_esgroot():
