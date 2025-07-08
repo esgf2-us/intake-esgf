@@ -1,6 +1,7 @@
 """A ESGF1 Solr index class."""
 
 import time
+from collections.abc import Iterator
 from typing import Any
 
 import pandas as pd
@@ -12,7 +13,11 @@ from intake_esgf.exceptions import NoSearchResults
 from intake_esgf.projects import get_project_facets
 
 
-def esg_search(base_url, **search):
+def esg_search(
+    session: requests.Session,
+    base_url: str,
+    **search: dict[str, Any],
+) -> Iterator[dict[str, Any]]:
     """Yields paginated responses using the ESGF REST API."""
     if "format" not in search:
         search["format"] = "application/solr+json"
@@ -20,7 +25,7 @@ def esg_search(base_url, **search):
     limit = search.get("limit", 1000)
     total = offset + limit + 1
     while (offset + limit) < total:
-        response = requests.get(f"{base_url}/esg-search/search", params=search)
+        response = session.get(f"{base_url}/esg-search/search", params=search)
         response.raise_for_status()
         response = response.json()
         yield response
@@ -35,6 +40,7 @@ class SolrESGFIndex:
         self.repr = f"SolrESGFIndex('{index_node}'{',distrib=True' if distrib else ''})"
         self.url = f"https://{index_node}"
         self.distrib = distrib
+        self.session = requests.Session()
 
     def __repr__(self):
         return self.repr
@@ -49,7 +55,7 @@ class SolrESGFIndex:
             facets = ["project"] + facets
         response_time = time.time()
         df = []
-        for response in esg_search(self.url, **search):
+        for response in esg_search(self.session, self.url, **search):
             response = response["response"]
             if not response["numFound"]:
                 logger.info(f"└─{self} no results")
@@ -82,7 +88,9 @@ class SolrESGFIndex:
         logger = intake_esgf.conf.get_logger()
         total_time = time.time()
         df = []
-        for response in esg_search(self.url, type="File", tracking_id=tracking_ids):
+        for response in esg_search(
+            self.session, self.url, type="File", tracking_id=tracking_ids
+        ):
             response = response["response"]
             if not response["numFound"]:
                 logger.info(f"└─{self} no results")
@@ -116,7 +124,7 @@ class SolrESGFIndex:
         )
         search.update(facets)
         infos = []
-        for response in esg_search(self.url, **search):
+        for response in esg_search(self.session, self.url, **search):
             response = response["response"]
             if not response["numFound"]:
                 logger.info(f"└─{self} no results")

@@ -119,6 +119,7 @@ intersphinx_mapping = {
     "python": ("https://docs.python.org/3/", None),
     "xarray": ("https://xarray.pydata.org/en/stable/", None),
     "pandas": ("https://pandas.pydata.org/pandas-docs/stable", None),
+    "requests_cache": ("https://requests-cache.readthedocs.io/en/stable", None),
 }
 
 autosummary_generate = True
