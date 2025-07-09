@@ -46,7 +46,7 @@ jobs:
         run: uv run pre-commit run -a
 
       - name: Run Tests
-        run: uv run pytest
+        run: uv run pytest --cov-report=xml
 
       - name: Upload code coverage to Codecov
         uses: codecov/codecov-action@v5

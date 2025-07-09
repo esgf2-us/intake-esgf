@@ -63,14 +63,19 @@ version_file_template = '__version__ = "{version}"'
 
 [tool.pytest.ini_options]
 console_output_style = "count"
-addopts = "--cov=intake_esgf --cov-report=xml --verbose -m 'not (globus_auth or solr)'"
+addopts = "--verbose -m 'not (globus_auth or solr)' --durations=10"
 markers = [
     "globus_auth: tests which require globus authentication",
     "solr: tests which check the Solr responses",
 ]
 
 [tool.coverage.run]
+branch = true
 omit = ["*/intake_esgf/tests/*"]
+source = ["intake_esgf"]
+
+[tool.coverage.report]
+show_missing = true
 
 [tool.ruff.lint]
 ignore = [

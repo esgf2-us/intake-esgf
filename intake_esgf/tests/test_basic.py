@@ -28,15 +28,14 @@ def test_search():
         assert "sftlf" in ds["gpp"]
 
 
-def test_indices_use_cached_session_by_default():
-    with intake_esgf.conf.set(all_indices=True):
-        cat = ESGFCatalog()
-        assert len(cat.indices) > 1
-        for ind in cat.indices:
-            assert isinstance(ind.session, CachedSession)
-
-
-@pytest.mark.parametrize("index_type", ["globus", "stac", "solr"])
+@pytest.mark.parametrize(
+    "index_type",
+    [
+        "globus",
+        "stac",
+        pytest.param("solr", marks=pytest.mark.solr),
+    ],
+)
 def test_search_is_cached(index_type, tmp_path):
     # Use a test specific cache.
     intake_esgf.conf["requests_cache"]["cache_name"] = str(
@@ -56,13 +55,19 @@ def test_search_is_cached(index_type, tmp_path):
         "variant_label": ["r1i1p1f1"],
     }
 
+    # Test that the indices are using a cached session.
+    for ind in ESGFCatalog().indices:
+        assert isinstance(ind.session, CachedSession)
+
     # Test that a repeat search is faster than the initial one.
     start = perf_counter()
     ESGFCatalog().search(**facets)
     initial_search = perf_counter() - start
+
     start = perf_counter()
     ESGFCatalog().search(**facets)
     cached_search = perf_counter() - start
+
     assert cached_search < initial_search
 
 
