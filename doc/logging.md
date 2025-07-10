@@ -9,13 +9,21 @@ kernelspec:
 
 # Logging
 
-If you would like details about what `intake-esgf` is doing, look in the local cache directory (the default location is `${HOME}/.esgf/`) for a `esgf.log` file. This is a full history of everything we have searched, downloaded, or accessed.
-
-You can also look at just this session (since you instantiated the catalog) by calling `session_log()` and printing it. Consider the following search.
+If you would like details about what `intake-esgf` is doing, you can enable
+debug logging. This requires a few extra lines of code to set up Python logging
+and set the log level to "DEBUG".
 
 ```{code-cell}
+import logging
+from io import StringIO
 from intake_esgf import ESGFCatalog
 
+# Configure the Python logger to capture debug messages from intake-esgf
+debug_log = StringIO()
+logging.basicConfig(stream=debug_log, format="\033[36m%(asctime)s \033[0m%(message)s")
+logging.getLogger("intake-esgf").setLevel(logging.DEBUG)
+
+# Perform the search and download as usual
 cat = ESGFCatalog().search(
     source_id="IPSL-CM6A-LR",
     experiment_id="piControl",
@@ -24,7 +32,9 @@ cat = ESGFCatalog().search(
     frequency="fx",
 )
 ds = cat.to_dataset_dict(add_measures=False)
-print(cat.session_log())
+
+# View the log
+print(debug_log.getvalue())
 ```
 
 In this case you will see how long each index took to return a response and if any failed as well as from where the file was downloaded if not already on your system. Initially we randomize download locations from all available, but as you use `intake-esgf` we will remember the hosts which provide you the fastest download times. You can see where your data has come from by:
