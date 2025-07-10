@@ -63,7 +63,7 @@ version_file_template = '__version__ = "{version}"'
 
 [tool.pytest.ini_options]
 console_output_style = "count"
-addopts = "--verbose -m 'not (globus_auth or solr)' --durations=10"
+addopts = "--cov --cov-report=xml --verbose -m 'not (globus_auth or solr)'"
 markers = [
     "globus_auth: tests which require globus authentication",
     "solr: tests which check the Solr responses",
