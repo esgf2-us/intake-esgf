@@ -866,22 +866,6 @@ class ESGFCatalog:
             self.df = self.df.drop(self.df.query(q).index)
         return self
 
-    def session_log(self) -> str:
-        """
-        Return the log since the instantiation of this catalog.
-        """
-        with open(Path(intake_esgf.conf["logfile"]).expanduser()) as fin:
-            log = fin.readlines()[::-1]
-        for n, line in enumerate(log):
-            m = re.search(r"\x1b\[36;20m(.*)\s\033\[0m", line)
-            if not m:
-                continue
-            if pd.to_datetime(m.group(1)) < (
-                self.session_time - pd.Timedelta(1, "s")  # little pad
-            ):
-                break
-        return "".join(log[:n][::-1])
-
     def download_summary(
         self,
         history: Literal[None, "day", "week", "month"] = None,
