@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any
 
 import pandas as pd
+import requests
 from globus_sdk import (
     GlobusHTTPResponse,
     NativeAppAuthClient,
@@ -47,6 +48,14 @@ class GlobusESGFIndex:
     def __repr__(self):
         return self.repr
 
+    @property
+    def session(self) -> requests.Session:
+        return self.client.transport.session
+
+    @session.setter
+    def session(self, session: requests.Session) -> None:
+        self.client.transport.session = session
+
     def search(self, **search: str | list[str]) -> pd.DataFrame:
         """Search the index and return as a pandas dataframe.
 
@@ -76,8 +85,7 @@ class GlobusESGFIndex:
 
         # paginated search
         response_time = time.time()
-        sc = SearchClient()
-        paginator = sc.paginated.scroll(self.index_id, query_data)
+        paginator = self.client.paginated.scroll(self.index_id, query_data)
         df = []
         have_warned = False
         for response in paginator:
@@ -120,7 +128,6 @@ class GlobusESGFIndex:
     def get_file_info(self, dataset_ids: list[str], **facets) -> dict[str, Any]:
         """Get file information for the given datasets."""
         response_time = time.time()
-        sc = SearchClient()
         query = (
             SearchScrollQuery("")
             .add_filter(
@@ -141,7 +148,7 @@ class GlobusESGFIndex:
                 type="match_any",
             )
         query.set_limit(1000)
-        paginator = sc.paginated.scroll(self.index_id, query)
+        paginator = self.client.paginated.scroll(self.index_id, query)
         infos = []
         for response in paginator:
             for g in response.get("gmeta"):
@@ -179,7 +186,7 @@ class GlobusESGFIndex:
         return infos
 
     def from_tracking_ids(self, tracking_ids: list[str]) -> pd.DataFrame:
-        response = SearchClient().post_search(
+        response = self.client.post_search(
             self.index_id,
             SearchQueryV1(
                 filters=[
@@ -213,8 +220,14 @@ class GlobusESGFIndex:
         return df
 
 
-def variable_info(query: str, project: str = "CMIP6") -> pd.DataFrame:
+def variable_info(
+    session: requests.Session,
+    query: str,
+    project: str = "CMIP6",
+) -> pd.DataFrame:
     """Return a dataframe with variable information from a query."""
+    client = SearchClient()
+    client.transport.session = session
     # first we populate a list of related veriables
     uuid = GlobusESGFIndex.GLOBUS_INDEX_IDS["ESGF2-US-1.5-Catalog"]
     q = SearchQueryV1(
@@ -241,7 +254,7 @@ def variable_info(query: str, project: str = "CMIP6") -> pd.DataFrame:
             for v in ["variable", "variable_id"]
         ],
     )
-    response = SearchClient().post_search(uuid, q)
+    response = client.post_search(uuid, q)
     variables = list(
         set(
             [
@@ -279,7 +292,7 @@ def variable_info(query: str, project: str = "CMIP6") -> pd.DataFrame:
                 },
             ],
         )
-        response = SearchClient().post_search(uuid, q)
+        response = client.post_search(uuid, q)
         for doc in response.get("gmeta"):
             content = doc["entries"][0]["content"]
             columns = [var_facet]

@@ -19,6 +19,7 @@ else:
 
 import pandas as pd
 import requests
+import requests_cache
 import xarray as xr
 
 import intake_esgf
@@ -46,6 +47,23 @@ if IN_NOTEBOOK:
     from tqdm import tqdm_notebook as tqdm
 else:
     from tqdm import tqdm
+
+
+def _get_cached_session() -> requests_cache.CachedSession:
+    """
+    Return a requests session with the configured cache.
+    """
+    kwargs = {
+        "allowable_methods": (
+            "GET",
+            "HEAD",
+            "POST",  # Used by globus_sdk.SearchClient and pystac_client.ItemSearch
+        ),
+    }
+    kwargs.update(intake_esgf.conf["requests_cache"])
+    if kwargs["expire_after"] in ("DO_NOT_CACHE", "EXPIRE_IMMEDIATELY", "NEVER_EXPIRE"):
+        kwargs["expire_after"] = getattr(requests_cache, kwargs["expire_after"])
+    return requests_cache.CachedSession(**kwargs)
 
 
 class ESGFCatalog:
@@ -97,6 +115,8 @@ class ESGFCatalog:
             for ind in intake_esgf.conf["stac_indices"]
             if intake_esgf.conf["stac_indices"][ind]
         ]
+        for ind in self.indices:
+            ind.session = _get_cached_session()
         if not self.indices:
             raise ValueError("You must have at least 1 search index configured")
         self.df = None
@@ -911,7 +931,7 @@ class ESGFCatalog:
             A dataframe with the possibly relevant variables, their units, and various
             name and description fields.
         """
-        return variable_info(query, project)
+        return variable_info(_get_cached_session(), query, project)
 
 
 def _load_into_dsd(

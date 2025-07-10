@@ -34,6 +34,11 @@ defaults = {
     "local_cache": [
         "~/.esgf/",
     ],
+    "requests_cache": {
+        "expire_after": 3600,  # 1 hour
+        "cache_name": "intake-esgf/requests-cache.sqlite",
+        "use_cache_dir": True,
+    },
     "logfile": "~/.config/intake-esgf/esgf.log",
     "download_db": "~/.config/intake-esgf/download.db",
     "num_threads": 6,
@@ -84,6 +89,7 @@ class Config(dict):
         all_indices: bool = False,
         esg_dataroot: list[str] | None = None,
         local_cache: list[str] | None = None,
+        requests_cache: dict | None = None,
         additional_df_cols: list[str] | None = None,
         num_threads: int | None = None,
         break_on_error: bool | None = None,
@@ -104,6 +110,20 @@ class Config(dict):
         local_cache: list
             Locations where we read and write data to, prefering the first
             entry.
+        requests_cache: dict
+            By default, intake-esgf will cache search requests sent to speed
+            up repeated searches. This is done using the requests-cache library.
+            To configure the cache, you can pass a dictionary with arguments to
+            :class:`requests_cache.session.CachedSession`. The most important setting is
+            "expire_after", which defines the time after which the cache expires.
+            It can be set to any of the following time values:
+            - A positive number (in seconds)
+            - A timedelta
+            - A datetime
+            Or one of the following special values:
+            - "DO_NOT_CACHE": Skip both reading from and writing to the cache
+            - "EXPIRE_IMMEDIATELY": Consider the response already expired, but potentially usable
+            - "NEVER_EXPIRE": Store responses indefinitely
         additional_df_cols: list
             Additional columns to include in the dataframe. Must be part of the
             search results.
@@ -155,6 +175,8 @@ class Config(dict):
             self["local_cache"] = (
                 local_cache if isinstance(local_cache, list) else [local_cache]
             )
+        if requests_cache is not None:
+            self["requests_cache"] = dict(requests_cache)
         if additional_df_cols is not None:
             self["additional_df_cols"] = (
                 additional_df_cols

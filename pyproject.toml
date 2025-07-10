@@ -25,6 +25,7 @@ dependencies = [
     "pystac-client>=0.8.6",
     "pyyaml>=6.0.2",
     "requests>=2.32.3",
+    "requests-cache>=1.2.1",
     "tqdm>=4.67.1",
     "xarray>=2024.11.0",
 ]
@@ -62,14 +63,19 @@ version_file_template = '__version__ = "{version}"'
 
 [tool.pytest.ini_options]
 console_output_style = "count"
-addopts = "--cov=intake_esgf --cov-report=xml --verbose -m 'not (globus_auth or solr)'"
+addopts = "--cov --cov-report=xml --verbose -m 'not (globus_auth or solr)'"
 markers = [
     "globus_auth: tests which require globus authentication",
     "solr: tests which check the Solr responses",
 ]
 
 [tool.coverage.run]
+branch = true
 omit = ["*/intake_esgf/tests/*"]
+source = ["intake_esgf"]
+
+[tool.coverage.report]
+show_missing = true
 
 [tool.ruff.lint]
 ignore = [
