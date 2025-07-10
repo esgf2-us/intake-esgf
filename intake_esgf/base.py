@@ -2,6 +2,7 @@
 
 import hashlib
 import re
+import tempfile
 import time
 from functools import partial
 from pathlib import Path
@@ -305,8 +306,11 @@ def download_and_verify(
     transfer_time = time.time()
     resp = requests.get(url, stream=True, timeout=10)
     resp.raise_for_status()
-    tmp_file = local_file.with_suffix(".tmp")
-    with open(tmp_file, "wb") as fdl:
+    tmp_fh, tmp_filename = tempfile.mkstemp(
+        dir=local_file.parent, prefix=local_file.name
+    )
+    tmp_file = Path(tmp_filename)
+    with open(tmp_fh, "wb") as fdl:
         with tqdm(
             disable=quiet,
             bar_format="{desc}: {percentage:3.0f}%|{bar}|{n_fmt}/{total_fmt} [{rate_fmt}{postfix}]",
