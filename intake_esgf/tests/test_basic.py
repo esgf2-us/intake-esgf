@@ -118,6 +118,27 @@ def test_add_cell_measures():
     assert "areacella" in ds
 
 
+def test_download_without_checksum(monkeypatch):
+    """Test that downloading a file without a checksum works."""
+    _get_file_info = ESGFCatalog._get_file_info
+
+    def _get_stripped_file_info(self, *args, **kwargs):
+        """Set the checksum to None in the search result."""
+        result = _get_file_info(self, *args, **kwargs)
+        for info in result:
+            info["checksum"] = None
+        return result
+
+    monkeypatch.setattr(ESGFCatalog, "_get_file_info", _get_stripped_file_info)
+
+    cat = ESGFCatalog().search(
+        variable_id="areacello",
+        source_id="UKESM1-0-LL",
+    )
+
+    cat.to_path_dict()
+
+
 def test_modelgroups():
     cat = ESGFCatalog().search(
         experiment_id="historical",
