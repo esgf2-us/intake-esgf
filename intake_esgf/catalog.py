@@ -99,6 +99,12 @@ class ESGFCatalog:
                 "ESGF is moving away from this technology and you may find that some indices"
                 "fail to return a response."
             )
+        # STAC technology is experimental still, we warn users
+        if any([tf for _, tf in intake_esgf.conf["stac_indices"].items()]):
+            warnings.warn(
+                "You have enabled at least one index which uses the new STAC technology. "
+                "ESGF is developing this and behavior is experimental at this point."
+            )
         self.indices = []
         self.indices += [
             GlobusESGFIndex(ind)
