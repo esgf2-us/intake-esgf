@@ -325,12 +325,12 @@ def test_config():
         ]
     )
     assert num_on == 0
-    # All on
+    # All on, doesn't affect STAC at the moment
     intake_esgf.conf.set(all_indices=True)
     num_off = sum(
         [
             not enabled
-            for index_type in ["globus_indices", "solr_indices", "stac_indices"]
+            for index_type in ["globus_indices", "solr_indices"]
             for _, enabled in intake_esgf.conf[index_type].items()
         ]
     )

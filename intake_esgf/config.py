@@ -164,7 +164,10 @@ class Config(dict):
             }
         )
         if all_indices:
-            for index_type in ["globus_indices", "solr_indices", "stac_indices"]:
+            for index_type in [
+                "globus_indices",
+                "solr_indices",
+            ]:  # exclude STAC for now
                 for key in self[index_type]:
                     self[index_type][key] = True
         if esg_dataroot is not None:
