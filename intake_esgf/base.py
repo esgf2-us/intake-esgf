@@ -270,20 +270,6 @@ def combine_results(dfs: list[pd.DataFrame]) -> pd.DataFrame:
     return df
 
 
-def get_file_hash(filepath: str | Path, algorithm: str) -> str:
-    """Get the file has using the given algorithm."""
-    algorithm = algorithm.lower()
-    assert algorithm in hashlib.algorithms_available
-    sha = hashlib.__dict__[algorithm]()
-    with open(filepath, "rb") as fp:
-        while True:
-            data = fp.read(64 * 1024)
-            if not data:
-                break
-            sha.update(data)
-    return sha.hexdigest()
-
-
 def download_and_verify(
     url: str,
     local_file: str | Path,
@@ -301,6 +287,11 @@ def download_and_verify(
     if not isinstance(local_file, Path):
         local_file = Path(local_file)
     local_file.parent.mkdir(parents=True, exist_ok=True)
+
+    if hash_algorithm is None or hash is None:
+        hasher = None
+    else:
+        hasher = hashlib.new(hash_algorithm)
 
     # Begin download
     transfer_time = time.time()
@@ -325,11 +316,13 @@ def download_and_verify(
             for chunk in resp.iter_content(chunk_size=CHUNKSIZE):
                 if chunk:
                     fdl.write(chunk)
+                    if hasher is not None:
+                        hasher.update(chunk)
                     pbar.update(len(chunk))
 
     # Verify if hash information is given.
-    if hash_algorithm is not None and hash is not None:
-        if get_file_hash(tmp_file, hash_algorithm) != hash:
+    if hasher is not None:
+        if hasher.hexdigest() != hash:
             logger.info(f"\x1b[91;20mHash error\033[0m {url}")
             tmp_file.unlink()
             raise ValueError("Hash does not match")
