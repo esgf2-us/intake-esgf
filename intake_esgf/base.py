@@ -14,6 +14,7 @@ import xarray as xr
 from globus_sdk import TransferAPIError
 
 import intake_esgf
+import intake_esgf.logging
 from intake_esgf.core.globus import get_authorized_transfer_client
 from intake_esgf.database import (
     get_download_rate_dataframe,
@@ -239,10 +240,12 @@ def partition_infos(
     }, ds
 
 
-def combine_results(dfs: list[pd.DataFrame]) -> pd.DataFrame:
+def combine_results(
+    dfs: list[pd.DataFrame],
+    logger: intake_esgf.logging.Logger,
+) -> pd.DataFrame:
     """Return a combined dataframe where ids are now a list."""
     # combine and remove duplicate entries
-    logger = intake_esgf.conf.get_logger()
     df = pd.concat(dfs)
     if len(df) == 0:
         logger.info("\x1b[36;32msearch end \x1b[91;20mno results\033[0m")
@@ -277,13 +280,13 @@ def download_and_verify(
     hash_algorithm: str,
     content_length: int,
     download_db: Path,
+    logger: intake_esgf.logging.Logger,
     quiet: bool = False,
 ) -> None:
     """Download the url to a local file and check for validity, removing if not."""
     # Initialize
     MAX_FILENAME_LEN = 40
     CHUNKSIZE = 2**20  # Mb
-    logger = intake_esgf.conf.get_logger()
     if not isinstance(local_file, Path):
         local_file = Path(local_file)
     local_file.parent.mkdir(parents=True, exist_ok=True)
@@ -348,10 +351,10 @@ def parallel_download(
     info: dict[str, Any],
     local_cache: list[Path],
     download_db: Path,
+    logger: intake_esgf.logging.Logger,
     esg_dataroot: None | list[Path] = None,
 ):
     """."""
-    logger = intake_esgf.conf.get_logger()
     # does this exist on a copy we have access to?
     for path in esg_dataroot:
         if esg_dataroot is not None:
@@ -382,6 +385,7 @@ def parallel_download(
                 info["checksum_type"],
                 info["size"],
                 download_db=download_db,
+                logger=logger,
             )
         except Exception:
             logger.info(f"\x1b[91;20mdownload failed\033[0m {url}")

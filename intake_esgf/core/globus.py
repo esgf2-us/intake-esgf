@@ -1,5 +1,6 @@
 """A Globus-based ESGF1 style index."""
 
+import logging
 import re
 import time
 import warnings
@@ -24,6 +25,7 @@ from globus_sdk.tokenstorage import SimpleJSONFileAdapter
 
 import intake_esgf
 import intake_esgf.base as base
+import intake_esgf.logging
 from intake_esgf.exceptions import GlobusTransferError
 from intake_esgf.projects import get_project_facets
 
@@ -44,6 +46,7 @@ class GlobusESGFIndex:
             index_id = GlobusESGFIndex.GLOBUS_INDEX_IDS[index_id]
         self.index_id = index_id
         self.client = SearchClient()
+        self.logger = logging.getLogger(intake_esgf.logging.NAME)
 
     def __repr__(self):
         return self.repr
@@ -121,8 +124,7 @@ class GlobusESGFIndex:
                 df += record if isinstance(record, list) else [record]
         df = pd.DataFrame(df)
         response_time = time.time() - response_time
-        logger = intake_esgf.conf.get_logger()
-        logger.info(f"└─{self} results={len(df)} {response_time=:.2f}")
+        self.logger.info(f"└─{self} results={len(df)} {response_time=:.2f}")
         return df
 
     def get_file_info(self, dataset_ids: list[str], **facets) -> dict[str, Any]:
@@ -181,8 +183,7 @@ class GlobusESGFIndex:
                     info["file_end"] = tend
                 infos.append(info)
         response_time = time.time() - response_time
-        logger = intake_esgf.conf.get_logger()
-        logger.info(f"└─{self} results={len(infos)} {response_time=:.2f}")
+        self.logger.info(f"└─{self} results={len(infos)} {response_time=:.2f}")
         return infos
 
     def from_tracking_ids(self, tracking_ids: list[str]) -> pd.DataFrame:
