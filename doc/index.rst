@@ -66,6 +66,7 @@ or through ``conda-forge``
    reproduce
    dictkeys
    logging
+   cache
 
 .. toctree::
    :maxdepth: 2
