@@ -16,6 +16,7 @@ Issues
 
 """
 
+import logging
 import re
 import time
 from pathlib import Path
@@ -27,6 +28,7 @@ from pystac_client import Client, ItemSearch
 from pystac_client.stac_api_io import StacApiIO
 
 import intake_esgf.base as base
+import intake_esgf.logging
 from intake_esgf.projects import projects
 
 # the stac extension additions that need `properties.cmip6:` prepended
@@ -144,6 +146,7 @@ class STACESGFIndex:
         self.url = url
         self.cache = {}
         self.session = requests.Session()
+        self.logger = logging.getLogger(intake_esgf.logging.NAME)
 
     def __repr__(self):
         return f"STACESGFIndex('{self.url}')"

@@ -92,6 +92,7 @@ class ESGFCatalog:
     """
 
     def __init__(self):
+        self.logger = intake_esgf.conf.get_logger()
         # Solr technology is being deprecated, we warn users
         if any([tf for _, tf in intake_esgf.conf["solr_indices"].items()]):
             warnings.warn(
@@ -123,6 +124,7 @@ class ESGFCatalog:
         ]
         for ind in self.indices:
             ind.session = _get_cached_session()
+            ind.logger = self.logger
         if not self.indices:
             raise ValueError("You must have at least 1 search index configured")
         self.df = None
@@ -338,7 +340,6 @@ class ESGFCatalog:
         **search
             Any number of facet keywords and values.
         """
-        logger = intake_esgf.conf.get_logger()
         if file_start is not None:
             self.file_start = pd.Timestamp(file_start)
         if file_end is not None:
@@ -350,7 +351,7 @@ class ESGFCatalog:
             except NoSearchResults:
                 return pd.DataFrame([])
             except requests.exceptions.RequestException:
-                logger.info(f"└─{index} \x1b[91;20mno response\033[0m")
+                self.logger.info(f"└─{index} \x1b[91;20mno response\033[0m")
                 warnings.warn(
                     f"{index} failed to return a response, results may be incomplete"
                 )
@@ -384,7 +385,7 @@ class ESGFCatalog:
                 for key, val in search.items()
             ]
         )
-        logger.info(f"\x1b[36;32msearch begin\033[0m {search_str}")
+        self.logger.info(f"\x1b[36;32msearch begin\033[0m {search_str}")
 
         # threaded search over indices
         search_time = time.time()
@@ -400,7 +401,8 @@ class ESGFCatalog:
                     desc="Searching indices",
                     ascii=False,
                     total=len(self.indices),
-                )
+                ),
+                logger=self.logger,
             )
         self._set_project()
 
@@ -411,7 +413,7 @@ class ESGFCatalog:
             self.df.loc[r, "id"] = [x for x in row.id if latest in x]
 
         search_time = time.time() - search_time
-        logger.info(f"\x1b[36;32msearch end\033[0m total_time={search_time:.2f}")
+        self.logger.info(f"\x1b[36;32msearch end\033[0m total_time={search_time:.2f}")
         self.last_search = search
         return self
 
@@ -432,7 +434,6 @@ class ESGFCatalog:
         quiet
             Enable to silence the progress bar.
         """
-        logger = intake_esgf.conf.get_logger()
 
         def _from_tracking_ids(index):
             try:
@@ -440,7 +441,7 @@ class ESGFCatalog:
             except NoSearchResults:
                 return pd.DataFrame([])
             except requests.exceptions.RequestException:
-                logger.info(f"└─{index} \x1b[91;20mno response\033[0m")
+                self.logger.info(f"└─{index} \x1b[91;20mno response\033[0m")
                 warnings.warn(
                     f"{index} failed to return a response, results may be incomplete"
                 )
@@ -451,7 +452,7 @@ class ESGFCatalog:
             tracking_ids = [tracking_ids]
 
         # log what is being searched for
-        logger.info("\x1b[36;32mfrom_tracking_ids begin\033[0m")
+        self.logger.info("\x1b[36;32mfrom_tracking_ids begin\033[0m")
 
         # threaded search over indices
         search_time = time.time()
@@ -467,12 +468,15 @@ class ESGFCatalog:
                     desc="Searching indices",
                     ascii=False,
                     total=len(self.indices),
-                )
+                ),
+                logger=self.logger,
             )
         search_time = time.time() - search_time
         if len(self.df) != len(tracking_ids):
-            logger.info("One or more of the tracking_ids resolve to multiple files.")
-        logger.info(
+            self.logger.info(
+                "One or more of the tracking_ids resolve to multiple files."
+            )
+        self.logger.info(
             f"\x1b[36;32mfrom_tracking_ids end\033[0m total_time={search_time:.2f}"
         )
         self._set_project()
@@ -502,15 +506,14 @@ class ESGFCatalog:
             except NoSearchResults:
                 return []
             except requests.exceptions.RequestException:
-                logger.info(f"└─{index} \x1b[91;20mno response\033[0m")
+                self.logger.info(f"└─{index} \x1b[91;20mno response\033[0m")
                 warnings.warn(
                     f"{index} failed to return a response, info may be incomplete"
                 )
                 return []
             return info
 
-        logger = intake_esgf.conf.get_logger()
-        logger.info("\x1b[36;32mfile info begin\033[0m")
+        self.logger.info("\x1b[36;32mfile info begin\033[0m")
 
         # Eventually we will return a dictionary of paths/datasets. The keys of this
         # dictionary we will initialize to the master_id facets joined together by the
@@ -575,14 +578,14 @@ class ESGFCatalog:
                 and info["file_end"] is not None
                 and info["file_end"] < self.file_start
             ):
-                logger.info(f"Filtered for out of time range: {info['path']}")
+                self.logger.info(f"Filtered for out of time range: {info['path']}")
                 continue
             if (
                 self.file_end is not None
                 and info["file_start"] is not None
                 and info["file_start"] > self.file_end
             ):
-                logger.info(f"Filtered for out of time range: {info['path']}")
+                self.logger.info(f"Filtered for out of time range: {info['path']}")
                 continue
             path = info["path"]
             if path not in merged_info:
@@ -599,8 +602,8 @@ class ESGFCatalog:
         infos = [info for _, info in merged_info.items()]
         combine_time = time.time() - combine_time
         info_time = time.time() - info_time
-        logger.info(f"{combine_time=:.2f}")
-        logger.info(f"\x1b[36;32mfile info end\033[0m total_time={info_time:.2f}")
+        self.logger.info(f"{combine_time=:.2f}")
+        self.logger.info(f"\x1b[36;32mfile info end\033[0m total_time={info_time:.2f}")
         return infos
 
     def to_path_dict(
@@ -675,6 +678,7 @@ class ESGFCatalog:
                             base.parallel_download,
                             local_cache=self.local_cache,
                             download_db=self.download_db,
+                            logger=self.logger,
                             esg_dataroot=self.esg_dataroot,
                         ),
                         infos["https"],
@@ -749,7 +753,6 @@ class ESGFCatalog:
         quiet: bool
             Enable to quiet the progress bars.
         """
-        logger = intake_esgf.conf.get_logger()
         ds = self.to_path_dict(
             prefer_streaming=prefer_streaming,
             globus_endpoint=globus_endpoint,
@@ -764,7 +767,7 @@ class ESGFCatalog:
         exceptions = []
         failed_keys = []
         for key, files in ds.items():
-            [logger.info(f"accessed {f}") for f in files]
+            [self.logger.info(f"accessed {f}") for f in files]
             if len(files) == 1:
                 try:
                     ds[key] = xr.open_dataset(files[0])
@@ -876,17 +879,7 @@ class ESGFCatalog:
         """
         Return the log since the instantiation of this catalog.
         """
-        with open(Path(intake_esgf.conf["logfile"]).expanduser()) as fin:
-            log = fin.readlines()[::-1]
-        for n, line in enumerate(log):
-            m = re.search(r"\x1b\[36;20m(.*)\s\033\[0m", line)
-            if not m:
-                continue
-            if pd.to_datetime(m.group(1)) < (
-                self.session_time - pd.Timedelta(1, "s")  # little pad
-            ):
-                break
-        return "".join(log[:n][::-1])
+        return self.logger.read()
 
     def download_summary(
         self,
