@@ -615,6 +615,7 @@ class ESGFCatalog:
         ignore_facets: None | str | list[str] = None,
         separator: str = ".",
         quiet: bool = False,
+        confirm: bool = False,
     ) -> dict[str, list[Path]]:
         """
         Return the current search as a dictionary of paths to files.
@@ -639,6 +640,8 @@ class ESGFCatalog:
             When generating the keys, the string to use as a seperator of facets.
         quiet: bool
             Enable to quiet the progress bars.
+        confirm: bool
+            Prompt the user to confirm the download before downloading the data
         """
         if self.df is None or len(self.df) == 0:
             raise ValueError("No entries to retrieve.")
@@ -669,6 +672,11 @@ class ESGFCatalog:
                 download_unit = "Gb"
             if not quiet:
                 print(f"Downloading {download_size:.1f} [{download_unit}]...")
+            if confirm:
+                response = input("Proceed with download? [y/N]: ").strip().lower()
+                if response not in ("y", "yes"):
+                    print("Download cancelled.")
+                    return {}
             with ThreadPool(
                 min(intake_esgf.conf["num_threads"], len(infos["https"]))
             ) as pool:
@@ -726,6 +734,7 @@ class ESGFCatalog:
         ignore_facets: None | str | list[str] = None,
         separator: str = ".",
         quiet: bool = False,
+        confirm: bool = False,
     ) -> dict[str, xr.Dataset]:
         """
         Return the current search as a dictionary of datasets.
@@ -752,6 +761,8 @@ class ESGFCatalog:
             When generating the keys, the string to use as a seperator of facets.
         quiet: bool
             Enable to quiet the progress bars.
+        confirm: bool
+            Prompt the user to confirm the download before downloading the data
         """
         ds = self.to_path_dict(
             prefer_streaming=prefer_streaming,
@@ -761,6 +772,7 @@ class ESGFCatalog:
             ignore_facets=ignore_facets,
             separator=separator,
             quiet=quiet,
+            confirm=confirm,
         )
 
         # load paths into xarray objects (also log files accessed)
