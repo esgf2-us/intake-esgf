@@ -7,7 +7,7 @@ from requests_cache import CachedSession
 import intake_esgf
 from intake_esgf import ESGFCatalog
 from intake_esgf.base import partition_infos
-from intake_esgf.exceptions import MissingFileInformation, NoSearchResults
+from intake_esgf.exceptions import DatasetLoadError, NoSearchResults
 
 
 def test_search():
@@ -275,7 +275,7 @@ def test_break():
                 .remove_ensembles()
             )
             cat.to_path_dict()
-        except MissingFileInformation:
+        except DatasetLoadError:
             pass
 
 

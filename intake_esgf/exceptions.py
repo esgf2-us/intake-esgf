@@ -33,14 +33,24 @@ class ProjectNotSupported(IntakeESGFException):
         return f"The '{self.project}' project is not yet supported by intake-esgf"
 
 
-class MissingFileInformation(IntakeESGFException):
+class DatasetLoadError(IntakeESGFException):
     """There was incomplete file access information"""
 
     def __init__(self, problem_keys: list[str]):
         self.problem_keys = problem_keys
 
     def __str__(self):
-        return f"We were unable to find file information for these keys: {self.problem_keys}. Your access options could affect the possibilties."
+        msg = "We were unable to load data for these keys:\n"
+        msg += "\n".join([f"- {k}" for k in self.problem_keys])
+        msg += "\nThis could be for a few reasons:\n"
+        msg += "\n".join(
+            [
+                "- We failed to find file access information for these datasets.",
+                "- All the access links we found failed. The data nodes may be offline.",
+            ]
+        )
+        msg += "\nFor more information, consult the session log 'print(cat.session_log())'."
+        return msg
 
 
 class DatasetInitError(IntakeESGFException):

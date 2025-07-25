@@ -37,8 +37,8 @@ from intake_esgf.database import (
 )
 from intake_esgf.exceptions import (
     DatasetInitError,
+    DatasetLoadError,
     LocalCacheNotWritable,
-    MissingFileInformation,
     NoSearchResults,
 )
 from intake_esgf.projects import projects as esgf_projects
@@ -699,7 +699,7 @@ class ESGFCatalog:
         if missed:
             warnings.warn(f"We could not download your entire catalog, {missed=}")
             if intake_esgf.conf["break_on_error"]:
-                raise MissingFileInformation(missed)
+                raise DatasetLoadError(missed)
 
         # optionally simplify the keys
         if minimal_keys:
