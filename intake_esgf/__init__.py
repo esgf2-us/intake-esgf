@@ -10,7 +10,8 @@ warnings.simplefilter("ignore", category=xr.SerializationWarning)
 def in_notebook() -> bool:
     """Check if the code is running in a jupyter notebook"""
     try:
-        shell = get_ipython().__class__.__name__
+        # Function is defined if calling from a notebook
+        shell = get_ipython().__class__.__name__  # type: ignore
         if shell == "ZMQInteractiveShell":  # Jupyter notebook, Spyder or qtconsole
             return True
         elif shell == "TerminalInteractiveShell":
@@ -28,7 +29,7 @@ def supported_projects() -> list[str]:
     return list(projects.keys())
 
 
-IN_NOTEBOOK = in_notebook()
+IN_NOTEBOOK: bool = in_notebook()
 
 from intake_esgf.catalog import ESGFCatalog  # noqa
 from intake_esgf.config import conf  # noqa

@@ -8,6 +8,7 @@ from collections.abc import Callable
 from functools import partial
 from multiprocessing.pool import ThreadPool
 from pathlib import Path
+from typing import Any, cast
 
 # Self isn't available in typing in 3.10
 if sys.version_info[1] == 10:
@@ -44,16 +45,16 @@ from intake_esgf.exceptions import (
 from intake_esgf.projects import projects as esgf_projects
 
 if IN_NOTEBOOK:
-    from tqdm import tqdm_notebook as tqdm
+    from tqdm import tqdm_notebook as tqdm  # type: ignore
 else:
-    from tqdm import tqdm
+    from tqdm import tqdm  # type: ignore
 
 
 def _get_cached_session() -> requests_cache.CachedSession:
     """
     Return a requests session with the configured cache.
     """
-    kwargs = {
+    kwargs: dict[str, Any] = {
         "allowable_methods": (
             "GET",
             "HEAD",
@@ -483,7 +484,9 @@ class ESGFCatalog:
 
         return self
 
-    def _get_file_info(self, separator: str = ".", quiet: bool = False) -> list[dict]:
+    def _get_file_info(
+        self, separator: str = ".", quiet: bool = False
+    ) -> list[dict[str, Any]]:
         """
         Query and return file information datasets present in the catalog.
 
@@ -610,12 +613,12 @@ class ESGFCatalog:
         self,
         prefer_streaming: bool = False,
         globus_endpoint: str | None = None,
-        globus_path: Path | None = None,
+        globus_path: Path = Path("/"),
         minimal_keys: bool = True,
         ignore_facets: None | str | list[str] = None,
         separator: str = ".",
         quiet: bool = False,
-    ) -> dict[str, list[Path]]:
+    ) -> dict[str, list[str | Path]]:
         """
         Return the current search as a dictionary of paths to files.
 
@@ -645,9 +648,9 @@ class ESGFCatalog:
         prefer_globus = globus_endpoint is not None
 
         # get and partition file info based on access method
-        infos = self._get_file_info(separator=separator, quiet=quiet)
+        raw_infos = self._get_file_info(separator=separator, quiet=quiet)
         infos, dsd = base.partition_infos(
-            infos,
+            raw_infos,
             prefer_streaming,
             prefer_globus,
         )
@@ -656,7 +659,7 @@ class ESGFCatalog:
         tasks = []
         if prefer_globus:
             tasks = create_globus_transfer(
-                infos["globus"], globus_endpoint, globus_path
+                infos["globus"], cast(str, globus_endpoint), str(globus_path)
             )
 
         # download in parallel using threads
@@ -699,7 +702,7 @@ class ESGFCatalog:
         if missed:
             warnings.warn(f"We could not download your entire catalog, {missed=}")
             if intake_esgf.conf["break_on_error"]:
-                raise DatasetLoadError(missed)
+                raise DatasetLoadError(list(missed))
 
         # optionally simplify the keys
         if minimal_keys:
@@ -713,14 +716,13 @@ class ESGFCatalog:
                 for key_old, key_new in key_map.items()
                 if key_old in dsd
             }
-
         return dsd
 
     def to_dataset_dict(
         self,
         prefer_streaming: bool = False,
         globus_endpoint: str | None = None,
-        globus_path: Path | None = None,
+        globus_path: Path = Path("/"),
         add_measures: bool = True,
         minimal_keys: bool = True,
         ignore_facets: None | str | list[str] = None,
@@ -753,7 +755,7 @@ class ESGFCatalog:
         quiet: bool
             Enable to quiet the progress bars.
         """
-        ds = self.to_path_dict(
+        paths = self.to_path_dict(
             prefer_streaming=prefer_streaming,
             globus_endpoint=globus_endpoint,
             globus_path=globus_path,
@@ -766,7 +768,8 @@ class ESGFCatalog:
         # load paths into xarray objects (also log files accessed)
         exceptions = []
         failed_keys = []
-        for key, files in ds.items():
+        ds: dict[str, xr.Dataset] = {}
+        for key, files in paths.items():
             [self.logger.info(f"accessed {f}") for f in files]
             if len(files) == 1:
                 try:
@@ -787,8 +790,8 @@ class ESGFCatalog:
                     failed_keys.append(key)
                     exceptions.append(ex)
         if intake_esgf.conf["break_on_error"] and exceptions:
-            for ex in exceptions:
-                print(ex)
+            for exc in exceptions:
+                print(exc)
             raise DatasetInitError(failed_keys)
 
         # master_id facets should be in the global attributes of each file, but
@@ -934,8 +937,8 @@ class ESGFCatalog:
 
 
 def _load_into_dsd(
-    dsd: dict[str, list[Path]], infos: list[dict]
-) -> dict[str, list[Path]]:
+    dsd: dict[str, list[str | Path]], infos: list[dict]
+) -> dict[str, list[str | Path]]:
     """
     Insert the local path into the dictinoary if the file exists.
 

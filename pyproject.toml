@@ -33,9 +33,14 @@ dynamic = ["version"]
 
 [dependency-groups]
 dev = [
+    "mypy>=1.17.0",
+    "pandas-stubs>=2.3.0.250703",
     "pre-commit>=4.2.0",
     "pytest>=8.3.4",
     "pytest-cov>=6.0.0",
+    "types-pyyaml>=6.0.12.20250516",
+    "types-requests>=2.32.4.20250611",
+    "types-tqdm>=4.67.0.20250516",
 ]
 docs = [
     "distributed>=2024.12.0",

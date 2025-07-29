@@ -18,7 +18,7 @@ from intake_esgf.projects import get_project_facets
 def esg_search(
     session: requests.Session,
     base_url: str,
-    **search: dict[str, Any],
+    **search: Any,
 ) -> Iterator[dict[str, Any]]:
     """Yields paginated responses using the ESGF REST API."""
     if "format" not in search:
@@ -48,7 +48,7 @@ class SolrESGFIndex:
     def __repr__(self):
         return self.repr
 
-    def search(self, **search: str | list[str]) -> pd.DataFrame:
+    def search(self, **search: Any) -> pd.DataFrame:
         search["distrib"] = search["distrib"] if "distrib" in search else self.distrib
         facets = get_project_facets(search) + intake_esgf.conf.get(
             "additional_df_cols", []
@@ -56,7 +56,7 @@ class SolrESGFIndex:
         if "project" not in facets:
             facets = ["project"] + facets
         response_time = time.time()
-        df = []
+        dfs = []
         for response in esg_search(self.session, self.url, **search):
             response = response["response"]
             if not response["numFound"]:
@@ -74,20 +74,22 @@ class SolrESGFIndex:
                     variables = search["variable"] if "variable" in search else []
                     if not isinstance(variables, list):
                         variables = [variables]
-                    record = base.expand_cmip5_record(
+                    expanded_records = base.expand_cmip5_record(
                         variables,
                         doc["variable"],
                         record,
                     )
-                df += record if isinstance(record, list) else [record]
-        df = pd.DataFrame(df)
+                    dfs += expanded_records
+                else:
+                    dfs += [record]
+        df = pd.DataFrame(dfs)
         response_time = time.time() - response_time
         self.logger.info(f"└─{self} results={len(df)} {response_time=:.2f}")
         return df
 
     def from_tracking_ids(self, tracking_ids: list[str]) -> pd.DataFrame:
         total_time = time.time()
-        df = []
+        dfs = []
         for response in esg_search(
             self.session, self.url, type="File", tracking_id=tracking_ids
         ):
@@ -106,13 +108,13 @@ class SolrESGFIndex:
                 }
                 record["project"] = doc["project"][0]
                 record["id"] = doc["id"]
-                df.append(record)
-        df = pd.DataFrame(df)
+                dfs.append(record)
+        df = pd.DataFrame(dfs)
         total_time = time.time() - total_time
         self.logger.info(f"└─{self} results={len(df)} {total_time=:.2f}")
         return df
 
-    def get_file_info(self, dataset_ids: list[str], **facets) -> dict[str, Any]:
+    def get_file_info(self, dataset_ids: list[str], **facets) -> list[dict[str, Any]]:
         response_time = time.time()
         search = dict(
             type="File",
