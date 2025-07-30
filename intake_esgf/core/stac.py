@@ -54,7 +54,7 @@ CMIP6_PREPENDS = [
 ]
 
 
-def metadata_fixes(**search_facets: str | list[str]) -> dict[str, str | list[str]]:
+def metadata_fixes(**search_facets: Any) -> dict[str, Any]:
     """
     Remove
     """
@@ -70,7 +70,7 @@ def metadata_fixes(**search_facets: str | list[str]) -> dict[str, str | list[str
     return search_facets
 
 
-def add_defaults(**search_facets: str | list[str]) -> dict[str, str | list[str]]:
+def add_defaults(**search_facets: Any) -> dict[str, Any]:
     """
     Safely add some default search behavior.
     """
@@ -83,7 +83,7 @@ def search_cmip6(
     session: requests.Session,
     base_url: str,
     items_per_page: int = 100,
-    **search_facets: str | list[str],
+    **search_facets: Any,
 ) -> ItemSearch:
     """
     Returns a STAC client item search filtered by the search facets.
@@ -144,7 +144,7 @@ def get_content_path(url: str, project: str) -> Path:
 class STACESGFIndex:
     def __init__(self, url: str = "api.stac.ceda.ac.uk"):
         self.url = url
-        self.cache = {}
+        self.cache: dict[str, Any] = {}
         self.session = requests.Session()
         self.logger = logging.getLogger(intake_esgf.logging.NAME)
 
@@ -169,7 +169,7 @@ class STACESGFIndex:
         facets = projects[project.lower()].id_facets()
 
         # populate the dataframe with hacks
-        df = []
+        dfs = []
         for page in items.pages():
             for item in page.items:
                 row = {}
@@ -183,10 +183,10 @@ class STACESGFIndex:
                 row["version"] = item.id.split(".")[-1]
                 row["data_node"] = self.url
                 row["id"] = f"{item.id}|{row['data_node']}"
-                df += [row]
+                dfs += [row]
                 self.cache[row["id"]] = item
 
-        df = pd.DataFrame(df)
+        df = pd.DataFrame(dfs)
         total_time = time.time() - total_time
         return df
 
@@ -195,8 +195,10 @@ class STACESGFIndex:
             "The STAC catalogs don't even have tracking ids in the items."
         )
 
-    def get_file_info(self, dataset_ids: list[str], **facets) -> list[dict[str, Any]]:
-        infos = {}
+    def get_file_info(
+        self, dataset_ids: list[str], **facets: Any
+    ) -> list[dict[str, Any]]:
+        infos: dict[str, Any] = {}
         for dataset_id in dataset_ids:
             # Load the file info from the saved items
             if dataset_id not in self.cache:
@@ -235,5 +237,5 @@ class STACESGFIndex:
                     info["file_start"] = tstart
                     info["file_end"] = tend
                 infos[str(path)] = info
-        infos = [info for _, info in infos.items()]
-        return infos
+        out = [info for _, info in infos.items()]
+        return out

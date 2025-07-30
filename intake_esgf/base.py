@@ -4,6 +4,7 @@ import hashlib
 import re
 import tempfile
 import time
+from collections.abc import Iterable
 from functools import partial
 from pathlib import Path
 from typing import Any
@@ -25,9 +26,9 @@ from intake_esgf.exceptions import NoSearchResults, ProjectNotSupported
 from intake_esgf.projects import projects
 
 if intake_esgf.IN_NOTEBOOK:
-    from tqdm import tqdm_notebook as tqdm
+    from tqdm import tqdm_notebook as tqdm  # type: ignore
 else:
-    from tqdm import tqdm
+    from tqdm import tqdm  # type: ignore
 
 bar_format = "{desc:>20}: {percentage:3.0f}%|{bar}|{n_fmt}/{total_fmt} [{rate_fmt:>15s}{postfix}]"
 
@@ -118,7 +119,7 @@ def select_streaming_link(links: list[str], df_rate: pd.DataFrame) -> str:
 
 def partition_infos(
     infos: list[dict], prefer_streaming: bool, prefer_globus: bool
-) -> tuple[dict, dict]:
+) -> tuple[dict[str, list[dict[str, Any]]], dict[str, list[str | Path]]]:
     """
     Partition the file info based on how it will be handled.
 
@@ -146,7 +147,7 @@ def partition_infos(
         A dictionary of access paths for use in xarray.open_dataset.
     """
     # this routine will eventually return a dictionary of key -> list[paths]
-    ds = {}
+    ds: dict[str, list[str | Path]] = {}
 
     # as we iterate through the infos we will partition them
     infos_exist = []
@@ -156,7 +157,7 @@ def partition_infos(
 
     # to keep from checking globus endpoints active status too much, we will store them
     client = None
-    active_endpoints = set()
+    active_endpoints: set[str] = set()
 
     # Partition and setup all the file infos based on a priority
     df_rate = get_download_rate_dataframe(
@@ -241,7 +242,7 @@ def partition_infos(
 
 
 def combine_results(
-    dfs: list[pd.DataFrame],
+    dfs: Iterable[pd.DataFrame],
     logger: intake_esgf.logging.Logger,
 ) -> pd.DataFrame:
     """Return a combined dataframe where ids are now a list."""
@@ -356,8 +357,8 @@ def parallel_download(
 ):
     """."""
     # does this exist on a copy we have access to?
-    for path in esg_dataroot:
-        if esg_dataroot is not None:
+    if esg_dataroot is not None:
+        for path in esg_dataroot:
             local_file = path / info["path"]
             if local_file.exists():
                 logger.info(f"accessed {local_file}")
@@ -489,7 +490,7 @@ def add_cell_measures(ds: xr.Dataset, catalog) -> xr.Dataset:
 
     """
     to_add = []
-    for var, da in ds.items():
+    for _, da in ds.items():
         if "cell_measures" not in da.attrs:
             continue
         m = re.search(r"area:\s(.*)", da.attrs["cell_measures"])
@@ -501,8 +502,7 @@ def add_cell_measures(ds: xr.Dataset, catalog) -> xr.Dataset:
             to_add.append("sftlf")
         if "where sea" in da.attrs["cell_methods"]:
             to_add.append("sftof")
-    to_add = set(to_add)
-    for add in to_add:
+    for add in set(to_add):
         try:
             ds = add_variable(add, ds, catalog)
         except NoSearchResults:
@@ -575,7 +575,7 @@ def get_time_extent(
     Parse the timespan out of the filename, if possible, using pandas Timestamp.
     """
 
-    def _to_timestamp(s: str) -> str:
+    def _to_timestamp(s: str) -> pd.Timestamp:
         if len(s) == 6:
             s += "01"
         return pd.Timestamp(s)

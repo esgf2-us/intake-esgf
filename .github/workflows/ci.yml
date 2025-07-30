@@ -43,7 +43,7 @@ jobs:
         run: uv sync --group dev
 
       - name: Run pre-commit checks
-        run: uv run pre-commit run -a
+        run: uv run --group dev pre-commit run -a
 
       - name: Run Tests
         run: uv run pytest

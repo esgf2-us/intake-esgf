@@ -89,7 +89,7 @@ class GlobusESGFIndex:
         # paginated search
         response_time = time.time()
         paginator = self.client.paginated.scroll(self.index_id, query_data)
-        df = []
+        dfs = []
         have_warned = False
         for response in paginator:
             if response["total"] > RECORD_WARNING_THRESHOLD and not have_warned:
@@ -116,18 +116,22 @@ class GlobusESGFIndex:
                     variables = search["variable"] if "variable" in search else []
                     if not isinstance(variables, list):
                         variables = [variables]
-                    record = base.expand_cmip5_record(
+                    expanded_records = base.expand_cmip5_record(
                         variables,
                         content["variable"],
                         record,
                     )
-                df += record if isinstance(record, list) else [record]
-        df = pd.DataFrame(df)
+                    dfs += expanded_records
+                else:
+                    dfs += [record]
+        df = pd.DataFrame(dfs)
         response_time = time.time() - response_time
         self.logger.info(f"└─{self} results={len(df)} {response_time=:.2f}")
         return df
 
-    def get_file_info(self, dataset_ids: list[str], **facets) -> dict[str, Any]:
+    def get_file_info(
+        self, dataset_ids: list[str], **facets: Any
+    ) -> list[dict[str, Any]]:
         """Get file information for the given datasets."""
         response_time = time.time()
         query = (
@@ -217,8 +221,8 @@ class GlobusESGFIndex:
             record["project"] = content["project"][0]
             record["id"] = content["dataset_id"]
             df.append(record)
-        df = pd.DataFrame(df)
-        return df
+        out = pd.DataFrame(df)
+        return out
 
 
 def variable_info(
@@ -255,7 +259,7 @@ def variable_info(
             for v in ["variable", "variable_id"]
         ],
     )
-    response = client.post_search(uuid, q)
+    response = client.post_search(uuid, q)  # type: ignore
     variables = list(
         set(
             [
@@ -270,7 +274,7 @@ def variable_info(
     assert var_facet
     var_facet = var_facet[0]
     # then we loop through them and extract information for the user
-    df = []
+    dfs = []
     for v in variables:
         q = SearchQueryV1(
             q=query,
@@ -293,14 +297,14 @@ def variable_info(
                 },
             ],
         )
-        response = client.post_search(uuid, q)
+        response = client.post_search(uuid, q)  # type: ignore
         for doc in response.get("gmeta"):
             content = doc["entries"][0]["content"]
             columns = [var_facet]
             columns += [key for key in content if "variable_" in key]
             columns += [key for key in content if "name" in key]
-            df.append({key: content[key][0] for key in set(columns)})
-    df = pd.DataFrame(df).sort_values(var_facet).set_index(var_facet)
+            dfs.append({key: content[key][0] for key in set(columns)})
+    df = pd.DataFrame(dfs).sort_values(var_facet).set_index(var_facet)
     return df
 
 
@@ -342,7 +346,7 @@ You will have to login (or be logged in) to your Globus account. Globus will als
 
 
 def create_globus_transfer(
-    infos: list[dict], globus_endpoint: str, globus_path: str | Path = ""
+    infos: list[dict[str, Any]], globus_endpoint: str, globus_path: str | Path = ""
 ) -> list[GlobusHTTPResponse]:
     """
     Create
@@ -378,7 +382,9 @@ def create_globus_transfer(
 
     # create globus transfers, starting with the endpoint that has the most files
     tasks = []
-    for source_uuid in sorted(active_endpoints, key=active_endpoints.get, reverse=True):
+    for source_uuid in sorted(
+        active_endpoints, key=active_endpoints.__getitem__, reverse=True
+    ):
         task_data = TransferData(
             source_endpoint=source_uuid, destination_endpoint=globus_endpoint
         )

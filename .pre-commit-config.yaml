@@ -16,3 +16,16 @@ repos:
         args: [ --fix ]
       # Run the formatter.
       - id: ruff-format
+  # mypy from git won't find deps in environment
+  - repo: local
+    hooks:
+      - id: mypy
+        name: mypy
+        entry: uv run mypy intake_esgf
+        # This uses local uv installation
+        language: system
+        types: [ python ]
+        pass_filenames: false
+        require_serial: true
+        verbose: false
+        always_run: false

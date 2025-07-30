@@ -2,7 +2,7 @@
 
 import sqlite3
 from pathlib import Path
-from typing import Literal
+from typing import Literal, cast
 
 import numpy as np
 import pandas as pd
@@ -69,10 +69,9 @@ def get_download_rate_dataframe(
     condition = [f"transfer_size > {minimum_size}"]
     if history is not None:
         condition.append(f"timestamp > datetime('now', '-1 {history}', 'localtime')")
-    condition = " AND ".join(condition)
     con = sqlite3.connect(path)
     df = pd.read_sql_query(
-        f"SELECT * FROM downloads WHERE {condition}",
+        f"SELECT * FROM downloads WHERE {' AND '.join(condition)}",
         con,
     )
     con.close()
@@ -105,7 +104,7 @@ def sort_download_links(link: str, df_rate: pd.DataFrame) -> float:
     host = link[: link.index("/", 10)].replace("http://", "").replace("https://", "")
     if host not in df_rate.index:
         return df_rate["rate"].max() + np.random.rand(1)[0]
-    return df_rate.loc[host, "rate"]
+    return cast(float, df_rate.loc[host, "rate"])
 
 
 def sort_globus_endpoints(uuid: str, df_rate: pd.DataFrame) -> float:
@@ -128,4 +127,4 @@ def sort_globus_endpoints(uuid: str, df_rate: pd.DataFrame) -> float:
         return np.random.rand(1)[0]
     if uuid not in df_rate.index:
         return df_rate["rate"].max() + np.random.rand(1)[0]
-    return df_rate.loc[uuid, "rate"]
+    return cast(float, df_rate.loc[uuid, "rate"])

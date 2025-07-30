@@ -68,7 +68,7 @@ class ESGFProject(ABC):
         raise NotImplementedError()
 
     @abstractmethod
-    def grid_facet(self) -> str:
+    def grid_facet(self) -> str | None:
         """
         Return the facet name considered to be the `grid`.
         """
@@ -109,7 +109,7 @@ class ESGFProject(ABC):
             ]
         )
 
-    def id(self, facets: dict[str]) -> str:
+    def id(self, facets: dict[str, str]) -> str:
         """
         Return the id (dataset_id) of the dataset using the project facets.
 
@@ -166,7 +166,7 @@ class CMIP6(ESGFProject):
     def variant_facet(self) -> str:
         return "member_id"
 
-    def grid_facet(self) -> str:
+    def grid_facet(self) -> str | None:
         return "grid_label"
 
 
@@ -206,7 +206,7 @@ class CMIP5(ESGFProject):
     def variant_facet(self) -> str:
         return "ensemble"
 
-    def grid_facet(self) -> str:
+    def grid_facet(self) -> str | None:
         return None
 
 
@@ -246,7 +246,7 @@ class CMIP3(ESGFProject):
     def variant_facet(self) -> str:
         return "ensemble"
 
-    def grid_facet(self) -> str:
+    def grid_facet(self) -> str | None:
         return None
 
 
@@ -288,7 +288,7 @@ class obs4MIPs(ESGFProject):
     def variant_facet(self) -> str:
         raise ProjectHasNoFacet("obs4mips", "variant")
 
-    def grid_facet(self) -> str:
+    def grid_facet(self) -> str | None:
         return "grid_label"
 
 
@@ -335,7 +335,7 @@ class DRCDP(ESGFProject):  # Downscaled Regional Climate Data Product
     def variant_facet(self) -> str:
         raise ProjectHasNoFacet("DRCDP", "variant")
 
-    def grid_facet(self) -> str:
+    def grid_facet(self) -> str | None:
         raise ProjectHasNoFacet("DRCDP", "grid_label")
 
 
@@ -383,12 +383,12 @@ def get_likely_project(facets: list | dict) -> str:
     determine from which project the dataset came. Here we return the project whose
     master_id facets most match the input facets.
     """
-    facets = set(facets)
+    unique_facets = set(facets)
     counts = {
-        project_id: len(facets & set(project.master_id_facets()))
+        project_id: len(unique_facets & set(project.master_id_facets()))
         for project_id, project in projects.items()
     }
-    return max(counts, key=counts.get)
+    return max(counts, key=counts.__getitem__)
 
 
 __all__ = ["projects", "get_project_facets", "get_likely_project"]
