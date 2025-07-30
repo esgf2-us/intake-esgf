@@ -63,6 +63,7 @@ or through ``conda-forge``
    modelgroups
    configure
    paths
+   datalake
    reproduce
    dictkeys
    logging
