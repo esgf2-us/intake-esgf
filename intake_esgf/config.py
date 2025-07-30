@@ -32,6 +32,7 @@ defaults = {
         "/p/css03/esgf_publish",
         "/eagle/projects/ESGF2/esg_dataroot",
         "/global/cfs/projectdirs/m3522/cmip6/",
+        "/glade/campaign/collections/cmip.mirror",
     ],
     "local_cache": [
         "~/.esgf/",
