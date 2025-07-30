@@ -1,3 +1,4 @@
+from io import StringIO
 from pathlib import Path
 from time import perf_counter
 
@@ -345,3 +346,21 @@ def test_config():
         ]
     )
     assert num_on == 1
+
+
+def test_confirm(monkeypatch):
+    with intake_esgf.conf.set(confirm_download=True):
+        cat = ESGFCatalog().search(
+            experiment_id="historical",
+            source_id="CanESM5",
+            variable_id=["areacella"],
+            variant_label=["r2i1p1f1"],
+        )
+        # Cancel the download
+        monkeypatch.setattr("sys.stdin", StringIO("N\n"))
+        ds = cat.to_path_dict()
+        assert len(ds) == 0
+        # Enable the download
+        monkeypatch.setattr("sys.stdin", StringIO("Y\n"))
+        ds = cat.to_path_dict()
+        assert len(ds) == 1

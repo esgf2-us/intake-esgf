@@ -672,6 +672,11 @@ class ESGFCatalog:
                 download_unit = "Gb"
             if not quiet:
                 print(f"Downloading {download_size:.1f} [{download_unit}]...")
+            if intake_esgf.conf["confirm_download"]:
+                response = input("Proceed with download? [y/N]: ").strip().lower()
+                if response not in ("y", "yes"):
+                    print("Download cancelled.")
+                    return {}
             with ThreadPool(
                 min(intake_esgf.conf["num_threads"], len(infos["https"]))
             ) as pool:
