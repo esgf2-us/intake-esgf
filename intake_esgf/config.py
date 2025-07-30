@@ -46,6 +46,7 @@ defaults = {
     "download_db": "~/.config/intake-esgf/download.db",
     "num_threads": 6,
     "break_on_error": True,
+    "confirm_download": False,
 }
 
 
@@ -96,6 +97,7 @@ class Config(dict):
         additional_df_cols: list[str] | None = None,
         num_threads: int | None = None,
         break_on_error: bool | None = None,
+        confirm_download: bool | None = None,
     ):
         """Change intake-esgf configuration options.
 
@@ -134,6 +136,8 @@ class Config(dict):
             The number of threads to use when downloading via https.
         break_on_error: bool
             Should a user script continue if any of the datasets fail to load?
+        confirm_download: bool
+            Enable to require the user to confirm before downloads occur.
 
         Examples
         --------
@@ -193,6 +197,8 @@ class Config(dict):
             self["num_threads"] = int(num_threads)
         if break_on_error is not None:
             self["break_on_error"] = bool(break_on_error)
+        if confirm_download is not None:
+            self["confirm_download"] = bool(confirm_download)
         return self._unset(temp)
 
     def __getitem__(self, item):
