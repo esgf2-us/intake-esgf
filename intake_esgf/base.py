@@ -22,7 +22,7 @@ from intake_esgf.database import (
     log_download_information,
     sort_download_links,
 )
-from intake_esgf.exceptions import NoSearchResults, ProjectNotSupported
+from intake_esgf.exceptions import NoSearchResults, ProjectNotSupported, StalledDownload
 from intake_esgf.projects import projects
 
 if intake_esgf.IN_NOTEBOOK:
@@ -282,29 +282,43 @@ def download_and_verify(
     content_length: int,
     download_db: Path,
     logger: intake_esgf.logging.Logger,
+    break_slow_downloads: bool = False,
     quiet: bool = False,
 ) -> None:
     """Download the url to a local file and check for validity, removing if not."""
-    # Initialize
-    MAX_FILENAME_LEN = 40
-    CHUNKSIZE = 2**20  # Mb
+
+    # Get local/tmp file paths
     if not isinstance(local_file, Path):
         local_file = Path(local_file)
     local_file.parent.mkdir(parents=True, exist_ok=True)
+    tmp_fh, tmp_filename = tempfile.mkstemp(
+        dir=local_file.parent, prefix=local_file.name
+    )
+    tmp_file = Path(tmp_filename)
 
+    # Setup verification if hash given
     if hash_algorithm is None or hash is None:
         hasher = None
     else:
         hasher = hashlib.new(hash_algorithm)
 
-    # Begin download
-    transfer_time = time.time()
+    # Limit the filename size
+    LMAX = 40
+    desc = (
+        local_file.name
+        if len(local_file.name) < LMAX
+        else f"{local_file.name[: (LMAX - 3)]}...",
+    )
+
+    # Download, verify and log transfer
+    CHUNKSIZE = 2**20  # 1 [Mb]
+    SMOOTHING = 0.3  # must be in [0,1]
+    SLOW_DOWNLOAD_SAFETY = 2.0  # [s]
     resp = requests.get(url, stream=True, timeout=10)
     resp.raise_for_status()
-    tmp_fh, tmp_filename = tempfile.mkstemp(
-        dir=local_file.parent, prefix=local_file.name
-    )
-    tmp_file = Path(tmp_filename)
+    transfer_time = time.time()
+    chunk_time_prev = time.perf_counter()
+    smoothed_rate = intake_esgf.conf["slow_download_threshold"]
     with open(tmp_fh, "wb") as fdl:
         with tqdm(
             disable=quiet,
@@ -313,18 +327,42 @@ def download_and_verify(
             unit="B",
             unit_scale=True,
             leave=False,
-            desc=local_file.name
-            if len(local_file.name) < MAX_FILENAME_LEN
-            else f"{local_file.name[: (MAX_FILENAME_LEN - 3)]}...",
+            desc=desc,
         ) as pbar:
             for chunk in resp.iter_content(chunk_size=CHUNKSIZE):
                 if chunk:
+                    # Check slow downloads by using exponential smoothing
+                    chunk_time = time.perf_counter()
+                    rate = CHUNKSIZE * 1e-6 / (chunk_time - chunk_time_prev)
+                    smoothed_rate = SMOOTHING * rate + (1 - SMOOTHING) * smoothed_rate
+                    chunk_time_prev = chunk_time
+                    if (
+                        break_slow_downloads
+                        and (time.time() - transfer_time) > SLOW_DOWNLOAD_SAFETY
+                        and smoothed_rate < intake_esgf.conf["slow_download_threshold"]
+                    ):
+                        logger.info(
+                            f"Breaking download, {smoothed_rate:.2f} < {intake_esgf.conf['slow_download_threshold']:.2f} [Mb s-1]"
+                        )
+                        host = (
+                            url[: url.index("/", 10)]
+                            .replace("http://", "")
+                            .replace("https://", "")
+                        )
+                        transfer_time = time.time() - transfer_time
+                        log_download_information(
+                            download_db,
+                            host,
+                            transfer_time,
+                            smoothed_rate * transfer_time,
+                        )
+                        raise StalledDownload()
+
+                    # Write and updates
                     fdl.write(chunk)
                     if hasher is not None:
                         hasher.update(chunk)
                     pbar.update(len(chunk))
-
-    # Verify if hash information is given.
     if hasher is not None:
         if hasher.hexdigest() != hash:
             logger.info(f"\x1b[91;20mHash error\033[0m {url}")
@@ -387,6 +425,7 @@ def parallel_download(
                 info["size"],
                 download_db=download_db,
                 logger=logger,
+                break_slow_downloads=(url != info["HTTPServer"][-1]),
             )
         except Exception:
             logger.info(f"\x1b[91;20mdownload failed\033[0m {url}")

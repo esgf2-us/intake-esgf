@@ -13,6 +13,10 @@ class NoSearchResults(IntakeESGFException):
     """Search returned no results."""
 
 
+class StalledDownload(IntakeESGFException):
+    """Download speed has fallen below a set threshold."""
+
+
 class LocalCacheNotWritable(IntakeESGFException):
     """You do not have permission to write in the cache directories."""
 

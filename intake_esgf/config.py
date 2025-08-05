@@ -47,6 +47,7 @@ defaults = {
     "num_threads": 6,
     "break_on_error": True,
     "confirm_download": False,
+    "slow_download_threshold": 0.5,  # [Mb s-1]
 }
 
 
@@ -98,6 +99,7 @@ class Config(dict):
         num_threads: int | None = None,
         break_on_error: bool | None = None,
         confirm_download: bool | None = None,
+        slow_download_threshold: float | None = None,
     ):
         """Change intake-esgf configuration options.
 
@@ -138,6 +140,9 @@ class Config(dict):
             Should a user script continue if any of the datasets fail to load?
         confirm_download: bool
             Enable to require the user to confirm before downloads occur.
+        slow_download_threshold: float
+            The download rate in [Mb s-1] below which a download will be canceled in favor of
+            another link.
 
         Examples
         --------
@@ -199,6 +204,8 @@ class Config(dict):
             self["break_on_error"] = bool(break_on_error)
         if confirm_download is not None:
             self["confirm_download"] = bool(confirm_download)
+        if slow_download_threshold is not None:
+            self["slow_download_threshold"] = float(slow_download_threshold)
         return self._unset(temp)
 
     def __getitem__(self, item):
