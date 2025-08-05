@@ -304,7 +304,7 @@ def download_and_verify(
 
     # Limit the filename size
     LMAX = 40
-    desc = (
+    (desc,) = (
         local_file.name
         if len(local_file.name) < LMAX
         else f"{local_file.name[: (LMAX - 3)]}...",
@@ -356,6 +356,7 @@ def download_and_verify(
                             transfer_time,
                             smoothed_rate * transfer_time,
                         )
+                        resp.close()
                         raise StalledDownload()
 
                     # Write and updates
