@@ -2,12 +2,13 @@ from io import StringIO
 from pathlib import Path
 from time import perf_counter
 
+import pandas as pd
 import pytest
 from requests_cache import CachedSession
 
 import intake_esgf
 from intake_esgf import ESGFCatalog
-from intake_esgf.base import partition_infos
+from intake_esgf.base import get_time_extent, partition_infos
 from intake_esgf.exceptions import DatasetLoadError, NoSearchResults
 
 
@@ -364,3 +365,19 @@ def test_confirm(monkeypatch):
         monkeypatch.setattr("sys.stdin", StringIO("Y\n"))
         ds = cat.to_path_dict()
         assert len(ds) == 1
+
+
+def test_get_time_extent():
+    # normal case
+    t0, _ = get_time_extent(
+        "tas_Amon_EC-Earth3_historical_r1i1p1f1_gr_185301-185312.nc"
+    )
+    assert t0 == pd.Timestamp("1853-01")
+    # date pattern not found
+    t0, _ = get_time_extent("tas_Amon_EC-Earth3_historical_r1i1p1f1_gr.nc")
+    assert t0 is None
+    # date found but invalid
+    t0, _ = get_time_extent(
+        "tas_Amon_EC-Earth3_historical_r1i1p1f1_gr_18530230-185312.nc"
+    )
+    assert t0 is None
