@@ -1,3 +1,5 @@
+import tempfile
+
 import pytest
 
 import intake_esgf
@@ -7,3 +9,4 @@ import intake_esgf
 def reset_intake_esgf_config():
     """Reset the intake_esgf configuration before each test."""
     intake_esgf.conf.reset()
+    intake_esgf.conf.set(local_cache=[tempfile.gettempdir()])
