@@ -622,8 +622,14 @@ def get_time_extent(
             s += "01"
         return pd.Timestamp(s)
 
+    # Try to parse out the filename
     match = re.search(r"_(\d+)-(\d+)", filename)
     if not match:
         return None, None
 
-    return _to_timestamp(match.group(1)), _to_timestamp(match.group(2))
+    # Try to convert to a pandas timestamp
+    try:
+        t0, tf = _to_timestamp(match.group(1)), _to_timestamp(match.group(2))
+    except Exception:
+        return None, None
+    return t0, tf
