@@ -342,7 +342,7 @@ def download_and_verify(
                         and smoothed_rate < intake_esgf.conf["slow_download_threshold"]
                     ):
                         logger.info(
-                            f"Breaking download, {smoothed_rate:.2f} < {intake_esgf.conf['slow_download_threshold']:.2f} [Mb s-1]"
+                            f"\x1b[38;5;209mbreaking slow download\033[0m {smoothed_rate:.2f} < {intake_esgf.conf['slow_download_threshold']:.2f} [Mb s-1] {url}"
                         )
                         host = (
                             url[: url.index("/", 10)]
@@ -428,8 +428,10 @@ def parallel_download(
                 logger=logger,
                 break_slow_downloads=(url != info["HTTPServer"][-1]),
             )
-        except Exception:
-            logger.info(f"\x1b[91;20mdownload failed\033[0m {url}")
+        except (StalledDownload, ValueError):
+            continue
+        except Exception as e:
+            logger.info(f"\x1b[91;20mdownload failed\033[0m {type(e).__name__} {url}")
             continue
         if local_file.exists():
             return info["key"], local_file
