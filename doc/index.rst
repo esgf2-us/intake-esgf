@@ -51,6 +51,7 @@ or through ``conda-forge``
    intake
    quickstart
    faq
+   Cheatsheet <https://intake-esgf.readthedocs.io/en/latest/cheatsheet.pdf>
 
 .. toctree::
    :maxdepth: 2
