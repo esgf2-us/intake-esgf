@@ -338,6 +338,44 @@ class DRCDP(ESGFProject):  # Downscaled Regional Climate Data Product
     def grid_facet(self) -> str | None:
         raise ProjectHasNoFacet("DRCDP", "grid_label")
 
+class Input4MIPs(ESGFProject):
+    def __init__(self):
+        self.facets = ["activity_id",
+                       "mip_era",
+                       "target_mip",
+                       "institution_id",
+                       "source_id",
+                       "realm",
+                       "frequency",
+                       "variable_id",
+                       "grid_label",
+                       "version",
+                       "data_node"
+        ]
+
+    def master_id_facets(self) -> list[str]:
+        return self.facets[:-2]
+
+    def id_facets(self) -> list[str]:
+        return self.facets
+
+    def relaxation_facets(self) -> list[str]:
+        return [ "target_mip", "institution_id"]
+
+    def variable_description_facets(self) -> list[str]:
+        return ["variable_id"]
+
+    def variable_facet(self) -> str:
+        return "variable_id"
+
+    def model_facet(self) -> str:
+        return "source_id"
+
+    def variant_facet(self) -> str:
+        raise ProjectHasNoFacet("input4mips", "variant")
+
+    def grid_facet(self) -> str:
+        return "grid_label"
 
 projects = {
     "cmip6": CMIP6(),
@@ -345,6 +383,7 @@ projects = {
     "cmip3": CMIP3(),
     "obs4mips": obs4MIPs(),
     "drcdp": DRCDP(),
+    "input4mips": Input4MIPs(),
 }
 
 
@@ -362,6 +401,7 @@ def get_project_facets(content: dict[str, str | list[str]]) -> list[str]:
     list[str]
         The facets constituting the id of the project records.
     """
+    print(f"DEBUG {content}")
     project_id = content.get("project", None)
     if project_id is None:
         project_id = "CMIP6"
