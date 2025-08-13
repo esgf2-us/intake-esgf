@@ -401,7 +401,6 @@ def get_project_facets(content: dict[str, str | list[str]]) -> list[str]:
     list[str]
         The facets constituting the id of the project records.
     """
-    print(f"DEBUG {content}")
     project_id = content.get("project", None)
     if project_id is None:
         project_id = "CMIP6"
