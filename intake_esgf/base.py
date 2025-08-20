@@ -575,6 +575,7 @@ def get_content_path(content: dict[str, Any]) -> Path:
     older projects we do not, but can search for the project name and grab all the text
     following it. In the end, as long as we are consistent it does not matter.
 
+    TODO: Need to fix this routine, I am not sure how it is working outside of CMIP6.
     """
 
     def _form_from_template(content) -> Path:

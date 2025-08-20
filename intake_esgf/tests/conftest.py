@@ -3,6 +3,7 @@ from pathlib import Path
 
 import pandas as pd
 import pytest
+import xarray as xr
 
 import intake_esgf
 
@@ -249,3 +250,113 @@ def df_ceda():
             },
         }
     )
+
+
+@pytest.fixture
+def file_infos():
+    """A reduced set of file infos to check partitioning."""
+    yield [
+        {  # only https is available, file1 in a dataset
+            "key": "CMIP6.CMIP.CCCma.CanESM5.historical.r1i1p1f1.Amon.tas.gn",
+            "HTTPServer": [
+                "http://esgf-node.ornl.gov/thredds/fileServer/css03_data/CMIP6/CMIP/CCCma/CanESM5/historical/r1i1p1f1/Amon/tas/gn/v20190429/tas_Amon_CanESM5_historical_r1i1p1f1_gn_185001-201412.nc",
+            ],
+            "path": Path(
+                "CMIP6/CMIP/CCCma/CanESM5/historical/r1i1p1f1/Amon/tas/gn/v20190429/tas_Amon_CanESM5_historical_r1i1p1f1_gn_185001-201412.nc"
+            ),
+        },
+        {  # only https is available, file2 in the same dataset
+            "key": "CMIP6.CMIP.CCCma.CanESM5.historical.r1i1p1f1.Amon.tas.gn",
+            "HTTPServer": [
+                "http://esgf-node.ornl.gov/thredds/fileServer/css03_data/CMIP6/CMIP/CCCma/CanESM5/historical/r1i1p1f1/Amon/tas/gn/v20190429/tas_Amon_CanESM5_historical_r1i1p1f1_gn_185001-201412.nc",
+            ],
+            "path": Path(
+                "CMIP6/CMIP/CCCma/CanESM5/historical/r1i1p1f1/Amon/tas/gn/v20190429/tas_Amon_CanESM5_historical_r1i1p1f1_gn_201501-202012.nc"
+            ),
+        },
+        {  # all options are available, file in a different dataset
+            "key": "CMIP6.CMIP.CCCma.CanESM5.historical.r1i1p1f1.Amon.pr.gn",
+            "HTTPServer": [
+                "http://esgf-node.ornl.gov/thredds/fileServer/css03_data/CMIP6/CMIP/CCCma/CanESM5/historical/r1i1p1f1/Amon/pr/gn/v20190429/pr_Amon_CanESM5_historical_r1i1p1f1_gn_185001-201412.nc",
+            ],
+            "OPENDAP": [
+                "http://esgf-node.ornl.gov/thredds/dodsC/css03_data/CMIP6/CMIP/CCCma/CanESM5/historical/r1i1p1f1/Amon/pr/gn/v20190429/pr_Amon_CanESM5_historical_r1i1p1f1_gn_185001-201412.nc",
+            ],
+            "Globus": [
+                "globus:dea29ae8-bb92-4c63-bdbc-260522c92fe8/css03_data/CMIP6/CMIP/CCCma/CanESM5/historical/r1i1p1f1/Amon/pr/gn/v20190429/pr_Amon_CanESM5_historical_r1i1p1f1_gn_185001-201412.nc",
+                "globus:8896f38e-68d1-4708-bce4-b1b3a3405809/css03_data/CMIP6/CMIP/CCCma/CanESM5/historical/r1i1p1f1/Amon/pr/gn/v20190429/pr_Amon_CanESM5_historical_r1i1p1f1_gn_185001-201412.nc",
+            ],
+            "path": Path(
+                "CMIP6/CMIP/CCCma/CanESM5/historical/r1i1p1f1/Amon/pr/gn/v20190429/pr_Amon_CanESM5_historical_r1i1p1f1_gn_185001-201412.nc"
+            ),
+        },
+    ]
+
+
+@pytest.fixture
+def dataset():
+    yield xr.Dataset(
+        data_vars=dict(
+            temperature=(["lat"], [280.0]),
+        ),
+        coords=dict(
+            lat=("lat", [42.0]),
+        ),
+        attrs=dict(
+            project="CMIP6",
+            activity_id="CMIP",
+            institution_id="CCCma",
+            source_id="CanESM5",
+            experiment_id="historical",
+            member_id="r1i1p1f1",
+            table_id="Amon",
+            variable_id="tas",
+            grid_label="gn",
+        ),
+    )
+
+
+@pytest.fixture
+def cmip5_record():
+    yield {
+        "project": "CMIP5",
+        "institute": "NSF-DOE-NCAR",
+        "model": "CESM1(WACCM)",
+        "experiment": "rcp85",
+        "time_frequency": "mon",
+        "realm": "atmos",
+        "cmor_table": "Amon",
+        "ensemble": "r3i1p1",
+        "variable": "clw",
+        "version": "20130314",
+        "data_node": "eagle.alcf.anl.gov",
+        "id": "cmip5.output1.NSF-DOE-NCAR.CESM1-WACCM.rcp85.mon.atmos.Amon.r3i1p1.v20130314|eagle.alcf.anl.gov",
+    }
+
+
+@pytest.fixture
+def project_contents():
+    yield {
+        "CMIP6": {
+            "mip_era": ["CMIP6"],
+            "activity_drs": ["C4MIP"],
+            "institution_id": ["MPI-M"],
+            "source_id": ["MPI-ESM1-2-LR"],
+            "experiment_id": ["esm-ssp585"],
+            "member_id": ["r4i1p1f1"],
+            "table_id": ["Emon"],
+            "variable_id": ["nppTree"],
+            "grid_label": ["gn"],
+            "title": "nppTree_Emon_MPI-ESM1-2-LR_esm-ssp585_r4i1p1f1_gn_201501-203412.nc",
+            "version": "20190815",
+            "directory_format_template_": [
+                "%(root)s/%(mip_era)s/%(activity_drs)s/%(institution_id)s/%(source_id)s/%(experiment_id)s/%(member_id)s/%(table_id)s/%(variable_id)s/%(grid_label)s/%(version)s"
+            ],
+            "project": ["CMIP6"],
+            "dataset_id": "CMIP6.C4MIP.MPI-M.MPI-ESM1-2-LR.esm-ssp585.r4i1p1f1.Emon.nppTree.gn.v20190815|eagle.alcf.anl.gov",
+            "url": [
+                "https://g-52ba3.fd635.8443.data.globus.org/css03_data/CMIP6/C4MIP/MPI-M/MPI-ESM1-2-LR/esm-ssp585/r4i1p1f1/Emon/nppTree/gn/v20190815/nppTree_Emon_MPI-ESM1-2-LR_esm-ssp585_r4i1p1f1_gn_201501-203412.nc|application/netcdf|HTTPServer",
+                "globus:8896f38e-68d1-4708-bce4-b1b3a3405809/css03_data/CMIP6/C4MIP/MPI-M/MPI-ESM1-2-LR/esm-ssp585/r4i1p1f1/Emon/nppTree/gn/v20190815/nppTree_Emon_MPI-ESM1-2-LR_esm-ssp585_r4i1p1f1_gn_201501-203412.nc|Globus|Globus",
+            ],
+        }
+    }

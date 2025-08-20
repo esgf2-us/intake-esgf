@@ -51,8 +51,53 @@ def test_select_streaming_links(file_info, df_rate, monkeypatch):
         )
 
 
-def test_partition_infos():
-    pass
+def test_partition_infos(file_infos, monkeypatch):
+    # Partitioning streaming links requires a response check which we will fake
+    def fake_head(url: str, timeout: int) -> Any:
+        class FakeResponse:
+            status_code = 200
+
+        return FakeResponse()
+
+    # Partitioning globus links requires an authorized client which we will fake
+    def fake_authorized_transfer_client() -> Any:
+        class FakeClient:
+            def get_endpoint(self, uuid: int) -> dict[str, Any]:
+                return {"acl_available": True}
+
+        return FakeClient()
+
+    monkeypatch.setattr("requests.head", fake_head)
+    monkeypatch.setattr(
+        "intake_esgf.core.globus.get_authorized_transfer_client",
+        fake_authorized_transfer_client,
+    )
+
+    # Check only https preference
+    partitioned_infos, ds = base.partition_infos(
+        file_infos, prefer_streaming=False, prefer_globus=False
+    )
+    assert max([len(partitioned_infos[p]) for p in ["exist", "stream", "globus"]]) == 0
+    assert len(partitioned_infos["https"]) == 3
+    assert len(ds) == 0
+    # Check streaming preference
+    partitioned_infos, ds = base.partition_infos(
+        file_infos, prefer_streaming=True, prefer_globus=False
+    )
+    assert len(partitioned_infos["exist"]) == 0
+    assert len(partitioned_infos["https"]) == 2  # 2 do not have stream access
+    assert len(partitioned_infos["stream"]) == 1
+    assert len(partitioned_infos["globus"]) == 0
+    assert len(ds) == 1
+    # Check globus preference
+    partitioned_infos, ds = base.partition_infos(
+        file_infos, prefer_streaming=False, prefer_globus=True
+    )
+    assert len(partitioned_infos["exist"]) == 0
+    assert len(partitioned_infos["https"]) == 2  # 2 do not have globus access
+    assert len(partitioned_infos["stream"]) == 0
+    assert len(partitioned_infos["globus"]) == 1
+    assert len(ds) == 0
 
 
 def test_combine_results(df_ornl, df_ceda):
@@ -95,8 +140,29 @@ def test_parallel_download():
     pass
 
 
-def test_get_search_criteria():
-    pass
+def test_get_search_criteria(dataset):
+    reference_search = dict(
+        institution_id="CCCma",
+        source_id="CanESM5",
+        experiment_id="historical",
+        member_id="r1i1p1f1",
+        table_id="Amon",
+        variable_id="tas",
+        grid_label="gn",
+    )
+    # infer project from attributes
+    search = base.get_search_criteria(dataset)
+    assert search == reference_search
+    # specify project in argument
+    dataset.attrs.pop("project")
+    search = base.get_search_criteria(dataset, project_id="CMIP6")
+    assert search == reference_search
+    # project has to be in the file or given in the function call
+    with pytest.raises(ValueError):
+        search = base.get_search_criteria(dataset)
+    # it must be something we support
+    with pytest.raises(ProjectNotSupported):
+        search = base.get_search_criteria(dataset, project_id="Unsupported")
 
 
 def test_add_variable():
@@ -107,12 +173,44 @@ def test_add_cell_measures():
     pass
 
 
-def test_expand_cmip5_record():
-    pass
+def test_expand_cmip5_record(cmip5_record):
+    # just copies records based on the intersection of lists
+    assert (
+        len(
+            base.expand_cmip5_record(
+                ["clw"],
+                [
+                    "clw",
+                    "evspsbl",
+                ],
+                cmip5_record,
+            )
+        )
+        == 1
+    )
+    # if nothing in the search, we want it all
+    assert (
+        len(
+            base.expand_cmip5_record(
+                [],
+                [
+                    "clw",
+                    "evspsbl",
+                ],
+                cmip5_record,
+            )
+        )
+        == 2
+    )
 
 
-def test_get_content_path():
-    pass
+def test_get_content_path(project_contents):
+    # TODO: Expand coverage to other projects
+    # Normal behavior using template
+    path = base.get_content_path(project_contents["CMIP6"])
+    assert path == Path(
+        "CMIP6/C4MIP/MPI-M/MPI-ESM1-2-LR/esm-ssp585/r4i1p1f1/Emon/nppTree/gn/v20190815/nppTree_Emon_MPI-ESM1-2-LR_esm-ssp585_r4i1p1f1_gn_201501-203412.nc"
+    )
 
 
 def test_get_time_extent():
