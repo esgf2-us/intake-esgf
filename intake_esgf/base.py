@@ -15,8 +15,8 @@ import xarray as xr
 from globus_sdk import TransferAPIError
 
 import intake_esgf
+import intake_esgf.core.globus as globus
 import intake_esgf.logging
-from intake_esgf.core.globus import get_authorized_transfer_client
 from intake_esgf.database import (
     get_download_rate_dataframe,
     log_download_information,
@@ -210,7 +210,11 @@ def partition_infos(
             for uuid in source_endpoints:
                 if uuid in active_endpoints:
                     continue
-                client = get_authorized_transfer_client() if client is None else client
+                client = (
+                    globus.get_authorized_transfer_client()
+                    if client is None
+                    else client
+                )
                 try:
                     ep = client.get_endpoint(uuid)
                     if ep["acl_available"]:
