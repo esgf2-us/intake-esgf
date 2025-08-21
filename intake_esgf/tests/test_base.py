@@ -132,12 +132,12 @@ def test_combine_results(df_ornl, df_ceda):
     assert len(df["id"].iloc[0]) == 8
 
 
-def test_download_and_verify():
-    pass
+# def test_download_and_verify():
+#    pass
 
 
-def test_parallel_download():
-    pass
+# def test_parallel_download():
+#    pass
 
 
 def test_get_search_criteria(dataset):
@@ -165,12 +165,12 @@ def test_get_search_criteria(dataset):
         search = base.get_search_criteria(dataset, project_id="Unsupported")
 
 
-def test_add_variable():
-    pass
+# def test_add_variable():
+#    pass
 
 
-def test_add_cell_measures():
-    pass
+# def test_add_cell_measures():
+#    pass
 
 
 def test_expand_cmip5_record(cmip5_record):

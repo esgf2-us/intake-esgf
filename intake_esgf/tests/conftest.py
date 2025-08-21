@@ -6,6 +6,7 @@ import pytest
 import xarray as xr
 
 import intake_esgf
+import intake_esgf.database as db
 
 
 @pytest.fixture(autouse=True)
@@ -13,6 +14,8 @@ def reset_intake_esgf_config():
     """Reset the intake_esgf configuration before each test."""
     intake_esgf.conf.reset()
     intake_esgf.conf.set(local_cache=[tempfile.gettempdir()])
+    intake_esgf.conf["download_db"] = str(Path(tempfile.gettempdir()) / "download.db")
+    db.create_download_database(Path(intake_esgf.conf["download_db"]))
 
 
 @pytest.fixture
@@ -360,3 +363,50 @@ def project_contents():
             ],
         }
     }
+
+
+@pytest.fixture
+def download_db():
+    download_db = Path(intake_esgf.conf["download_db"]).expanduser()
+    download_db.parent.mkdir(parents=True, exist_ok=True)
+    yield download_db
+
+
+@pytest.fixture
+def df_catalog():
+    yield pd.DataFrame(
+        {
+            "project": {0: "CMIP6", 4: "CMIP6"},
+            "mip_era": {0: "CMIP6", 4: "CMIP6"},
+            "activity_drs": {0: "CMIP", 4: "CMIP"},
+            "institution_id": {0: "CCCma", 4: "CCCma"},
+            "source_id": {0: "CanESM5", 4: "CanESM5"},
+            "experiment_id": {0: "historical", 4: "historical"},
+            "member_id": {0: "r1i1p1f1", 4: "r1i1p1f1"},
+            "table_id": {0: "Amon", 4: "Lmon"},
+            "variable_id": {0: "tas", 4: "gpp"},
+            "grid_label": {0: "gn", 4: "gn"},
+            "version": {0: "20190429", 4: "20190429"},
+            "id": {
+                0: [
+                    "CMIP6.CMIP.CCCma.CanESM5.historical.r1i1p1f1.Amon.tas.gn.v20190429|crd-esgf-drc.ec.gc.ca",
+                    "CMIP6.CMIP.CCCma.CanESM5.historical.r1i1p1f1.Amon.tas.gn.v20190429|eagle.alcf.anl.gov",
+                    "CMIP6.CMIP.CCCma.CanESM5.historical.r1i1p1f1.Amon.tas.gn.v20190429|esgf-data04.diasjp.net",
+                    "CMIP6.CMIP.CCCma.CanESM5.historical.r1i1p1f1.Amon.tas.gn.v20190429|esgf-node.ornl.gov",
+                ],
+                4: [
+                    "CMIP6.CMIP.CCCma.CanESM5.historical.r1i1p1f1.Lmon.gpp.gn.v20190429|crd-esgf-drc.ec.gc.ca",
+                    "CMIP6.CMIP.CCCma.CanESM5.historical.r1i1p1f1.Lmon.gpp.gn.v20190429|eagle.alcf.anl.gov",
+                    "CMIP6.CMIP.CCCma.CanESM5.historical.r1i1p1f1.Lmon.gpp.gn.v20190429|esgf-node.ornl.gov",
+                ],
+            },
+        }
+    )
+
+
+@pytest.fixture
+def catalog(df_catalog):
+    cat = intake_esgf.ESGFCatalog()
+    cat.df = df_catalog
+    cat._set_project()
+    yield cat

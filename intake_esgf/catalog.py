@@ -970,21 +970,3 @@ def _load_into_dsd(
             dsd[key] = []
         dsd[key] += [path]
     return dsd
-
-
-def _minimal_key_format(
-    cat: ESGFCatalog, ignore_facets: list[str] | str | None = None
-) -> list[str]:
-    """ """
-    if ignore_facets is None:
-        ignore_facets = []
-    if isinstance(ignore_facets, str):
-        ignore_facets = [ignore_facets]
-    output_key_format = [
-        col
-        for col in cat.project.master_id_facets()
-        if ((cat.df[col].iloc[0] != cat.df[col]).any() and col not in ignore_facets)
-    ]
-    if not output_key_format:
-        output_key_format = [cat.project.variable_facet()]
-    return output_key_format
