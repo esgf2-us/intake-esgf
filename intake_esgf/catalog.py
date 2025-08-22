@@ -855,7 +855,9 @@ class ESGFCatalog:
             self.project.variant_facet(),
         ]
         try:
-            group.append(self.project.grid_facet())
+            grid_facet = self.project.grid_facet()
+            if grid_facet is not None:
+                group.append(grid_facet)
         except ValueError:
             pass
         for _, grp in self.df.groupby(group):
