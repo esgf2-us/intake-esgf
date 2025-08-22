@@ -41,6 +41,7 @@ from intake_esgf.exceptions import (
     DatasetLoadError,
     LocalCacheNotWritable,
     NoSearchResults,
+    ProjectHasNoFacet,
 )
 from intake_esgf.projects import projects as esgf_projects
 
@@ -305,7 +306,10 @@ class ESGFCatalog:
         sort_columns = list(df.columns[len(self.df.columns) :])
         group_columns = [model_facet, variant_facet]
 
-        grid_facet = self.project.grid_facet()
+        try:
+            grid_facet = self.project.grid_facet()
+        except ProjectHasNoFacet:
+            grid_facet = None
         if grid_facet is not None:
             sort_columns.append(grid_facet)
             group_columns.append(grid_facet)
@@ -856,10 +860,10 @@ class ESGFCatalog:
         ]
         try:
             grid_facet = self.project.grid_facet()
-            if grid_facet is not None:
-                group.append(grid_facet)
-        except ValueError:
-            pass
+        except ProjectHasNoFacet:
+            grid_facet = None
+        if grid_facet is not None:
+            group.append(grid_facet)
         for _, grp in self.df.groupby(group):
             if not complete(grp):
                 self.df = self.df.drop(grp.index)

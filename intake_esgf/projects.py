@@ -207,7 +207,7 @@ class CMIP5(ESGFProject):
         return "ensemble"
 
     def grid_facet(self) -> str | None:
-        return None
+        raise ProjectHasNoFacet("CMIP5", "grid_facet")
 
 
 class CMIP3(ESGFProject):
@@ -246,8 +246,8 @@ class CMIP3(ESGFProject):
     def variant_facet(self) -> str:
         return "ensemble"
 
-    def grid_facet(self) -> str | None:
-        return None
+    def grid_facet(self) -> str:
+        raise ProjectHasNoFacet("CMIP3", "grid_facet")
 
 
 class obs4MIPs(ESGFProject):
@@ -333,7 +333,7 @@ class DRCDP(ESGFProject):  # Downscaled Regional Climate Data Product
         return "source_id"
 
     def variant_facet(self) -> str:
-        raise ProjectHasNoFacet("DRCDP", "variant")
+        return "driving_variant_label"
 
     def grid_facet(self) -> str | None:
         raise ProjectHasNoFacet("DRCDP", "grid_label")
