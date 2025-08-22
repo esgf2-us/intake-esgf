@@ -4,6 +4,7 @@ from typing import Any
 
 import pandas as pd
 import pytest
+import xarray as xr
 
 import intake_esgf
 import intake_esgf.base as base
@@ -169,8 +170,54 @@ def test_get_search_criteria(dataset):
 #    pass
 
 
-# def test_add_cell_measures():
-#    pass
+def test_add_cell_measures(monkeypatch):
+    def fake_add_variable(add, ds, catalog):
+        ds[add] = xr.DataArray(data=[0], dims=["lat"], coords=dict(lat=[45]))
+        return ds
+
+    ds = xr.merge(
+        [
+            dict(
+                atm=xr.DataArray(
+                    name="atm",
+                    data=[0],
+                    dims=["lat"],
+                    coords=dict(lat=[45]),
+                    attrs=dict(
+                        cell_measures="area: areacella",
+                        cell_methods="area: time: mean",
+                    ),
+                ),
+                lnd=xr.DataArray(
+                    name="lnd",
+                    data=[0],
+                    dims=["lat"],
+                    coords=dict(lat=[45]),
+                    attrs=dict(
+                        cell_measures="area: areacella",
+                        cell_methods="area: mean where land time: mean",
+                    ),
+                ),
+                ocn=xr.DataArray(
+                    name="ocn",
+                    data=[0],
+                    dims=["lat"],
+                    coords=dict(lat=[45]),
+                    attrs=dict(
+                        cell_measures="area: areacello",
+                        cell_methods="area: mean where sea time: mean",
+                    ),
+                ),
+            )
+        ]
+    )
+    monkeypatch.setattr("intake_esgf.base.add_variable", fake_add_variable)
+
+    ds = base.add_cell_measures(ds, None)
+    assert "sftof" in ds
+    assert "sftlf" in ds
+    assert "areacella" in ds
+    assert "areacello" in ds
 
 
 def test_expand_cmip5_record(cmip5_record):
