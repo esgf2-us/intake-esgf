@@ -411,7 +411,7 @@ class ESGFCatalog:
         # may have different versions from different indices.
         for r, row in self.df.iterrows():
             latest = max([x.split("|")[0].split(".")[-1] for x in row.id])
-            self.df.loc[r, "id"] = [x for x in row.id if latest in x]
+            self.df.at[r, "id"] = [x for x in row.id if latest in x]
 
         search_time = time.time() - search_time
         self.logger.info(f"\x1b[36;32msearch end\033[0m total_time={search_time:.2f}")

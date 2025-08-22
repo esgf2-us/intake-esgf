@@ -271,7 +271,7 @@ def combine_results(
     # now convert groups to list
     for _, grp in df.groupby(project.master_id_facets(), dropna=False):
         df = df.drop(grp.iloc[1:].index)
-        df.loc[grp.index[0], "id"] = grp.id.to_list()
+        df.at[grp.index[0], "id"] = grp.id.to_list()
     df = df.drop(columns="data_node")
     combine_time = time.time() - combine_time
     logger.info(f"{combine_time=:.2f}")
