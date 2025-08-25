@@ -30,6 +30,7 @@ def test_cmip6_download():
     """
     intake_esgf.conf.set(no_indices=True, indices={"ESGF2-US-1.5-Catalog": True})
     cat = ESGFCatalog().search(
+        project="CMIP6",
         variable_id="wetlandFrac",
         experiment_id="historical",
         source_id="CanESM5",
@@ -41,3 +42,26 @@ def test_cmip6_download():
     assert "wetlandFrac" in ds
     assert "areacella" in ds  # adding cell measures only works in CMIP6 at the moment
     assert "sftlf" in ds
+
+
+def test_cmip6_from_tracking_ids():
+    """
+    Test a single tracking_id.
+    """
+    intake_esgf.conf.set(no_indices=True, indices={"ESGF2-US-1.5-Catalog": True})
+    cat = ESGFCatalog().from_tracking_ids(
+        ["hdl:21.14100/d9a7225a-49c3-4470-b7ab-a8180926f839"]
+    )
+    assert len(cat.df) == 1
+    assert cat.unique()["source_id"] == "CESM2"
+
+
+def test_cmip6_get_variable_info():
+    """
+    Test a simple variable info
+    """
+    intake_esgf.conf.set(no_indices=True, indices={"ESGF2-US-1.5-Catalog": True})
+    cat = ESGFCatalog()
+    df = cat.variable_info("cWood")
+    assert len(df) == 1
+    assert df.iloc[0]["cf_standard_name"] == "stem_mass_content_of_carbon"
