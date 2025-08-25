@@ -71,7 +71,7 @@ console_output_style = "count"
 addopts = "--cov --cov-report=xml --verbose -m 'not (globus_auth or solr)'"
 markers = [
     "globus_auth: tests which require globus authentication",
-    "solr: tests which check the Solr responses",
+    "solr: tests which need to communicate to a Solr index",
 ]
 
 [tool.coverage.run]
