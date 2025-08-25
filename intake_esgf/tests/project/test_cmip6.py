@@ -1,5 +1,3 @@
-import pytest
-
 import intake_esgf
 from intake_esgf import ESGFCatalog
 
@@ -69,7 +67,6 @@ def test_cmip6_get_variable_info():
     assert df.iloc[0]["cf_standard_name"] == "stem_mass_content_of_carbon"
 
 
-@pytest.mark.skip(reason="downloads fail, test needs reworked")
 def test_cmip6_timestamps():
     """
     Test that timestamps effectively filter out files.
@@ -88,7 +85,6 @@ def test_cmip6_timestamps():
     assert len(paths) == 2
 
 
-@pytest.mark.skip(reason="downloads fail, test needs reworked")
 def test_cmip6_add_cell_measures():
     """
     Test that we can add cell measures even far away.
