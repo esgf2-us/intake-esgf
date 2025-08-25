@@ -1,4 +1,11 @@
+from io import StringIO
+from typing import Any
+
+import pytest
+import requests_cache
+
 import intake_esgf
+from intake_esgf.exceptions import DatasetInitError
 
 
 def test_set_requests_cache():
@@ -18,6 +25,29 @@ def test_set_requests_cache():
         )
 
     assert intake_esgf.conf["requests_cache"]["expire_after"] == default_expire_after
+
+
+@pytest.mark.parametrize(
+    "expire_after",
+    [
+        "DO_NOT_CACHE",
+        "EXPIRE_IMMEDIATELY",
+        "NEVER_EXPIRE",
+    ],
+)
+def test_special_cache_expire_after(expire_after, tmp_path):
+    """Test disabling the requests_cache."""
+    with intake_esgf.conf.set(
+        requests_cache={
+            "cache_name": str(tmp_path / "requests-cache.sqlite"),
+            "expire_after": expire_after,
+        }
+    ):
+        cat = intake_esgf.ESGFCatalog()
+        for ind in cat.indices:
+            session = ind.session
+            assert isinstance(session, requests_cache.CachedSession)
+            assert session.expire_after == getattr(requests_cache, expire_after)
 
 
 def test_set_indices():
@@ -51,3 +81,47 @@ def test_set_indices():
         ]
     )
     assert num_on == 1
+
+
+def test_confirm(monkeypatch):
+    with intake_esgf.conf.set(confirm_download=True):
+        cat = intake_esgf.ESGFCatalog().search(
+            experiment_id="historical",
+            source_id="CanESM5",
+            variable_id=["areacella"],
+            variant_label=["r2i1p1f1"],
+        )
+        # Cancel the download
+        monkeypatch.setattr("sys.stdin", StringIO("N\n"))
+        ds = cat.to_path_dict()
+        assert len(ds) == 0
+        # Enable the download
+        monkeypatch.setattr("sys.stdin", StringIO("Y\n"))
+        ds = cat.to_path_dict()
+        assert len(ds) == 1
+
+
+def test_break_on_error(monkeypatch):
+    def fake_open_dataset(filename: Any):
+        raise ValueError("Just needs to fail")
+
+    monkeypatch.setattr("xarray.open_dataset", fake_open_dataset)
+    monkeypatch.setattr("xarray.open_mfdataset", fake_open_dataset)
+    with pytest.raises(DatasetInitError):
+        with intake_esgf.conf.set(break_on_error=True):
+            cat = intake_esgf.ESGFCatalog().search(
+                experiment_id="historical",
+                source_id="CanESM5",
+                variable_id=["areacella"],
+                variant_label=["r2i1p1f1"],
+            )
+            cat.to_dataset_dict()
+    with intake_esgf.conf.set(break_on_error=False):
+        cat = intake_esgf.ESGFCatalog().search(
+            experiment_id="historical",
+            source_id="CanESM5",
+            variable_id=["areacella"],
+            variant_label=["r2i1p1f1"],
+        )
+        dsd = cat.to_dataset_dict()
+        assert len(dsd) == 0

@@ -58,10 +58,28 @@ def test_cmip6_from_tracking_ids():
 
 def test_cmip6_get_variable_info():
     """
-    Test a simple variable info
+    Test a simple variable info.
     """
     intake_esgf.conf.set(no_indices=True, indices={"ESGF2-US-1.5-Catalog": True})
     cat = ESGFCatalog()
     df = cat.variable_info("cWood")
     assert len(df) == 1
     assert df.iloc[0]["cf_standard_name"] == "stem_mass_content_of_carbon"
+
+
+def test_cmip6_timestamps():
+    """
+    Test that timestamps effectively filter out files.
+    """
+    cat = ESGFCatalog().search(
+        project="CMIP6",
+        experiment_id="historical",
+        variable_id="msftmz",
+        source_id="NorESM2-LM",
+        variant_label="r2i1p1f1",
+        file_start="1960-01",
+        file_end="1979-12",
+    )
+    dpd = cat.to_path_dict()
+    paths = dpd[next(iter(dpd))]
+    assert len(paths) == 2

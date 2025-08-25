@@ -8,6 +8,7 @@ import xarray as xr
 
 import intake_esgf
 import intake_esgf.base as base
+from intake_esgf import ESGFCatalog
 from intake_esgf.exceptions import NoSearchResults, ProjectNotSupported
 
 
@@ -289,3 +290,24 @@ def test_get_time_extent():
         "tas_Amon_EC-Earth3_historical_r1i1p1f1_gr_18530230-185312.nc"
     )
     assert t0 is None
+
+
+def test_download_without_checksum(monkeypatch):
+    """Test that downloading a file without a checksum works."""
+    _get_file_info = ESGFCatalog._get_file_info
+
+    def _get_stripped_file_info(self, *args, **kwargs):
+        """Set the checksum to None in the search result."""
+        result = _get_file_info(self, *args, **kwargs)
+        for info in result:
+            info["checksum"] = None
+        return result
+
+    monkeypatch.setattr(ESGFCatalog, "_get_file_info", _get_stripped_file_info)
+
+    cat = ESGFCatalog().search(
+        variable_id="areacello",
+        source_id="UKESM1-0-LL",
+    )
+
+    cat.to_path_dict()
