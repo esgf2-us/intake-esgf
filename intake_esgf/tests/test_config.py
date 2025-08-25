@@ -141,12 +141,12 @@ def test_additional_df_cols():
         assert all([col in cat.df.columns for col in extra])
 
 
-def test_slow_cancel():
+def test_slow_cancel(tmp_path):
     intake_esgf.conf.set(slow_download_threshold=100)  # unreasonably fast speed
     with pytest.raises(StalledDownload):
         download_and_verify(
             url="https://esgf-node.ornl.gov/thredds/fileServer/css03_data/CMIP6/ScenarioMIP/MIROC/MIROC-ES2L/ssp245/r5i1p1f2/Amon/hus/gn/v20201222/hus_Amon_MIROC-ES2L_ssp245_r5i1p1f2_gn_201501-210012.nc",
-            local_file=Path("tmp.nc"),
+            local_file=tmp_path / Path("hus.nc"),
             hash=None,
             hash_algorithm=None,
             content_length=100,
