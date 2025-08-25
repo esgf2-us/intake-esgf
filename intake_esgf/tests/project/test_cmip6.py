@@ -83,3 +83,20 @@ def test_cmip6_timestamps():
     dpd = cat.to_path_dict()
     paths = dpd[next(iter(dpd))]
     assert len(paths) == 2
+
+
+def test_cmip6_add_cell_measures():
+    """
+    Test that we can add cell measures even far away.
+    """
+    # these measures are in r1i1p1f2 / piControl
+    cat = ESGFCatalog().search(
+        variable_id="mrros",
+        source_id="UKESM1-0-LL",
+        variant_label="r2i1p1f2",
+        frequency="mon",
+        experiment_id="historical",
+    )
+    ds = cat.to_dataset_dict()["mrros"]
+    assert "sftlf" in ds
+    assert "areacella" in ds

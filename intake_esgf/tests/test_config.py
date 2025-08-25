@@ -1,11 +1,13 @@
 from io import StringIO
+from pathlib import Path
 from typing import Any
 
 import pytest
 import requests_cache
 
 import intake_esgf
-from intake_esgf.exceptions import DatasetInitError
+from intake_esgf.base import download_and_verify
+from intake_esgf.exceptions import DatasetInitError, StalledDownload
 
 
 def test_set_requests_cache():
@@ -125,3 +127,30 @@ def test_break_on_error(monkeypatch):
         )
         dsd = cat.to_dataset_dict()
         assert len(dsd) == 0
+
+
+def test_additional_df_cols():
+    extra = ["datetime_start", "datetime_stop"]
+    with intake_esgf.conf.set(additional_df_cols=extra):
+        cat = intake_esgf.ESGFCatalog().search(
+            experiment_id="historical",
+            source_id="CanESM5",
+            variable_id=["gpp"],
+            variant_label=["r1i1p1f1"],
+        )
+        assert all([col in cat.df.columns for col in extra])
+
+
+def test_slow_cancel():
+    intake_esgf.conf.set(slow_download_threshold=100)  # unreasonably fast speed
+    with pytest.raises(StalledDownload):
+        download_and_verify(
+            url="https://esgf-node.ornl.gov/thredds/fileServer/css03_data/CMIP6/ScenarioMIP/MIROC/MIROC-ES2L/ssp245/r5i1p1f2/Amon/hus/gn/v20201222/hus_Amon_MIROC-ES2L_ssp245_r5i1p1f2_gn_201501-210012.nc",
+            local_file=Path("tmp.nc"),
+            hash=None,
+            hash_algorithm=None,
+            content_length=100,
+            download_db=Path(intake_esgf.conf["download_db"]).expanduser(),
+            logger=intake_esgf.conf.get_logger(),
+            break_slow_downloads=True,
+        )
