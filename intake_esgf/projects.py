@@ -338,19 +338,21 @@ class DRCDP(ESGFProject):  # Downscaled Regional Climate Data Product
     def grid_facet(self) -> str | None:
         raise ProjectHasNoFacet("DRCDP", "grid_label")
 
-class Input4MIPs(ESGFProject):
+
+class input4MIPs(ESGFProject):
     def __init__(self):
-        self.facets = ["activity_id",
-                       "mip_era",
-                       "target_mip",
-                       "institution_id",
-                       "source_id",
-                       "realm",
-                       "frequency",
-                       "variable_id",
-                       "grid_label",
-                       "version",
-                       "data_node"
+        self.facets = [
+            "activity_id",
+            "mip_era",
+            "target_mip",
+            "institution_id",
+            "source_id",
+            "realm",
+            "frequency",
+            "variable_id",
+            "grid_label",
+            "version",
+            "data_node",
         ]
 
     def master_id_facets(self) -> list[str]:
@@ -360,7 +362,7 @@ class Input4MIPs(ESGFProject):
         return self.facets
 
     def relaxation_facets(self) -> list[str]:
-        return [ "target_mip", "institution_id"]
+        return ["target_mip", "institution_id"]
 
     def variable_description_facets(self) -> list[str]:
         return ["variable_id"]
@@ -377,13 +379,14 @@ class Input4MIPs(ESGFProject):
     def grid_facet(self) -> str:
         return "grid_label"
 
+
 projects = {
     "cmip6": CMIP6(),
     "cmip5": CMIP5(),
     "cmip3": CMIP3(),
     "obs4mips": obs4MIPs(),
     "drcdp": DRCDP(),
-    "input4mips": Input4MIPs(),
+    "input4mips": input4MIPs(),
 }
 
 
