@@ -292,6 +292,7 @@ def test_get_time_extent():
     assert t0 is None
 
 
+@pytest.mark.download
 def test_download_without_checksum(monkeypatch):
     """Test that downloading a file without a checksum works."""
     _get_file_info = ESGFCatalog._get_file_info

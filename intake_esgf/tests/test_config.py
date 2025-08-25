@@ -85,6 +85,7 @@ def test_set_indices():
     assert num_on == 1
 
 
+@pytest.mark.download
 def test_confirm(monkeypatch):
     with intake_esgf.conf.set(confirm_download=True):
         cat = intake_esgf.ESGFCatalog().search(
@@ -103,6 +104,7 @@ def test_confirm(monkeypatch):
         assert len(ds) == 1
 
 
+@pytest.mark.download
 def test_break_on_error(monkeypatch):
     def fake_open_dataset(filename: Any):
         raise ValueError("Just needs to fail")
@@ -141,6 +143,7 @@ def test_additional_df_cols():
         assert all([col in cat.df.columns for col in extra])
 
 
+@pytest.mark.download
 def test_slow_cancel(tmp_path):
     intake_esgf.conf.set(slow_download_threshold=100)  # unreasonably fast speed
     with pytest.raises(StalledDownload):

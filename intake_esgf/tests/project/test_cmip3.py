@@ -1,3 +1,5 @@
+import pytest
+
 import intake_esgf
 from intake_esgf import ESGFCatalog
 
@@ -24,6 +26,7 @@ def test_cmip3_discovery():
     assert len(cat.model_groups()) == 1
 
 
+@pytest.mark.download
 def test_cmip3_download():
     """
     Test a small file download.

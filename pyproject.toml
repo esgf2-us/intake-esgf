@@ -68,10 +68,11 @@ version_file_template = '__version__ = "{version}"'
 
 [tool.pytest.ini_options]
 console_output_style = "count"
-addopts = "--cov --cov-report=xml --verbose -m 'not (globus_auth or solr)'"
+addopts = "--cov --cov-report=xml --verbose -m 'not (globus_auth or solr or download)'"
 markers = [
     "globus_auth: tests which require globus authentication",
     "solr: tests which need to communicate to a Solr index",
+    "download: tests which need to download data",
 ]
 
 [tool.coverage.run]

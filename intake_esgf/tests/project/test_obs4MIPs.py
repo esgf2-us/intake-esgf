@@ -27,6 +27,7 @@ def test_obs4MIPs_discovery():
         cat.remove_ensembles()
 
 
+@pytest.mark.download
 def test_obs4MIPs_download():
     """
     Test a small file download.
