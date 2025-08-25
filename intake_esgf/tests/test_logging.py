@@ -53,3 +53,12 @@ def test_log_to_file(tmp_path):
         assert msg in logger.read()
 
     assert msg in log_file.read_text(encoding="utf-8")
+
+
+def test_logger_consistency():
+    """Test that the catalog and indices are created with the capturing logger."""
+    cat = intake_esgf.ESGFCatalog()
+    assert isinstance(cat.logger, intake_esgf.logging.Logger)
+    assert len(cat.indices)
+    for ind in cat.indices:
+        assert ind.logger == cat.logger

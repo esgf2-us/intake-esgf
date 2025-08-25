@@ -15,8 +15,8 @@ import xarray as xr
 from globus_sdk import TransferAPIError
 
 import intake_esgf
+import intake_esgf.core.globus as globus
 import intake_esgf.logging
-from intake_esgf.core.globus import get_authorized_transfer_client
 from intake_esgf.database import (
     get_download_rate_dataframe,
     log_download_information,
@@ -210,7 +210,11 @@ def partition_infos(
             for uuid in source_endpoints:
                 if uuid in active_endpoints:
                     continue
-                client = get_authorized_transfer_client() if client is None else client
+                client = (
+                    globus.get_authorized_transfer_client()
+                    if client is None
+                    else client
+                )
                 try:
                     ep = client.get_endpoint(uuid)
                     if ep["acl_available"]:
@@ -267,7 +271,7 @@ def combine_results(
     # now convert groups to list
     for _, grp in df.groupby(project.master_id_facets(), dropna=False):
         df = df.drop(grp.iloc[1:].index)
-        df.loc[grp.index[0], "id"] = grp.id.to_list()
+        df.at[grp.index[0], "id"] = grp.id.to_list()
     df = df.drop(columns="data_node")
     combine_time = time.time() - combine_time
     logger.info(f"{combine_time=:.2f}")
@@ -510,7 +514,7 @@ def add_variable(variable_id: str, ds: xr.Dataset, catalog) -> xr.Dataset:
     # variables and will lead to unexpected merged results
     var = cat.to_dataset_dict(quiet=True, add_measures=False)[variable_id]
     var = var.reindex_like(ds, method="nearest", tolerance=1e-5)
-    ds = xr.merge([ds, var[variable_id]])
+    ds = xr.merge([ds, var[variable_id]], compat="override")
     return ds
 
 
@@ -575,6 +579,7 @@ def get_content_path(content: dict[str, Any]) -> Path:
     older projects we do not, but can search for the project name and grab all the text
     following it. In the end, as long as we are consistent it does not matter.
 
+    TODO: Need to fix this routine, I am not sure how it is working outside of CMIP6.
     """
 
     def _form_from_template(content) -> Path:

@@ -41,6 +41,7 @@ from intake_esgf.exceptions import (
     DatasetLoadError,
     LocalCacheNotWritable,
     NoSearchResults,
+    ProjectHasNoFacet,
 )
 from intake_esgf.projects import projects as esgf_projects
 
@@ -305,7 +306,10 @@ class ESGFCatalog:
         sort_columns = list(df.columns[len(self.df.columns) :])
         group_columns = [model_facet, variant_facet]
 
-        grid_facet = self.project.grid_facet()
+        try:
+            grid_facet = self.project.grid_facet()
+        except ProjectHasNoFacet:
+            grid_facet = None
         if grid_facet is not None:
             sort_columns.append(grid_facet)
             group_columns.append(grid_facet)
@@ -411,7 +415,7 @@ class ESGFCatalog:
         # may have different versions from different indices.
         for r, row in self.df.iterrows():
             latest = max([x.split("|")[0].split(".")[-1] for x in row.id])
-            self.df.loc[r, "id"] = [x for x in row.id if latest in x]
+            self.df.at[r, "id"] = [x for x in row.id if latest in x]
 
         search_time = time.time() - search_time
         self.logger.info(f"\x1b[36;32msearch end\033[0m total_time={search_time:.2f}")
@@ -855,9 +859,11 @@ class ESGFCatalog:
             self.project.variant_facet(),
         ]
         try:
-            group.append(self.project.grid_facet())
-        except ValueError:
-            pass
+            grid_facet = self.project.grid_facet()
+        except ProjectHasNoFacet:
+            grid_facet = None
+        if grid_facet is not None:
+            group.append(grid_facet)
         for _, grp in self.df.groupby(group):
             if not complete(grp):
                 self.df = self.df.drop(grp.index)
@@ -970,21 +976,3 @@ def _load_into_dsd(
             dsd[key] = []
         dsd[key] += [path]
     return dsd
-
-
-def _minimal_key_format(
-    cat: ESGFCatalog, ignore_facets: list[str] | str | None = None
-) -> list[str]:
-    """ """
-    if ignore_facets is None:
-        ignore_facets = []
-    if isinstance(ignore_facets, str):
-        ignore_facets = [ignore_facets]
-    output_key_format = [
-        col
-        for col in cat.project.master_id_facets()
-        if ((cat.df[col].iloc[0] != cat.df[col]).any() and col not in ignore_facets)
-    ]
-    if not output_key_format:
-        output_key_format = [cat.project.variable_facet()]
-    return output_key_format
