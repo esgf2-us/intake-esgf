@@ -178,6 +178,21 @@ def test_add_cell_measures(monkeypatch):
     ds = xr.merge(
         [
             dict(
+                junk1=xr.DataArray(
+                    name="junk1",
+                    data=[0],
+                    dims=["lat"],
+                    coords=dict(lat=[45]),
+                    attrs=dict(
+                        cell_measures="something_wrong",
+                    ),
+                ),
+                junk2=xr.DataArray(
+                    name="junk2",
+                    data=[0],
+                    dims=["lat"],
+                    coords=dict(lat=[45]),
+                ),
                 atm=xr.DataArray(
                     name="atm",
                     data=[0],
