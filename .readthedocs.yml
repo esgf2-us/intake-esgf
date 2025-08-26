@@ -5,6 +5,7 @@ build:
   tools:
     python: "3.12"
   commands:
+    - asdf plugin add pandoc
     - asdf plugin add uv
     - asdf install uv latest
     - asdf global uv latest
