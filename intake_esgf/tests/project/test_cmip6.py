@@ -82,7 +82,10 @@ def test_cmip6_timestamps():
     )
     dpd = cat.to_path_dict()
     paths = dpd[next(iter(dpd))]
-    assert len(paths) == 2
+    for path in paths:
+        t0, tf = intake_esgf.base.get_time_extent(str(path))
+        assert t0 >= cat.file_start
+        assert tf <= cat.file_end
 
 
 def test_cmip6_add_cell_measures():
