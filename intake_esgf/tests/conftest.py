@@ -13,7 +13,7 @@ import intake_esgf.database as db
 def reset_intake_esgf_config():
     """Reset the intake_esgf configuration before each test."""
     intake_esgf.conf.reset()
-    intake_esgf.conf.set(local_cache=[tempfile.gettempdir()])
+    intake_esgf.conf.set(local_cache=[tempfile.gettempdir()], print_log_on_error=True)
     intake_esgf.conf["download_db"] = str(Path(tempfile.gettempdir()) / "download.db")
     db.create_download_database(Path(intake_esgf.conf["download_db"]))
 
