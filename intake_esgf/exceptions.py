@@ -40,8 +40,9 @@ class ProjectNotSupported(IntakeESGFException):
 class DatasetLoadError(IntakeESGFException):
     """There was incomplete file access information"""
 
-    def __init__(self, problem_keys: list[str]):
+    def __init__(self, problem_keys: list[str], additional_msg: str | None = None):
         self.problem_keys = problem_keys
+        self.additional_msg = additional_msg
 
     def __str__(self):
         msg = "We were unable to load data for these keys:\n"
@@ -54,6 +55,8 @@ class DatasetLoadError(IntakeESGFException):
             ]
         )
         msg += "\nFor more information, consult the session log 'print(cat.session_log())'."
+        if self.additional_msg is not None:
+            msg += f"\n{self.additional_msg}"
         return msg
 
 

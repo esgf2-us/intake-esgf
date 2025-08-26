@@ -48,6 +48,7 @@ defaults = {
     "break_on_error": True,
     "confirm_download": False,
     "slow_download_threshold": 0.5,  # [Mb s-1]
+    "print_log_on_error": False,
 }
 
 
@@ -100,6 +101,7 @@ class Config(dict):
         break_on_error: bool | None = None,
         confirm_download: bool | None = None,
         slow_download_threshold: float | None = None,
+        print_log_on_error: bool | None = None,
     ):
         """Change intake-esgf configuration options.
 
@@ -141,8 +143,12 @@ class Config(dict):
         confirm_download: bool
             Enable to require the user to confirm before downloads occur.
         slow_download_threshold: float
-            The download rate in [Mb s-1] below which a download will be canceled in favor of
-            another link.
+            The download rate in [Mb s-1] below which a download will be
+            canceled in favor of another link.
+        print_log_on_error: bool
+            Enable to print the session log when a DatasetLoadError is
+            encountered. This is meant to be used in debugging CI to understand
+            what is happening as tests fail.
 
         Examples
         --------
@@ -206,6 +212,8 @@ class Config(dict):
             self["confirm_download"] = bool(confirm_download)
         if slow_download_threshold is not None:
             self["slow_download_threshold"] = float(slow_download_threshold)
+        if print_log_on_error is not None:
+            self["print_log_on_error"] = bool(print_log_on_error)
         return self._unset(temp)
 
     def __getitem__(self, item):

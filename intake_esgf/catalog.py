@@ -711,7 +711,12 @@ class ESGFCatalog:
         if missed:
             warnings.warn(f"We could not download your entire catalog, {missed=}")
             if intake_esgf.conf["break_on_error"]:
-                raise DatasetLoadError(list(missed))
+                raise DatasetLoadError(
+                    list(missed),
+                    self.logger.read()
+                    if intake_esgf.conf["print_log_on_error"]
+                    else None,
+                )
 
         # optionally simplify the keys
         if minimal_keys:
