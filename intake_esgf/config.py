@@ -44,6 +44,7 @@ defaults = {
     },
     "logfile": "~/.config/intake-esgf/esgf.log",
     "download_db": "~/.config/intake-esgf/download.db",
+    "cv_db": "~/.config/intake-esgf/cv.db",
     "num_threads": 6,
     "break_on_error": True,
     "confirm_download": False,

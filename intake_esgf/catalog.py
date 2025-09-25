@@ -25,6 +25,7 @@ import xarray as xr
 
 import intake_esgf
 import intake_esgf.base as base
+import intake_esgf.cv as cv
 from intake_esgf import IN_NOTEBOOK
 from intake_esgf.core import GlobusESGFIndex, SolrESGFIndex, STACESGFIndex
 from intake_esgf.core.globus import (
@@ -324,6 +325,7 @@ class ESGFCatalog:
 
     def search(
         self,
+        query: str = "",
         quiet: bool = False,
         file_start: str | None = None,
         file_end: str | None = None,
@@ -382,6 +384,10 @@ class ESGFCatalog:
         if isinstance(search["project"], list):
             if len(search["project"]) > 1:
                 raise ValueError("For now, projects may only be searched one at a time")
+
+        # if a query string is given, supplement the search by a CV query
+        if query:
+            search.update(cv.query_cv(query, project=search["project"]))
 
         # log what is being searched for
         search_str = ", ".join(
