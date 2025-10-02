@@ -380,6 +380,10 @@ class input4MIPs(ESGFProject):
         return "grid_label"
 
 
+class CMIP6Plus(CMIP6):
+    pass
+
+
 projects = {
     "cmip6": CMIP6(),
     "cmip5": CMIP5(),
@@ -387,6 +391,7 @@ projects = {
     "obs4mips": obs4MIPs(),
     "drcdp": DRCDP(),
     "input4mips": input4MIPs(),
+    "cmip6plus": CMIP6Plus(),
 }
 
 
