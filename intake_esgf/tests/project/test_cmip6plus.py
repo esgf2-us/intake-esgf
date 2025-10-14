@@ -16,7 +16,7 @@ def test_cmip6_discovery():
         member_id=["f2023-r6i1p1f1", "f2023-r11i1p1f1", "f2023-r11i1p1f3"],
         variable_id=["tasmax", "mrsofc"],
     )
-    assert len(cat.df) == 3
+    assert len(cat.df) == 4
     assert len(cat.model_groups()) == 3
     cat.remove_ensembles()
     assert len(cat.df) == 2
