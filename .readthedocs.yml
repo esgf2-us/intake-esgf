@@ -11,4 +11,4 @@ build:
     - asdf global uv latest
     - uv sync --group docs
     - uv run -m sphinx -T -b html -d doc/_build/doctrees -D language=en doc $READTHEDOCS_OUTPUT/html
-    - pandoc cheatsheet.md -o $READTHEDOCS_OUTPUT/html/cheatsheet.pdf
+    - pandoc doc/cheatsheet.md -o $READTHEDOCS_OUTPUT/html/cheatsheet.pdf
