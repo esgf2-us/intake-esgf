@@ -75,6 +75,7 @@ or through ``conda-forge``
    :hidden:
    :caption: Experimental
 
+   search
    globus
 
 .. toctree::
