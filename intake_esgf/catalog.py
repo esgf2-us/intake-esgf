@@ -1,22 +1,13 @@
 """The primary object in intake-esgf."""
 
 import re
-import sys
 import time
 import warnings
 from collections.abc import Callable
 from functools import partial
 from multiprocessing.pool import ThreadPool
 from pathlib import Path
-from typing import Any, cast
-
-# Self isn't available in typing in 3.10
-if sys.version_info[1] == 10:
-    from typing import Literal
-
-    from typing_extensions import Self
-else:
-    from typing import Literal, Self
+from typing import Any, Literal, Self, cast
 
 import pandas as pd
 import requests
