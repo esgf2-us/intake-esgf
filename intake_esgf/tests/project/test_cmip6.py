@@ -103,3 +103,11 @@ def test_cmip6_add_cell_measures():
     ds = cat.to_dataset_dict()["mrros"]
     assert "sftlf" in ds
     assert "areacella" in ds
+
+
+def test_cmip6_magic():
+    """
+    Test the esgf-magic interface just on CMIP6.
+    """
+    cat = ESGFCatalog().search("gpp historical cesm2* mon r1i1p1f1")
+    assert len(cat.df) == 3
