@@ -384,6 +384,10 @@ class CMIP6Plus(CMIP6):
     pass
 
 
+class e3sm(CMIP6):
+    pass
+
+
 projects = {
     "cmip6": CMIP6(),
     "cmip5": CMIP5(),
@@ -392,6 +396,7 @@ projects = {
     "drcdp": DRCDP(),
     "input4mips": input4MIPs(),
     "cmip6plus": CMIP6Plus(),
+    "e3sm": e3sm(),
 }
 
 
