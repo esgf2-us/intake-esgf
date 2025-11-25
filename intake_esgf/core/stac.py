@@ -34,23 +34,39 @@ from intake_esgf.projects import projects
 # the stac extension additions that need `properties.cmip6:` prepended
 CMIP6_PREPENDS = [
     "activity_id",
+    "citation_url",
+    "conventions",
     "data_specs_version",
-    "experiment_id",
     "experiment",
+    "experiment_id",
+    "forcing_index",
     "frequency",
     "further_info_url",
-    "grid_label",
     "grid",
+    "grid_label",
+    "initialization_index",
+    "institution",
     "institution_id",
-    "mip_era",
+    "license",
+    "member_id",
     "nominal_resolution",
-    "retracted",
+    "physics_index",
+    "pid",
+    "product",
+    "realization_index",
+    "realm",
+    "source",
     "source_id",
     "source_type",
+    "sub_experiment",
+    "sub_experiment_id",
     "table_id",
+    "variable_cf_standard_name",
     "variable_id",
     "variable_long_name",
+    "variable_units",
     "variant_label",
+    "version",
 ]
 
 
@@ -58,12 +74,6 @@ def metadata_fixes(**search_facets: Any) -> dict[str, Any]:
     """
     Remove
     """
-    # FIX: `latest` is not in the STAC record
-    if "latest" in search_facets:
-        search_facets.pop("latest")
-    # FIX: the CMIP6 stac extension does not include `member_id`
-    if "member_id" in search_facets and "variant_label" not in search_facets:
-        search_facets["variant_label"] = search_facets.pop("member_id")
     # There is no such thing as Dataset/File 'types'
     if "type" in search_facets:
         search_facets.pop("type")
@@ -74,8 +84,8 @@ def add_defaults(**search_facets: Any) -> dict[str, Any]:
     """
     Safely add some default search behavior.
     """
-    if "retracted" not in search_facets:
-        search_facets["retracted"] = False
+    # if "retracted" not in search_facets:
+    #    search_facets["retracted"] = False
     return search_facets
 
 
@@ -121,12 +131,11 @@ def search_cmip6(
             for facet, facet_values in search_facets.items()
         ],
     }
-
     # Initialize the client and search
     stac_io = StacApiIO()
     stac_io.session = session
     results = Client.open(base_url, stac_io=stac_io).search(
-        collections="cmip6", limit=items_per_page, filter=cql_filter
+        collections="CMIP6", limit=items_per_page, filter=cql_filter
     )
     return results
 
@@ -139,6 +148,14 @@ def get_content_path(url: str, project: str) -> Path:
     if not match:
         raise ValueError(f"Could not parse out the path from {url}")
     return Path(match.group(1))
+
+
+def _delist_row(row: dict[str, Any]) -> dict[str, str | int]:
+    row = {
+        key: val[0] if (isinstance(val, list) and len(val) == 1) else val
+        for key, val in row.items()
+    }
+    return row
 
 
 class STACESGFIndex:
@@ -166,28 +183,36 @@ class STACESGFIndex:
         items = search_cmip6(self.session, f"https://{self.url}", limit, **search)
 
         # what facets do we expect?
-        facets = projects[project.lower()].id_facets()
+        facets = (
+            [
+                "project",
+            ]
+            + projects[project.lower()].master_id_facets()
+            + intake_esgf.conf["additional_df_cols"]
+        )
 
         # populate the dataframe with hacks
         dfs = []
         for page in items.pages():
             for item in page.items:
                 row = {}
-                for col in facets[:-2]:
-                    lhs = col  # .replace("member_id", "variant_label")
-                    rhs = "cmip6:" + col.replace("member_id", "variant_label").replace(
-                        "activity_drs", "activity_id"
+                for col in facets:
+                    lookup = f"cmip6:{col}" if col in CMIP6_PREPENDS else col
+                    row[col] = (
+                        item.properties[lookup] if lookup in item.properties else None
                     )
-                    row[lhs] = item.properties[rhs]
-                row["project"] = "cmip6"
-                row["version"] = item.id.split(".")[-1]
+                # manual fixes, maybe not problems for STAC but will show up for compatibility with other clients
+                row["activity_drs"] = item.properties["cmip6:activity_id"]
+                row["mip_era"] = row["project"]
                 row["data_node"] = self.url
-                row["id"] = f"{item.id}|{row['data_node']}"
-                dfs += [row]
-                self.cache[row["id"]] = item
+                rowid = f"{item.id}|{row['data_node']}"
+                row["id"] = rowid
+                dfs += [_delist_row(row)]
+                self.cache[rowid] = item
 
         df = pd.DataFrame(dfs)
         total_time = time.time() - total_time
+        print(df)
         return df
 
     def from_tracking_ids(self, tracking_ids: list[str]) -> pd.DataFrame:
@@ -238,4 +263,5 @@ class STACESGFIndex:
                     info["file_end"] = tend
                 infos[str(path)] = info
         out = [info for _, info in infos.items()]
+        print(out)
         return out
