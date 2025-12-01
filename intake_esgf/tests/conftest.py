@@ -341,27 +341,323 @@ def cmip5_record():
 def project_contents():
     yield {
         "CMIP6": {
-            "mip_era": ["CMIP6"],
-            "activity_drs": ["C4MIP"],
-            "institution_id": ["MPI-M"],
-            "source_id": ["MPI-ESM1-2-LR"],
-            "experiment_id": ["esm-ssp585"],
-            "member_id": ["r4i1p1f1"],
-            "table_id": ["Emon"],
-            "variable_id": ["nppTree"],
+            "master_id": "CMIP6.CMIP.CCCma.CanESM5.historical.r1i1p1f1.fx.sftlf.gn.sftlf_fx_CanESM5_historical_r1i1p1f1_gn.nc",
+            "experiment_title": ["all-forcing simulation of the recent past"],
+            "replica": False,
+            "data_specs_version": ["01.00.29"],
+            "variable_units": ["%"],
+            "project": ["CMIP6"],
+            "pid": ["hdl:21.14100/055f024b-36c4-36be-b3f7-23be4d494e3f"],
+            "table_id": ["fx"],
+            "type": "File",
+            "frequency": ["fx"],
+            "institution_id": ["CCCma"],
+            "score": 1.1461977,
+            "variable_id": ["sftlf"],
+            "activity_id": ["CMIP"],
+            "id": "CMIP6.CMIP.CCCma.CanESM5.historical.r1i1p1f1.fx.sftlf.gn.v20190429.sftlf_fx_CanESM5_historical_r1i1p1f1_gn.nc|crd-esgf-drc.ec.gc.ca",
+            "_timestamp": "2019-06-27T00:47:22.466Z",
+            "data_node": "crd-esgf-drc.ec.gc.ca",
+            "variable_long_name": [
+                "Percentage of the grid  cell occupied by land (including lakes)"
+            ],
+            "dataset_id": "CMIP6.CMIP.CCCma.CanESM5.historical.r1i1p1f1.fx.sftlf.gn.v20190429|crd-esgf-drc.ec.gc.ca",
+            "source_type": ["AOGCM"],
+            "cf_standard_name": ["land_area_fraction"],
+            "version": 20190429,
+            "further_info_url": [
+                "https://furtherinfo.es-doc.org/CMIP6.CCCma.CanESM5.historical.none.r1i1p1f1"
+            ],
+            "instance_id": "CMIP6.CMIP.CCCma.CanESM5.historical.r1i1p1f1.fx.sftlf.gn.v20190429.sftlf_fx_CanESM5_historical_r1i1p1f1_gn.nc",
+            "size": 59765,
             "grid_label": ["gn"],
-            "title": "nppTree_Emon_MPI-ESM1-2-LR_esm-ssp585_r4i1p1f1_gn_201501-203412.nc",
-            "version": "20190815",
+            "nominal_resolution": ["500 km"],
+            "citation_url": [
+                "http://cera-www.dkrz.de/WDCC/meta/CMIP6/CMIP6.CMIP.CCCma.CanESM5.historical.r1i1p1f1.fx.sftlf.gn.v20190429.json"
+            ],
             "directory_format_template_": [
                 "%(root)s/%(mip_era)s/%(activity_drs)s/%(institution_id)s/%(source_id)s/%(experiment_id)s/%(member_id)s/%(table_id)s/%(variable_id)s/%(grid_label)s/%(version)s"
             ],
-            "project": ["CMIP6"],
-            "dataset_id": "CMIP6.C4MIP.MPI-M.MPI-ESM1-2-LR.esm-ssp585.r4i1p1f1.Emon.nppTree.gn.v20190815|eagle.alcf.anl.gov",
-            "url": [
-                "https://g-52ba3.fd635.8443.data.globus.org/css03_data/CMIP6/C4MIP/MPI-M/MPI-ESM1-2-LR/esm-ssp585/r4i1p1f1/Emon/nppTree/gn/v20190815/nppTree_Emon_MPI-ESM1-2-LR_esm-ssp585_r4i1p1f1_gn_201501-203412.nc|application/netcdf|HTTPServer",
-                "globus:8896f38e-68d1-4708-bce4-b1b3a3405809/css03_data/CMIP6/C4MIP/MPI-M/MPI-ESM1-2-LR/esm-ssp585/r4i1p1f1/Emon/nppTree/gn/v20190815/nppTree_Emon_MPI-ESM1-2-LR_esm-ssp585_r4i1p1f1_gn_201501-203412.nc|Globus|Globus",
+            "index_node": "us-index",
+            "title": "sftlf_fx_CanESM5_historical_r1i1p1f1_gn.nc",
+            "retracted": False,
+            "checksum_type": ["SHA256"],
+            "variant_label": ["r1i1p1f1"],
+            "checksum": [
+                "86b2d45490252d5b75fd420204a7fce063ef1bb1287cac16c2a866af4feb6208"
             ],
-        }
+            "tracking_id": ["hdl:21.14100/90f93a05-357c-4ea2-b61f-bf2418700791"],
+            "latest": True,
+            "timestamp": "2019-05-02T01:36:43Z",
+            "member_id": ["r1i1p1f1"],
+            "sub_experiment_id": ["none"],
+            "mip_era": ["CMIP6"],
+            "product": ["model-output"],
+            "model_cohort": ["Registered"],
+            "experiment_id": ["historical"],
+            "url": [
+                "http://crd-esgf-drc.ec.gc.ca/thredds/fileServer/esgC_dataroot/AR6/CMIP6/CMIP/CCCma/CanESM5/historical/r1i1p1f1/fx/sftlf/gn/v20190429/sftlf_fx_CanESM5_historical_r1i1p1f1_gn.nc|application/netcdf|HTTPServer",
+                "gsiftp://crd-esgf-drc.ec.gc.ca:2811//esgC_dataroot/AR6/CMIP6/CMIP/CCCma/CanESM5/historical/r1i1p1f1/fx/sftlf/gn/v20190429/sftlf_fx_CanESM5_historical_r1i1p1f1_gn.nc|application/gridftp|GridFTP",
+                "http://crd-esgf-drc.ec.gc.ca/thredds/dodsC/esgC_dataroot/AR6/CMIP6/CMIP/CCCma/CanESM5/historical/r1i1p1f1/fx/sftlf/gn/v20190429/sftlf_fx_CanESM5_historical_r1i1p1f1_gn.nc.html|application/opendap-html|OPENDAP",
+            ],
+            "activity_drs": ["CMIP"],
+            "dataset_id_template_": [
+                "%(mip_era)s.%(activity_drs)s.%(institution_id)s.%(source_id)s.%(experiment_id)s.%(member_id)s.%(table_id)s.%(variable_id)s.%(grid_label)s"
+            ],
+            "_version_": 1637452551255228416,
+            "grid": [
+                "T63L49 native atmosphere, T63 Linear Gaussian Grid; 128 x 64 longitude/latitude; 49 levels; top level 1 hPa"
+            ],
+            "variable": ["sftlf"],
+            "realm": ["atmos"],
+            "source_id": ["CanESM5"],
+        },
+        "CMIP5": {
+            "master_id": "CMIP6.CMIP.CCCma.CanESM5.historical.r1i1p1f1.Emon.wetlandFrac.gn.wetlandFrac_Emon_CanESM5_historical_r1i1p1f1_gn_185001-201412.nc",
+            "experiment_title": ["all-forcing simulation of the recent past"],
+            "replica": False,
+            "data_specs_version": ["01.00.29"],
+            "variable_units": ["%"],
+            "project": ["CMIP6"],
+            "pid": ["hdl:21.14100/8ea2418c-2375-31cf-97c1-6b9784bd3a72"],
+            "table_id": ["Emon"],
+            "type": "File",
+            "frequency": ["mon"],
+            "institution_id": ["CCCma"],
+            "score": 1.1461977,
+            "variable_id": ["wetlandFrac"],
+            "activity_id": ["CMIP"],
+            "id": "CMIP6.CMIP.CCCma.CanESM5.historical.r1i1p1f1.Emon.wetlandFrac.gn.v20190429.wetlandFrac_Emon_CanESM5_historical_r1i1p1f1_gn_185001-201412.nc|crd-esgf-drc.ec.gc.ca",
+            "_timestamp": "2019-06-27T00:47:17.378Z",
+            "data_node": "crd-esgf-drc.ec.gc.ca",
+            "variable_long_name": ["Wetland Percentage Cover"],
+            "dataset_id": "CMIP6.CMIP.CCCma.CanESM5.historical.r1i1p1f1.Emon.wetlandFrac.gn.v20190429|crd-esgf-drc.ec.gc.ca",
+            "source_type": ["AOGCM"],
+            "cf_standard_name": ["area_fraction"],
+            "version": 20190429,
+            "further_info_url": [
+                "https://furtherinfo.es-doc.org/CMIP6.CCCma.CanESM5.historical.none.r1i1p1f1"
+            ],
+            "instance_id": "CMIP6.CMIP.CCCma.CanESM5.historical.r1i1p1f1.Emon.wetlandFrac.gn.v20190429.wetlandFrac_Emon_CanESM5_historical_r1i1p1f1_gn_185001-201412.nc",
+            "size": 9885815,
+            "grid_label": ["gn"],
+            "nominal_resolution": ["500 km"],
+            "citation_url": [
+                "http://cera-www.dkrz.de/WDCC/meta/CMIP6/CMIP6.CMIP.CCCma.CanESM5.historical.r1i1p1f1.Emon.wetlandFrac.gn.v20190429.json"
+            ],
+            "directory_format_template_": [
+                "%(root)s/%(mip_era)s/%(activity_drs)s/%(institution_id)s/%(source_id)s/%(experiment_id)s/%(member_id)s/%(table_id)s/%(variable_id)s/%(grid_label)s/%(version)s"
+            ],
+            "index_node": "us-index",
+            "title": "wetlandFrac_Emon_CanESM5_historical_r1i1p1f1_gn_185001-201412.nc",
+            "retracted": False,
+            "checksum_type": ["SHA256"],
+            "variant_label": ["r1i1p1f1"],
+            "checksum": [
+                "f7cdc50186900f029bd2ed5f0a5aa18852435bd464636f9957c3f071291567ab"
+            ],
+            "tracking_id": ["hdl:21.14100/19b257d3-3eed-4726-ba7f-a9022017dab5"],
+            "latest": True,
+            "timestamp": "2019-05-31T01:36:37Z",
+            "member_id": ["r1i1p1f1"],
+            "sub_experiment_id": ["none"],
+            "mip_era": ["CMIP6"],
+            "product": ["model-output"],
+            "model_cohort": ["Registered"],
+            "experiment_id": ["historical"],
+            "url": [
+                "http://crd-esgf-drc.ec.gc.ca/thredds/fileServer/esgC_dataroot/AR6/CMIP6/CMIP/CCCma/CanESM5/historical/r1i1p1f1/Emon/wetlandFrac/gn/v20190429/wetlandFrac_Emon_CanESM5_historical_r1i1p1f1_gn_185001-201412.nc|application/netcdf|HTTPServer",
+                "gsiftp://crd-esgf-drc.ec.gc.ca:2811//esgC_dataroot/AR6/CMIP6/CMIP/CCCma/CanESM5/historical/r1i1p1f1/Emon/wetlandFrac/gn/v20190429/wetlandFrac_Emon_CanESM5_historical_r1i1p1f1_gn_185001-201412.nc|application/gridftp|GridFTP",
+                "http://crd-esgf-drc.ec.gc.ca/thredds/dodsC/esgC_dataroot/AR6/CMIP6/CMIP/CCCma/CanESM5/historical/r1i1p1f1/Emon/wetlandFrac/gn/v20190429/wetlandFrac_Emon_CanESM5_historical_r1i1p1f1_gn_185001-201412.nc.html|application/opendap-html|OPENDAP",
+            ],
+            "activity_drs": ["CMIP"],
+            "dataset_id_template_": [
+                "%(mip_era)s.%(activity_drs)s.%(institution_id)s.%(source_id)s.%(experiment_id)s.%(member_id)s.%(table_id)s.%(variable_id)s.%(grid_label)s"
+            ],
+            "_version_": 1637452545920073728,
+            "grid": [
+                "T63L49 native atmosphere, T63 Linear Gaussian Grid; 128 x 64 longitude/latitude; 49 levels; top level 1 hPa"
+            ],
+            "variable": ["wetlandFrac"],
+            "realm": ["land"],
+            "source_id": ["CanESM5"],
+        },
+        "CMIP3": {
+            "master_id": "cmip3.BCCR.bccr_bcm2_0.historical.fx.land.run1.sftlf.sftlf_A1.nc",
+            "replica": True,
+            "time_frequency": ["fx"],
+            "variable_units": ["%"],
+            "description": [
+                "BCCR model output prepared for IPCC Fourth Assessment Report climate of the 20th Century experiment (20C3M)"
+            ],
+            "project": ["CMIP3"],
+            "ensemble": ["run1"],
+            "index_node": "us-index",
+            "title": "sftlf_A1.nc",
+            "type": "File",
+            "experiment_family": ["All", "Historical"],
+            "retracted": False,
+            "score": 6.7849283,
+            "checksum_type": ["SHA256"],
+            "experiment": ["historical"],
+            "checksum": [
+                "57a18099d2336a96c9b73afb691da224579f96f0cd329622c0ad5fcb2ed5df69"
+            ],
+            "model": ["bccr_bcm2_0"],
+            "id": "cmip3.BCCR.bccr_bcm2_0.historical.fx.land.run1.sftlf.v1.sftlf_A1.nc|eagle.alcf.anl.gov",
+            "_timestamp": "2024-02-20T14:13:40.062Z",
+            "latest": True,
+            "timestamp": "2011-09-04T09:33:20Z",
+            "data_node": "eagle.alcf.anl.gov",
+            "variable_long_name": ["Land Area Fraction"],
+            "dataset_id": "cmip3.BCCR.bccr_bcm2_0.historical.fx.land.run1.sftlf.v1|eagle.alcf.anl.gov",
+            "format": ["netCDF, CF-1.0"],
+            "cf_standard_name": ["land_area_fraction"],
+            "version": 1,
+            "url": [
+                "https://g-52ba3.fd635.8443.data.globus.org/cmip3_data/data2/20c3m/land/fixed/sftlf/bccr_bcm2_0/run1/sftlf_A1.nc|application/netcdf|HTTPServer",
+                "globus:8896f38e-68d1-4708-bce4-b1b3a3405809/cmip3_data/data2/20c3m/land/fixed/sftlf/bccr_bcm2_0/run1/sftlf_A1.nc|Globus|Globus",
+            ],
+            "dataset_id_template_": [
+                "%(project)s.%(institute)s.%(model)s.%(experiment)s.%(time_frequency)s.%(realm)s.%(ensemble)s.%(variable)s"
+            ],
+            "instance_id": "cmip3.BCCR.bccr_bcm2_0.historical.fx.land.run1.sftlf.v1.sftlf_A1.nc",
+            "size": 41200,
+            "_version_": 1791427524754931712,
+            "variable": ["sftlf"],
+            "institute": ["BCCR"],
+            "realm": ["land"],
+        },
+        "input4MIPs": {
+            "master_id": "input4MIPs.CMIP7.C4MIP.ImperialCollege.ImperialCollege-3-0.atmos.yr.delta13co2.gm.delta13co2_input4MIPs_atmosphericState_C4MIP_ImperialCollege-3-0_gm_1700-2023.nc",
+            "Conventions": ["CF-1.6"],
+            "replica": True,
+            "deprecated": False,
+            "variable_units": ["1"],
+            "project": ["input4MIPs"],
+            "pid": ["hdl:21.14100/d7f1a6f8-8f95-34a3-86f3-70d57c9192be"],
+            "source": ["Imperial College 3.0: delta13co2"],
+            "type": "File",
+            "institution_id": ["ImperialCollege"],
+            "frequency": ["yr"],
+            "variable_id": ["delta13co2"],
+            "contact": ["h.graven@imperial.ac.uk"],
+            "activity_id": ["input4MIPs"],
+            "id": "input4MIPs.CMIP7.C4MIP.ImperialCollege.ImperialCollege-3-0.atmos.yr.delta13co2.gm.v20250502.delta13co2_input4MIPs_atmosphericState_C4MIP_ImperialCollege-3-0_gm_1700-2023.nc|esgf-node.ornl.gov",
+            "dataset_category": ["atmosphericState"],
+            "_timestamp": "2025-07-15T18:19:03.847Z",
+            "target_mip_list": ["CMIP"],
+            "target_mip": ["C4MIP"],
+            "data_node": "esgf-node.ornl.gov",
+            "variable_long_name": ["delta13C in atmospheric CO2"],
+            "dataset_id": "input4MIPs.CMIP7.C4MIP.ImperialCollege.ImperialCollege-3-0.atmos.yr.delta13co2.gm.v20250502|esgf-node.ornl.gov",
+            "dataset_status": ["latest"],
+            "creation_date": "2025-05-02T09:09:02Z",
+            "version": 20250502,
+            "further_info_url": ["https://profiles.imperial.ac.uk/h.graven"],
+            "instance_id": "input4MIPs.CMIP7.C4MIP.ImperialCollege.ImperialCollege-3-0.atmos.yr.delta13co2.gm.v20250502.delta13co2_input4MIPs_atmosphericState_C4MIP_ImperialCollege-3-0_gm_1700-2023.nc",
+            "size": 31313,
+            "grid_label": ["gm"],
+            "nominal_resolution": ["10000 km"],
+            "publish_path": [
+                "user_pub_work/input4MIPs/CMIP7/C4MIP/ImperialCollege/ImperialCollege-3-0/atmos/yr/delta13co2/gm/v20250502/delta13co2_input4MIPs_atmosphericState_C4MIP_ImperialCollege-3-0_gm_1700-2023.nc"
+            ],
+            "short_description": [
+                "Imperial College 3.0: CMIP7 historical delta13C in atmospheric CO2, global-mean annual-mean"
+            ],
+            "index_node": "us-index",
+            "directory_format_template_": [
+                "%(root)s/%(activity_id)s/%(mip_era)s/%(target_mip)s/%(institution_id)s/%(source_id)s/%(realm)s/%(frequency)s/%(variable_id)s/%(grid_label)s/%(version)s"
+            ],
+            "title": "delta13co2_input4MIPs_atmosphericState_C4MIP_ImperialCollege-3-0_gm_1700-2023.nc",
+            "source_version": ["3.0"],
+            "retracted": False,
+            "checksum_type": ["SHA256"],
+            "checksum": [
+                "29f9d01da0f82b5e10b95e750ac2d1afb95d213b603b9306fabf6d5b98ff45be"
+            ],
+            "tracking_id": ["hdl:21.14100/9949bb24-b740-47e8-a301-b1069b1c5e21"],
+            "latest": True,
+            "timestamp": "2025-05-05T21:22:51Z",
+            "mip_era": ["CMIP7"],
+            "product": [
+                "Imperial College 3.0: CMIP7 historical delta13C in atmospheric CO2, global-mean annual-mean"
+            ],
+            "url": [
+                "https://esgf-node.ornl.gov/thredds/fileServer/user_pub_work/input4MIPs/CMIP7/C4MIP/ImperialCollege/ImperialCollege-3-0/atmos/yr/delta13co2/gm/v20250502/delta13co2_input4MIPs_atmosphericState_C4MIP_ImperialCollege-3-0_gm_1700-2023.nc|application/netcdf|HTTPServer",
+                "https://esgf-node.ornl.gov/thredds/dodsC/user_pub_work/input4MIPs/CMIP7/C4MIP/ImperialCollege/ImperialCollege-3-0/atmos/yr/delta13co2/gm/v20250502/delta13co2_input4MIPs_atmosphericState_C4MIP_ImperialCollege-3-0_gm_1700-2023.nc|application/opendap-html|OPENDAP",
+                "globus:dea29ae8-bb92-4c63-bdbc-260522c92fe8/user_pub_work/input4MIPs/CMIP7/C4MIP/ImperialCollege/ImperialCollege-3-0/atmos/yr/delta13co2/gm/v20250502/delta13co2_input4MIPs_atmosphericState_C4MIP_ImperialCollege-3-0_gm_1700-2023.nc|Globus|Globus",
+            ],
+            "dataset_id_template_": [
+                "%(activity_id)s.%(mip_era)s.%(target_mip)s.%(institution_id)s.%(source_id)s.%(realm)s.%(frequency)s.%(variable_id)s.%(grid_label)s"
+            ],
+            "variable": ["delta13co2"],
+            "realm": ["atmos"],
+            "source_id": ["ImperialCollege-3-0"],
+        },
+        "obs4MIPs": {
+            "master_id": "obs4MIPs.NASA-LaRC.CERES-EBAF-4-2.mon.rsdt.gn.rsdt_mon_CERES-EBAF-4-2_RSS_gn_200003-202310.nc",
+            "replica": True,
+            "data_specs_version": ["ODS-2.5"],
+            "variable_units": ["W m-2"],
+            "project": ["obs4MIPs"],
+            "index_node": "us-index",
+            "directory_format_template_": [
+                "%(root)s/%(activity_id)s/%(institution_id)s/%(source_id)s/%(frequency)s/%(variable_id)s/%(grid_label)s/%(version)s"
+            ],
+            "source": [
+                "CERES-EBAF-4-2 4.2 (2022): CERES EBAF (Energy Balanced and Filled) TOA Fluxes. Monthly Averages"
+            ],
+            "title": "rsdt_mon_CERES-EBAF-4-2_RSS_gn_200003-202310.nc",
+            "type": "File",
+            "institution_id": ["NASA-LaRC"],
+            "frequency": ["mon"],
+            "source_version_number": ["4.2"],
+            "institution": ["NASA-LaRC (Langley Research Center) Hampton, Va"],
+            "retracted": False,
+            "score": 11.922695,
+            "checksum_type": ["SHA256"],
+            "variable_id": ["rsdt"],
+            "contact": ["RSS (support@remss.com)"],
+            "activity_id": ["obs4MIPs"],
+            "checksum": [
+                "80c23e9873ce4578b276a4ccdea6d69bab0817dffa0d79ed165a25db8dbf0b09"
+            ],
+            "id": "obs4MIPs.NASA-LaRC.CERES-EBAF-4-2.mon.rsdt.gn.v20240513.rsdt_mon_CERES-EBAF-4-2_RSS_gn_200003-202310.nc|esgf-node.ornl.gov",
+            "_timestamp": "2025-07-15T16:18:11.948Z",
+            "tracking_id": ["hdl:21.14102/5ce2141b-98e2-4d2b-928a-0f6391b6a56f"],
+            "latest": True,
+            "timestamp": "2024-09-18T14:53:27Z",
+            "product": ["observations"],
+            "data_node": "esgf-node.ornl.gov",
+            "variable_long_name": ["TOA Incident Shortwave Radiation"],
+            "dataset_id": "obs4MIPs.NASA-LaRC.CERES-EBAF-4-2.mon.rsdt.gn.v20240513|esgf-node.ornl.gov",
+            "source_type": ["satellite_blended"],
+            "creation_date": "2024-05-13T19:19:22Z",
+            "cf_standard_name": ["toa_incoming_shortwave_flux"],
+            "version": 20240513,
+            "url": [
+                "https://esgf-node.ornl.gov/thredds/fileServer/user_pub_work/obs4MIPs/NASA-LaRC/CERES-EBAF-4-2/mon/rsdt/gn/v20240513/rsdt_mon_CERES-EBAF-4-2_RSS_gn_200003-202310.nc|application/netcdf|HTTPServer",
+                "https://esgf-node.ornl.gov/thredds/dodsC/user_pub_work/obs4MIPs/NASA-LaRC/CERES-EBAF-4-2/mon/rsdt/gn/v20240513/rsdt_mon_CERES-EBAF-4-2_RSS_gn_200003-202310.nc|application/opendap-html|OPENDAP",
+                "globus:dea29ae8-bb92-4c63-bdbc-260522c92fe8/user_pub_work/obs4MIPs/NASA-LaRC/CERES-EBAF-4-2/mon/rsdt/gn/v20240513/rsdt_mon_CERES-EBAF-4-2_RSS_gn_200003-202310.nc|Globus|Globus",
+            ],
+            "dataset_id_template_": [
+                "%(activity_id)s.%(institution_id)s.%(source_id)s.%(frequency)s.%(variable_id)s.%(grid_label)s"
+            ],
+            "further_info_url": ["."],
+            "instance_id": "obs4MIPs.NASA-LaRC.CERES-EBAF-4-2.mon.rsdt.gn.v20240513.rsdt_mon_CERES-EBAF-4-2_RSS_gn_200003-202310.nc",
+            "size": 5520301,
+            "_version_": 1810643896752930816,
+            "grid_label": ["gn"],
+            "variable": ["rsdt"],
+            "realm": ["atmos"],
+            "source_id": ["CERES-EBAF-4-2"],
+            "nominal_resolution": ["100 km"],
+            "region": ["global"],
+            "publish_path": [
+                "user_pub_work/obs4MIPs/NASA-LaRC/CERES-EBAF-4-2/mon/rsdt/gn/v20240513/rsdt_mon_CERES-EBAF-4-2_RSS_gn_200003-202310.nc"
+            ],
+        },
     }
 
 
