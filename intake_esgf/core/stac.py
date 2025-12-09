@@ -1,20 +1,4 @@
-"""An ESGF STAC index class.
-
-Issues
-------
-- I cannot include `latest` in a filter. According to the STAC extension README,
-  it should be there, but I do not see it in the extension schema (but neither
-  is `retracted`, which I can query).
-- How am I supposed to distinguish between assets in the index? Do I assume if
-  it ends in .json it is Kerchunk? `reference_file` is not very descriptive.
-- There is no checksum or size information stored in the assets. CEDA has
-  assumed people will use kerchunk and not need these things.
-- There is no `member_id` in CEDA's index. I am guesing that CEDA saw that
-  `variant_label` is often the same (but not always) and removed one if favor of
-  the other. The problem is that the former is part of the IDs of the records
-  and needed so I have to hack it.
-
-"""
+"""An ESGF STAC index class."""
 
 import logging
 import re
@@ -62,6 +46,7 @@ CMIP6_PREPENDS = [
     "sub_experiment_id",
     "table_id",
     "variable_cf_standard_name",
+    "variable",
     "variable_id",
     "variable_long_name",
     "variable_units",
@@ -180,6 +165,7 @@ class STACESGFIndex:
         # add some default facets if not given
         search = metadata_fixes(**search)
         search = add_defaults(**search)
+
         items = search_cmip6(self.session, f"https://{self.url}", limit, **search)
 
         # what facets do we expect?
@@ -193,19 +179,21 @@ class STACESGFIndex:
 
         # populate the dataframe with hacks
         dfs = []
-        for page in items.pages():
-            for item in page.items:
+        for page in items.pages_as_dicts():
+            for item in page["features"]:
+                print(" --------- ")
+                properties = item["properties"]
+                for key, val in properties.items():
+                    print(f"{key:>30} {val}")
                 row = {}
                 for col in facets:
                     lookup = f"cmip6:{col}" if col in CMIP6_PREPENDS else col
-                    row[col] = (
-                        item.properties[lookup] if lookup in item.properties else None
-                    )
+                    row[col] = properties[lookup] if lookup in properties else None
                 # manual fixes, maybe not problems for STAC but will show up for compatibility with other clients
-                row["activity_drs"] = item.properties["cmip6:activity_id"]
+                row["activity_drs"] = properties["cmip6:activity_id"]
                 row["mip_era"] = row["project"]
                 row["data_node"] = self.url
-                rowid = f"{item.id}|{row['data_node']}"
+                rowid = f"{item['id']}|{row['data_node']}"
                 row["id"] = rowid
                 dfs += [_delist_row(row)]
                 self.cache[rowid] = item
@@ -229,13 +217,13 @@ class STACESGFIndex:
             if dataset_id not in self.cache:
                 raise ValueError(f"{dataset_id=} not in the STAC index cache")
             item = self.cache[dataset_id]
-            for _, asset in item.assets.items():
+            for _, asset in item["assets"].items():
                 # Only files for now
-                if not asset.href.endswith(".nc"):
+                if not asset["href"].endswith(".nc"):
                     continue
 
-                url = str(asset.href)
-                path = get_content_path(asset.href, "CMIP6")
+                url = str(asset["href"])
+                path = get_content_path(asset["href"], "CMIP6")
 
                 # We could need to append to an existing location
                 if str(path) in infos:
@@ -248,12 +236,17 @@ class STACESGFIndex:
                 if "HTTPServer" not in info:
                     info["HTTPServer"] = []
                 info["HTTPServer"] += [url]
-                info["path"] = path
 
-                # Not currently part of the STAC item
-                info["checksum_type"] = None
-                info["checksum"] = None
-                info["size"] = 0
+                # File information
+                info["path"] = path
+                checksum = asset["file:checksum"]
+                checksum_type, checksum = (
+                    checksum.split(":") if ":" in checksum else None,
+                    checksum,
+                )
+                info["checksum_type"] = checksum_type
+                info["checksum"] = checksum
+                info["size"] = asset["file:size"]
 
                 # Parse out the file time begin/end from the filename
                 tstart, tend = base.get_time_extent(str(info["path"]))
