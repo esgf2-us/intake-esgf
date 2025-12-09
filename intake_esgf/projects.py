@@ -388,6 +388,45 @@ class e3sm(CMIP6):
     pass
 
 
+class WrPMIP(ESGFProject):
+    def __init__(self):
+        self.facets = [
+            "activity_id",
+            "institution_id",
+            "source_id",
+            "experiment_id",
+            "frequency",
+            "variable_id",
+            "grid_label",
+            "version",
+            "data_node",
+        ]
+
+    def master_id_facets(self) -> list[str]:
+        return self.facets[:-2]
+
+    def id_facets(self) -> list[str]:
+        return self.facets
+
+    def relaxation_facets(self) -> list[str]:
+        return ["experiment_id", "activity_id", "institution_id"]
+
+    def variable_description_facets(self) -> list[str]:
+        return ["frequency", "variable_id"]
+
+    def variable_facet(self) -> str:
+        return "variable_id"
+
+    def model_facet(self) -> str:
+        return "source_id"
+
+    def variant_facet(self) -> str:
+        raise ProjectHasNoFacet("WrPMIP", "variant")
+
+    def grid_facet(self) -> str | None:
+        return "grid_label"
+
+
 projects = {
     "cmip6": CMIP6(),
     "cmip5": CMIP5(),
@@ -397,6 +436,7 @@ projects = {
     "input4mips": input4MIPs(),
     "cmip6plus": CMIP6Plus(),
     "e3sm": e3sm(),
+    "wrpmip": WrPMIP(),
 }
 
 
