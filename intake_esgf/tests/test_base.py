@@ -268,12 +268,26 @@ def test_expand_cmip5_record(cmip5_record):
 
 
 def test_get_content_path(project_contents):
-    # TODO: Expand coverage to other projects
-    # Normal behavior using template
-    path = base.get_content_path(project_contents["CMIP6"])
-    assert path == Path(
-        "CMIP6/C4MIP/MPI-M/MPI-ESM1-2-LR/esm-ssp585/r4i1p1f1/Emon/nppTree/gn/v20190815/nppTree_Emon_MPI-ESM1-2-LR_esm-ssp585_r4i1p1f1_gn_201501-203412.nc"
-    )
+    expected = {
+        "CMIP6": Path(
+            "CMIP6/CMIP/CCCma/CanESM5/historical/r1i1p1f1/fx/sftlf/gn/v20190429/sftlf_fx_CanESM5_historical_r1i1p1f1_gn.nc"
+        ),
+        "CMIP5": Path(
+            "CMIP6/CMIP/CCCma/CanESM5/historical/r1i1p1f1/Emon/wetlandFrac/gn/v20190429/wetlandFrac_Emon_CanESM5_historical_r1i1p1f1_gn_185001-201412.nc"
+        ),
+        "CMIP3": Path(
+            "cmip3/BCCR/bccr_bcm2_0/historical/fx/land/run1/sftlf/v1/sftlf_A1.nc"
+        ),
+        "obs4MIPs": Path(
+            "obs4MIPs/NASA-LaRC/CERES-EBAF-4-2/mon/rsdt/gn/v20240513/rsdt_mon_CERES-EBAF-4-2_RSS_gn_200003-202310.nc"
+        ),
+        "input4MIPs": Path(
+            "input4MIPs/CMIP7/C4MIP/ImperialCollege/ImperialCollege-3-0/atmos/yr/delta13co2/gm/v20250502/delta13co2_input4MIPs_atmosphericState_C4MIP_ImperialCollege-3-0_gm_1700-2023.nc"
+        ),
+    }
+    for project in project_contents:
+        path = base.get_content_path(project_contents[project])
+        assert path == expected[project]
 
 
 def test_get_time_extent():
