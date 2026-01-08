@@ -13,7 +13,6 @@ import pandas as pd
 import requests
 import requests_cache
 import xarray as xr
-from esgf_magic import query_cv_universe, query_df_to_dict
 
 import intake_esgf
 import intake_esgf.base as base
@@ -375,12 +374,6 @@ class ESGFCatalog:
         if isinstance(search["project"], list):
             if len(search["project"]) > 1:
                 raise ValueError("For now, projects may only be searched one at a time")
-
-        # if a query string is given, supplement the search by a CV query
-        if query:
-            df_add = query_cv_universe(query.split(), project=search["project"])
-            to_add = query_df_to_dict(df_add)
-            search.update(to_add[search["project"]])
 
         # log what is being searched for
         search_str = ", ".join(
