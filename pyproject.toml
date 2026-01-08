@@ -18,7 +18,6 @@ license = { file = "LICENSE" }
 requires-python = ">=3.12"
 dependencies = [
     "dask>=2024.12.0",
-    "esgf-magic",
     "globus-sdk<4.0.0",
     "netcdf4>=1.7.2",
     "pandas>=2.2.3",
@@ -96,6 +95,3 @@ select = [
 
 [tool.ruff.lint.isort]
 known-first-party = ["intake_esgf"]
-
-[tool.uv.sources]
-esgf-magic = { git = "https://github.com/nocollier/esgf-magic" }
