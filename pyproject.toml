@@ -49,6 +49,7 @@ docs = [
     "myst-nb>=1.1.2",
     "nc-time-axis>=1.4.1",
     "numpydoc>=1.8.0",
+    "sphinx<9.0.0",
     "sphinx-autosummary-accessors>=2023.4.0",
     "sphinx-copybutton>=0.5.2",
 ]
