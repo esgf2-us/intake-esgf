@@ -271,7 +271,11 @@ def combine_results(
     # now convert groups to list
     for _, grp in df.groupby(project.master_id_facets(), dropna=False):
         df = df.drop(grp.iloc[1:].index)
-        df.at[grp.index[0], "id"] = grp.id.to_list()
+        # pandas does not want me to be setting a single row/column to a list in
+        # the following line. The type checking of mypy does not like it but it
+        # does still work and I am not of a mind to change my implementation at
+        # this time.
+        df.at[grp.index[0], "id"] = grp.id.to_list()  # type: ignore
     df = df.drop(columns="data_node")
     combine_time = time.time() - combine_time
     logger.info(f"{combine_time=:.2f}")
