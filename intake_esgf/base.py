@@ -268,15 +268,15 @@ def combine_results(
     variable_facet = project.variable_facet()
     combine_time = time.time()
     df = df.drop_duplicates(subset=[variable_facet, "id"]).reset_index(drop=True)
-    # now convert groups to list
+    # now convert groups to list, if we initialize a column with empty lists...
+    df["locations"] = [[] for _ in range(len(df))]
     for _, grp in df.groupby(project.master_id_facets(), dropna=False):
         df = df.drop(grp.iloc[1:].index)
-        # pandas does not want me to be setting a single row/column to a list in
-        # the following line. The type checking of mypy does not like it but it
-        # does still work and I am not of a mind to change my implementation at
-        # this time.
-        df.at[grp.index[0], "id"] = grp.id.to_list()  # type: ignore
-    df = df.drop(columns="data_node")
+        # ... then here we can overwrite lists of varying lengths...
+        df.at[grp.index[0], "locations"] = grp.id.to_list()  # type: ignore
+    # ... and finally overwrite the id column and drop
+    df["id"] = df["locations"]
+    df = df.drop(columns=["data_node", "locations"])
     combine_time = time.time() - combine_time
     logger.info(f"{combine_time=:.2f}")
     return df
