@@ -105,7 +105,7 @@ def test_download_summary(catalog):
                 data_vars="minimal",
                 coords="minimal",
                 compat="override",
-                chunks=dict(time=-1),
+                chunks="auto",
             ),
             (120, 60),
         ),
