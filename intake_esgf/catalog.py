@@ -777,24 +777,12 @@ class ESGFCatalog:
         ds: dict[str, xr.Dataset] = {}
         for key, files in paths.items():
             [self.logger.info(f"accessed {f}") for f in files]
-            if len(files) == 1:
-                try:
-                    ds[key] = xr.open_dataset(files[0])
-                except Exception as ex:
-                    warnings.warn(
-                        f"xarray threw an exception opening this file: {files[0]}"
-                    )
-                    failed_keys.append(key)
-                    exceptions.append(ex)
-            elif len(files) > 1:
-                try:
-                    ds[key] = xr.open_mfdataset(sorted(files))
-                except Exception as ex:
-                    warnings.warn(
-                        f"xarray threw an exception opening these files: {files}"
-                    )
-                    failed_keys.append(key)
-                    exceptions.append(ex)
+            try:
+                ds[key] = xr.open_mfdataset(sorted(files))
+            except Exception as ex:
+                warnings.warn(f"xarray threw an exception opening these files: {files}")
+                failed_keys.append(key)
+                exceptions.append(ex)
         if intake_esgf.conf["break_on_error"] and exceptions:
             for exc in exceptions:
                 print(exc)
