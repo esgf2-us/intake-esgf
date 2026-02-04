@@ -734,6 +734,7 @@ class ESGFCatalog:
         ignore_facets: None | str | list[str] = None,
         separator: str = ".",
         quiet: bool = False,
+        open_kwargs: dict[str, Any] | None = None,
     ) -> dict[str, xr.Dataset]:
         """
         Return the current search as a dictionary of datasets.
@@ -760,7 +761,14 @@ class ESGFCatalog:
             When generating the keys, the string to use as a seperator of facets.
         quiet: bool
             Enable to quiet the progress bars.
+        open_kwargs: dict
+            A dictionary of keyword arguments to pass through to xarray.open_mfdataset().
         """
+        # sanitize inputs
+        if open_kwargs is None:
+            open_kwargs = {}
+
+        # get the paths, passing along options
         paths = self.to_path_dict(
             prefer_streaming=prefer_streaming,
             globus_endpoint=globus_endpoint,
@@ -778,7 +786,7 @@ class ESGFCatalog:
         for key, files in paths.items():
             [self.logger.info(f"accessed {f}") for f in files]
             try:
-                ds[key] = xr.open_mfdataset(sorted(files))
+                ds[key] = xr.open_mfdataset(sorted(files), **open_kwargs)
             except Exception as ex:
                 warnings.warn(f"xarray threw an exception opening these files: {files}")
                 failed_keys.append(key)

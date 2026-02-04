@@ -94,3 +94,34 @@ def test_download_summary(catalog):
 
 # def test_load_into_dsd():
 #    pass
+
+
+@pytest.mark.parametrize(
+    "kwargs,result",
+    [
+        (dict(), (1,) * 180),
+        (
+            dict(
+                data_vars="minimal",
+                coords="minimal",
+                compat="override",
+                chunks=dict(time=-1),
+            ),
+            (120, 60),
+        ),
+    ],
+)
+def test_open_kwargs(kwargs, result):
+    cat = intake_esgf.ESGFCatalog()
+    cat.search(
+        experiment_id="historical",
+        source_id="NorESM2-LM",
+        variable_id="tas",
+        frequency="mon",
+        file_start="2000-01",
+    ).remove_ensembles()
+    dsd = cat.to_dataset_dict(
+        add_measures=False,
+        open_kwargs=kwargs,
+    )
+    assert dsd["tas"]["tas"].chunksizes["time"] == result
