@@ -764,9 +764,9 @@ class ESGFCatalog:
         open_kwargs: dict
             A dictionary of keyword arguments to pass through to xarray.open_mfdataset().
         """
-        # sanitize inputs
+        # if no kwargs are passed, use the default dictionary
         if open_kwargs is None:
-            open_kwargs = {}
+            open_kwargs = intake_esgf.conf["default_open_kwargs"]
 
         # get the paths, passing along options
         paths = self.to_path_dict(
