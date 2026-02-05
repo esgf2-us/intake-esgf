@@ -3,6 +3,7 @@
 import contextlib
 import copy
 from pathlib import Path
+from typing import Any
 
 import yaml
 
@@ -49,6 +50,12 @@ defaults = {
     "confirm_download": False,
     "slow_download_threshold": 0.5,  # [Mb s-1]
     "print_log_on_error": False,
+    "default_open_kwargs": dict(
+        data_vars="minimal",
+        coords="minimal",
+        compat="override",
+        chunks="auto",
+    ),
 }
 
 
@@ -102,6 +109,7 @@ class Config(dict):
         confirm_download: bool | None = None,
         slow_download_threshold: float | None = None,
         print_log_on_error: bool | None = None,
+        default_open_kwargs: dict[str, Any] | None = None,
     ):
         """Change intake-esgf configuration options.
 
@@ -149,6 +157,9 @@ class Config(dict):
             Enable to print the session log when a DatasetLoadError is
             encountered. This is meant to be used in debugging CI to understand
             what is happening as tests fail.
+        default_open_kwargs: dict
+            The default key word arguments that are passed to
+            `xarray.open_mfdataset`.
 
         Examples
         --------
@@ -214,6 +225,8 @@ class Config(dict):
             self["slow_download_threshold"] = float(slow_download_threshold)
         if print_log_on_error is not None:
             self["print_log_on_error"] = bool(print_log_on_error)
+        if default_open_kwargs is not None:
+            self["default_open_kwargs"] = default_open_kwargs
         return self._unset(temp)
 
     def __getitem__(self, item):

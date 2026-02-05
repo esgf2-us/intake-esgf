@@ -95,23 +95,24 @@ def test_download_summary(catalog):
 # def test_load_into_dsd():
 #    pass
 
+KWARGS = dict(
+    data_vars="minimal",
+    coords="minimal",
+    compat="override",
+    chunks="auto",
+)
+
 
 @pytest.mark.parametrize(
-    "kwargs,result",
+    "conf,kwargs,result",
     [
-        (dict(), (1,) * 180),
-        (
-            dict(
-                data_vars="minimal",
-                coords="minimal",
-                compat="override",
-                chunks="auto",
-            ),
-            (120, 60),
-        ),
+        (dict(), None, (1,) * 180),
+        (dict(), KWARGS, (120, 60)),
+        (KWARGS, None, (120, 60)),
     ],
 )
-def test_open_kwargs(kwargs, result):
+def test_open_kwargs(conf, kwargs, result):
+    intake_esgf.conf.set(default_open_kwargs=conf)
     cat = intake_esgf.ESGFCatalog()
     cat.search(
         experiment_id="historical",
