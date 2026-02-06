@@ -18,59 +18,38 @@ from intake_esgf.projects import projects
 # the stac extension additions that need `properties.cmip6:` prepended
 CMIP6_PREPENDS = [
     "activity_id",
+    "cf_standard_name",
     "citation_url",
-    "conventions",
     "data_specs_version",
-    "experiment",
     "experiment_id",
-    "forcing_index",
+    "experiment_title",
     "frequency",
     "further_info_url",
     "grid",
     "grid_label",
-    "initialization_index",
-    "institution",
     "institution_id",
-    "license",
     "member_id",
     "nominal_resolution",
-    "physics_index",
-    "pid",
     "product",
-    "realization_index",
     "realm",
-    "source",
     "source_id",
     "source_type",
-    "sub_experiment",
-    "sub_experiment_id",
     "table_id",
-    "variable_cf_standard_name",
     "variable",
     "variable_id",
     "variable_long_name",
     "variable_units",
     "variant_label",
-    "version",
 ]
 
 
-def metadata_fixes(**search_facets: Any) -> dict[str, Any]:
+def _search_facet_fixes(**search_facets: Any) -> dict[str, Any]:
     """
-    Remove
+    Make changes to the search facets based on STAC differences.
     """
     # There is no such thing as Dataset/File 'types'
     if "type" in search_facets:
         search_facets.pop("type")
-    return search_facets
-
-
-def add_defaults(**search_facets: Any) -> dict[str, Any]:
-    """
-    Safely add some default search behavior.
-    """
-    # if "retracted" not in search_facets:
-    #    search_facets["retracted"] = False
     return search_facets
 
 
@@ -125,7 +104,7 @@ def search_cmip6(
     return results
 
 
-def get_content_path(url: str, project: str) -> Path:
+def _get_content_path(url: str, project: str) -> Path:
     """
     Return the local file path parsed from a https url.
     """
@@ -135,12 +114,45 @@ def get_content_path(url: str, project: str) -> Path:
     return Path(match.group(1))
 
 
-def _delist_row(row: dict[str, Any]) -> dict[str, str | int]:
-    row = {
-        key: val[0] if (isinstance(val, list) and len(val) == 1) else val
-        for key, val in row.items()
-    }
-    return row
+def _parse_file_validation(
+    info: dict[str, Any], asset: dict[str, Any]
+) -> dict[str, Any]:
+    """
+    Assumes a SHA256 hash was generated if not given as that what was done
+    before.
+    """
+    if "file:checksum" not in asset:
+        return info
+    checksum = asset["file:checksum"]
+    checksum_type, checksum = (
+        checksum.split(":") if ":" in checksum else "SHA256",
+        checksum,
+    )
+    info["checksum_type"] = checksum_type
+    info["checksum"] = checksum
+    return info
+
+
+def _parse_file_size(info: dict[str, Any], asset: dict[str, Any]) -> dict[str, Any]:
+    if "file:size" not in asset:
+        return info
+    info["size"] = asset["file:size"]
+    return info
+
+
+def _parse_file_daterange(info: dict[str, Any]) -> dict[str, Any]:
+    """
+    Parse out the file time begin/end from the filename
+    """
+    if "path" not in info:
+        info["file_start"] = info["file_end"] = None
+        return info
+    tstart, tend = base.get_time_extent(str(info["path"]))
+    if tstart is not None:
+        info["file_start"] = tstart
+    if tend is not None:
+        info["file_end"] = tend
+    return info
 
 
 class STACESGFIndex:
@@ -154,7 +166,7 @@ class STACESGFIndex:
         return f"STACESGFIndex('{self.url}')"
 
     def search(self, **search) -> pd.DataFrame:
-        total_time = time.time()
+        response_time = time.time()
 
         # only for CMIP6 for now
         limit = search.pop("limit") if "limit" in search else 100
@@ -163,9 +175,7 @@ class STACESGFIndex:
             raise ValueError("STAC index only for CMIP6")
 
         # add some default facets if not given
-        search = metadata_fixes(**search)
-        search = add_defaults(**search)
-
+        search = _search_facet_fixes(**search)
         items = search_cmip6(self.session, f"https://{self.url}", limit, **search)
 
         # what facets do we expect?
@@ -181,31 +191,36 @@ class STACESGFIndex:
         dfs = []
         for page in items.pages_as_dicts():
             for item in page["features"]:
-                print(" --------- ")
                 properties = item["properties"]
-                for key, val in properties.items():
-                    print(f"{key:>30} {val}")
                 row = {}
                 for col in facets:
                     lookup = f"cmip6:{col}" if col in CMIP6_PREPENDS else col
                     row[col] = properties[lookup] if lookup in properties else None
                 # manual fixes, maybe not problems for STAC but will show up for compatibility with other clients
-                row["activity_drs"] = properties["cmip6:activity_id"]
-                row["mip_era"] = row["project"]
+                row["activity_drs"] = properties["cmip6:activity_id"]  # FIX
+                row["variable_id"] = properties["cmip6:variable"]  # FIX
+                row["mip_era"] = row["project"]  # FIX
                 row["data_node"] = self.url
                 rowid = f"{item['id']}|{row['data_node']}"
                 row["id"] = rowid
-                dfs += [_delist_row(row)]
+                dfs.append(
+                    {
+                        key: val[0]
+                        if (isinstance(val, list) and len(val) == 1)
+                        else val
+                        for key, val in row.items()
+                    }
+                )
                 self.cache[rowid] = item
 
         df = pd.DataFrame(dfs)
-        total_time = time.time() - total_time
-        print(df)
+        response_time = time.time() - response_time
+        self.logger.info(f"└─{self} results={len(df)} {response_time=:.2f}")
         return df
 
     def from_tracking_ids(self, tracking_ids: list[str]) -> pd.DataFrame:
         raise NotImplementedError(
-            "The STAC catalogs don't even have tracking ids in the items."
+            "The STAC catalogs encode this as `pid` in the properties."
         )
 
     def get_file_info(
@@ -218,12 +233,12 @@ class STACESGFIndex:
                 raise ValueError(f"{dataset_id=} not in the STAC index cache")
             item = self.cache[dataset_id]
             for _, asset in item["assets"].items():
-                # Only files for now
-                if not asset["href"].endswith(".nc"):
+                # Only http links
+                if not asset["description"] == "HTTPServer Link":
                     continue
 
                 url = str(asset["href"])
-                path = get_content_path(asset["href"], "CMIP6")
+                path = _get_content_path(asset["href"], "CMIP6")
 
                 # We could need to append to an existing location
                 if str(path) in infos:
@@ -236,24 +251,13 @@ class STACESGFIndex:
                 if "HTTPServer" not in info:
                     info["HTTPServer"] = []
                 info["HTTPServer"] += [url]
-
-                # File information
                 info["path"] = path
-                checksum = asset["file:checksum"]
-                checksum_type, checksum = (
-                    checksum.split(":") if ":" in checksum else None,
-                    checksum,
-                )
-                info["checksum_type"] = checksum_type
-                info["checksum"] = checksum
-                info["size"] = asset["file:size"]
 
-                # Parse out the file time begin/end from the filename
-                tstart, tend = base.get_time_extent(str(info["path"]))
-                info["file_start"] = info["file_end"] = None
-                if tstart is not None:
-                    info["file_start"] = tstart
-                    info["file_end"] = tend
+                # Parse out information
+                info = _parse_file_validation(info, asset)
+                info = _parse_file_size(info, asset)
+                info = _parse_file_daterange(info)
+
                 infos[str(path)] = info
         out = [info for _, info in infos.items()]
         print(out)
