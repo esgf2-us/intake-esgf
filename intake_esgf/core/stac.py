@@ -64,9 +64,11 @@ def _post_search_hacks(
     row: dict[str, Any], properties: dict[str, Any]
 ) -> dict[str, Any]:
     # activity_drs is not in the extension
-    row["activity_drs"] = properties["cmip6:activity_id"]
+    if "cmip6:activity_id" in properties:
+        row["activity_drs"] = properties["cmip6:activity_id"]
     # The dc06 index uses variable and not variable_id
-    row["variable_id"] = properties["cmip6:variable"]
+    if "cmip6:variable" in properties:
+        row["variable_id"] = properties["cmip6:variable"]
     # mip_era is not in the extension
     row["mip_era"] = row["project"]
     return row
