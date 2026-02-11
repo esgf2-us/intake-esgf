@@ -311,3 +311,21 @@ def test_download_without_checksum(monkeypatch):
     )
 
     cat.to_path_dict()
+
+
+@pytest.mark.parametrize(
+    "hash,hash_algorithm",
+    [
+        ["3a6eb0790f39ac87c94f3856b2dd2c5d110e6811602261a9a923d3bb23adc8b7", "sha256"],
+        [
+            "sha256:3a6eb0790f39ac87c94f3856b2dd2c5d110e6811602261a9a923d3bb23adc8b7",
+            None,
+        ],
+        ["12203a6eb0790f39ac87c94f3856b2dd2c5d110e6811602261a9a923d3bb23adc8b7", None],
+    ],
+)
+def test_hashing(hash: str, hash_algorithm: str | None):
+    hasher = base._setup_hasher(hash, hash_algorithm)
+    if hasher is None:
+        raise ValueError("Unexpected None multihash")
+    assert hasher.verify(b"data")
