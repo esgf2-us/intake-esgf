@@ -1,6 +1,5 @@
 """General functions used in various parts of intake-esgf."""
 
-import hashlib
 import re
 import tempfile
 import time
@@ -9,10 +8,12 @@ from functools import partial
 from pathlib import Path
 from typing import Any
 
+import multihash  # type: ignore
 import pandas as pd
 import requests
 import xarray as xr
 from globus_sdk import TransferAPIError
+from multihash import Multihash  # type: ignore
 
 import intake_esgf
 import intake_esgf.core.globus as globus
@@ -282,6 +283,58 @@ def combine_results(
     return df
 
 
+def _get_mh_func_by_name(name: str | None) -> multihash.Func:
+    """
+    Get the hashing function from multihash, compatible with hashlib's names.
+    """
+    if name is None:
+        raise KeyError(f"Could not find '{name}' in multihash's database of functions.")
+
+    # First try to simple return one of the mh funcs
+    try:
+        return multihash.funcs.FuncReg.get(name)
+    except KeyError:
+        pass
+
+    # Then check if a hashlib compatible name was used and return if found
+    possible = [
+        fcn
+        for fcn, fname, _ in multihash.FuncReg._std_func_data
+        if fname == name.lower()
+    ]
+    if len(possible) == 1:
+        return possible[0]
+    raise KeyError(f"Could not find '{name}' in multihash's database of functions.")
+
+
+def _setup_hasher(hash: str | None, hash_algorithm: str | None) -> Multihash | None:
+    """
+    Given hash information, return a multihasher compatible with hashlib if needed.
+    """
+    # We may have been passed no hashing information at all, so just return
+    if hash is None:
+        return None
+
+    # Some indices are publishing hashes with a `hash_algorithm:hash` convention.
+    if ":" in hash and hash_algorithm is None:
+        hash_algorithm, hash = hash.split(":")
+
+    # If a hash has been given, try to decode it as a multihash. This is being
+    # introduced in ESGF-NG as it is part of the STAC file extension.
+    byte_hash = multihash.from_hex_string(hash)
+    if byte_hash and multihash.is_valid(byte_hash):
+        mh = multihash.decode(byte_hash)
+        return mh
+
+    # If we made it here, we need to create multihash compatible with regular hashes
+    try:
+        hash_fnc = _get_mh_func_by_name(hash_algorithm)
+        mh = Multihash(func=hash_fnc, digest=byte_hash)
+    except Exception:
+        return None
+    return mh
+
+
 def download_and_verify(
     url: str,
     local_file: str | Path,
@@ -303,12 +356,7 @@ def download_and_verify(
         dir=local_file.parent, prefix=local_file.name
     )
     tmp_file = Path(tmp_filename)
-
-    # Setup verification if hash given
-    if hash_algorithm is None or hash is None:
-        hasher = None
-    else:
-        hasher = hashlib.new(hash_algorithm)
+    hasher = _setup_hasher(hash, hash_algorithm)
 
     # Limit the filename size
     LMAX = 40
@@ -369,18 +417,16 @@ def download_and_verify(
 
                     # Write and updates
                     fdl.write(chunk)
-                    if hasher is not None:
-                        hasher.update(chunk)
                     pbar.update(len(chunk))
-    if hasher is not None:
-        if hasher.hexdigest() != hash:
-            logger.info(f"\x1b[91;20mHash error\033[0m {url}")
-            tmp_file.unlink()
-            raise ValueError("Hash does not match")
-    else:
+    if hasher is None:
         logger.info(
             f"\x1b[91;20m{local_file=} could not be verified with given {hash_algorithm=} and {hash=}, skipping.\033[0m"
         )
+    else:
+        if not hasher.verify(open(str(tmp_file), "rb").read()):
+            logger.info(f"\x1b[91;20mHash error\033[0m {url}")
+            tmp_file.unlink()
+            raise ValueError("Hash does not match")
     tmp_file.rename(local_file)
 
     # If sizes not given, read it from the file for logging purposes
