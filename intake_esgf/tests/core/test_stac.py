@@ -1,13 +1,12 @@
 from intake_esgf.core import STACESGFIndex
 
-INDEX = STACESGFIndex("api.stac.ceda.ac.uk")
-# INDEX = STACESGFIndex("api.stac.esgf-west.org")
+INDEX = STACESGFIndex("data-challenge-06-discovery.api.stac.esgf-west.org")
 
 
 def test_search():
     df = INDEX.search(
         experiment_id="historical",
-        source_id="CanESM5",
+        source_id="BCC-ESM1",
         variable_id=["tas", "pr"],
         variant_label="r1i1p1f1",
         frequency="mon",
