@@ -53,6 +53,25 @@ def _search_facet_fixes(**search_facets: Any) -> dict[str, Any]:
     return search_facets
 
 
+def _pre_search_hacks(**search_facets: Any) -> dict[str, Any]:
+    # The dc06 index uses variable and not variable_id
+    if "variable_id" in search_facets:
+        search_facets["variable"] = search_facets.pop("variable_id")
+    return search_facets
+
+
+def _post_search_hacks(
+    row: dict[str, Any], properties: dict[str, Any]
+) -> dict[str, Any]:
+    # activity_drs is not in the extension
+    row["activity_drs"] = properties["cmip6:activity_id"]
+    # The dc06 index uses variable and not variable_id
+    row["variable_id"] = properties["cmip6:variable"]
+    # mip_era is not in the extension
+    row["mip_era"] = row["project"]
+    return row
+
+
 def search_cmip6(
     session: requests.Session,
     base_url: str,
@@ -124,11 +143,7 @@ def _parse_file_validation(
     if "file:checksum" not in asset:
         return info
     checksum = asset["file:checksum"]
-    checksum_type, checksum = (
-        checksum.split(":") if ":" in checksum else "SHA256",
-        checksum,
-    )
-    info["checksum_type"] = checksum_type
+    info["checksum_type"] = None
     info["checksum"] = checksum
     return info
 
@@ -176,6 +191,7 @@ class STACESGFIndex:
 
         # add some default facets if not given
         search = _search_facet_fixes(**search)
+        search = _pre_search_hacks(**search)
         items = search_cmip6(self.session, f"https://{self.url}", limit, **search)
 
         # what facets do we expect?
@@ -196,13 +212,10 @@ class STACESGFIndex:
                 for col in facets:
                     lookup = f"cmip6:{col}" if col in CMIP6_PREPENDS else col
                     row[col] = properties[lookup] if lookup in properties else None
-                # manual fixes, maybe not problems for STAC but will show up for compatibility with other clients
-                row["activity_drs"] = properties["cmip6:activity_id"]  # FIX
-                row["variable_id"] = properties["cmip6:variable"]  # FIX
-                row["mip_era"] = row["project"]  # FIX
+                row = _post_search_hacks(row, properties)
+                # to make STAC consistent with other index types
                 row["data_node"] = self.url
-                rowid = f"{item['id']}|{row['data_node']}"
-                row["id"] = rowid
+                row["id"] = f"{item['id']}|{row['data_node']}"
                 dfs.append(
                     {
                         key: val[0]
@@ -211,7 +224,7 @@ class STACESGFIndex:
                         for key, val in row.items()
                     }
                 )
-                self.cache[rowid] = item
+                self.cache[row["id"]] = item
 
         df = pd.DataFrame(dfs)
         response_time = time.time() - response_time
@@ -260,5 +273,4 @@ class STACESGFIndex:
 
                 infos[str(path)] = info
         out = [info for _, info in infos.items()]
-        print(out)
         return out
