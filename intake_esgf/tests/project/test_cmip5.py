@@ -32,8 +32,8 @@ def test_cmip5_download():
     cat = ESGFCatalog().search(
         project="CMIP5",
         variable="areacella",
-        experiment="amip",
-        model="CanAM4",
+        experiment="rcp85",
+        model="GFDL-CM3",
         ensemble="r0i0p0",
     )
     dsd = cat.to_dataset_dict()
