@@ -46,7 +46,18 @@ class GlobusESGFIndex:
             index_id = GlobusESGFIndex.GLOBUS_INDEX_IDS[index_id]
         self.index_id = index_id
         self.client = SearchClient()
+        self.session = intake_esgf.conf.get_cached_session()
         self.logger = logging.getLogger(intake_esgf.logging.NAME)
+
+    def __getstate__(self) -> dict[str, Any]:
+        state = self.__dict__.copy()
+        state.pop("client")
+        return state
+
+    def __setstate__(self, state: dict[str, Any]) -> None:
+        self.__dict__.update(state)
+        self.client = SearchClient()
+        self.session = intake_esgf.conf.get_cached_session()
 
     def __repr__(self):
         return self.repr
@@ -226,14 +237,13 @@ class GlobusESGFIndex:
 
 
 def variable_info(
-    session: requests.Session,
     query: str,
     project: str = "CMIP6",
 ) -> pd.DataFrame:
     """Return a dataframe with variable information from a query."""
     client = SearchClient()
-    client.transport.session = session
-    # first we populate a list of related veriables
+    client.transport.session = intake_esgf.conf.get_cached_session()
+    # first we populate a list of related variables
     uuid = GlobusESGFIndex.GLOBUS_INDEX_IDS["ESGF2-US-1.5-Catalog"]
     q = SearchQueryV1(
         q=query,

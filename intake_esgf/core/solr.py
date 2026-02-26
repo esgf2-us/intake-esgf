@@ -42,8 +42,17 @@ class SolrESGFIndex:
         self.repr = f"SolrESGFIndex('{index_node}'{',distrib=True' if distrib else ''})"
         self.url = f"https://{index_node}"
         self.distrib = distrib
-        self.session = requests.Session()
+        self.session = intake_esgf.conf.get_cached_session()
         self.logger = logging.getLogger(intake_esgf.logging.NAME)
+
+    def __getstate__(self) -> dict[str, Any]:
+        state = self.__dict__.copy()
+        state.pop("session")
+        return state
+
+    def __setstate__(self, state: dict[str, Any]) -> None:
+        self.__dict__.update(state)
+        self.session = intake_esgf.conf.get_cached_session()
 
     def __repr__(self):
         return self.repr
