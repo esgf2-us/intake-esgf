@@ -5,6 +5,7 @@ import copy
 from pathlib import Path
 from typing import Any
 
+import requests_cache
 import yaml
 
 import intake_esgf
@@ -261,6 +262,24 @@ class Config(dict):
     def get_logger(self) -> intake_esgf.logging.Logger:
         """Setup the location and logging for this package."""
         return intake_esgf.logging.Logger()
+
+    def get_cached_session(self) -> requests_cache.CachedSession:
+        """Get a requests session with the configured cache."""
+        kwargs: dict[str, Any] = {
+            "allowable_methods": (
+                "GET",
+                "HEAD",
+                "POST",  # Used by globus_sdk.SearchClient and pystac_client.ItemSearch
+            ),
+        }
+        kwargs.update(self["requests_cache"])
+        if kwargs["expire_after"] in (
+            "DO_NOT_CACHE",
+            "EXPIRE_IMMEDIATELY",
+            "NEVER_EXPIRE",
+        ):
+            kwargs["expire_after"] = getattr(requests_cache, kwargs["expire_after"])
+        return requests_cache.CachedSession(**kwargs)
 
 
 conf = Config()

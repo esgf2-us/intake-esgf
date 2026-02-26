@@ -1,8 +1,8 @@
+import pickle
 from typing import Any
 
 import numpy as np
 import pytest
-import requests
 
 from intake_esgf.core.solr import SolrESGFIndex
 
@@ -251,7 +251,7 @@ def solr_file_response():
     }
 
 
-def test_solr_search(solr_dataset_response, monkeypatch):
+def test_solr_search(solr_dataset_response):
     def fake_get(*args, **kwargs) -> Any:
         class FakeResponse:
             def raise_for_status(self) -> None:
@@ -262,8 +262,8 @@ def test_solr_search(solr_dataset_response, monkeypatch):
 
         return FakeResponse()
 
-    monkeypatch.setattr(requests.Session, "get", fake_get)
     ind = SolrESGFIndex()
+    ind.session.get = fake_get
     df = ind.search(
         source_id="CESM2",
         variable_id="tas",
@@ -275,7 +275,7 @@ def test_solr_search(solr_dataset_response, monkeypatch):
     assert len(df) == 1
 
 
-def test_solr_from_tracking_ids(solr_dataset_response, monkeypatch):
+def test_solr_from_tracking_ids(solr_dataset_response):
     def fake_get(*args, **kwargs) -> Any:
         class FakeResponse:
             def raise_for_status(self) -> None:
@@ -286,13 +286,13 @@ def test_solr_from_tracking_ids(solr_dataset_response, monkeypatch):
 
         return FakeResponse()
 
-    monkeypatch.setattr(requests.Session, "get", fake_get)
     ind = SolrESGFIndex()
+    ind.session.get = fake_get
     df = ind.from_tracking_ids(["hdl:21.14100/d9a7225a-49c3-4470-b7ab-a8180926f839"])
     assert len(df) == 1
 
 
-def test_solr_file_info(solr_file_response, monkeypatch):
+def test_solr_file_info(solr_file_response):
     def fake_get(*args, **kwargs) -> Any:
         class FakeResponse:
             def raise_for_status(self) -> None:
@@ -303,8 +303,8 @@ def test_solr_file_info(solr_file_response, monkeypatch):
 
         return FakeResponse()
 
-    monkeypatch.setattr(requests.Session, "get", fake_get)
     ind = SolrESGFIndex()
+    ind.session.get = fake_get
     infos = ind.get_file_info(
         [
             "CMIP6.CMIP.NCAR.CESM2.historical.r1i1p1f1.Amon.tas.gn.v20190308|esgf.ceda.ac.uk"
@@ -317,3 +317,12 @@ def test_solr_file_info(solr_file_response, monkeypatch):
         == "CMIP6.CMIP.NCAR.CESM2.historical.r1i1p1f1.Amon.tas.gn.v20190308|esgf.ceda.ac.uk"
     )
     assert np.allclose(info["size"], 243034487)
+
+
+def test_pickle() -> None:
+    index = SolrESGFIndex()
+    pickled = pickle.dumps(index)
+    unpickled = pickle.loads(pickled)
+    assert repr(index) == repr(unpickled)
+    assert str(index.session) == str(unpickled.session)
+    assert index.logger == unpickled.logger
