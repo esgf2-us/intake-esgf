@@ -11,6 +11,7 @@ import requests
 from pystac_client import Client, ItemSearch
 from pystac_client.stac_api_io import StacApiIO
 
+import intake_esgf
 import intake_esgf.base as base
 import intake_esgf.logging
 from intake_esgf.projects import projects
@@ -176,8 +177,17 @@ class STACESGFIndex:
     def __init__(self, url: str = "api.stac.ceda.ac.uk"):
         self.url = url
         self.cache: dict[str, Any] = {}
-        self.session = requests.Session()
+        self.session = intake_esgf.conf.get_cached_session()
         self.logger = logging.getLogger(intake_esgf.logging.NAME)
+
+    def __getstate__(self) -> dict[str, Any]:
+        state = self.__dict__.copy()
+        state.pop("session")
+        return state
+
+    def __setstate__(self, state: dict[str, Any]) -> None:
+        self.__dict__.update(state)
+        self.session = intake_esgf.conf.get_cached_session()
 
     def __repr__(self):
         return f"STACESGFIndex('{self.url}')"

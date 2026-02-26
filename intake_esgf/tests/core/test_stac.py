@@ -1,3 +1,5 @@
+import pickle
+
 from intake_esgf.core import STACESGFIndex
 
 INDEX = STACESGFIndex("data-challenge-06-discovery.api.stac.esgf-west.org")
@@ -14,3 +16,12 @@ def test_search():
     assert len(df) == 2
     infos = INDEX.get_file_info(df["id"].to_list())
     assert len(infos) == 2
+
+
+def test_pickle() -> None:
+    index = INDEX
+    pickled = pickle.dumps(index)
+    unpickled = pickle.loads(pickled)
+    assert repr(index) == repr(unpickled)
+    assert str(index.session) == str(unpickled.session)
+    assert index.logger == unpickled.logger
