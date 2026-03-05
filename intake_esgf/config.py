@@ -13,7 +13,7 @@ import intake_esgf.logging
 
 defaults = {
     "stac_indices": {
-        "api.stac.esgf.ceda.ac.uk": False,
+        # "api.stac.esgf.ceda.ac.uk": False,
         "data-challenge-04-discovery.api.stac.esgf-west.org": False,
         "data-challenge-06-discovery.api.stac.esgf-west.org": False,
     },
