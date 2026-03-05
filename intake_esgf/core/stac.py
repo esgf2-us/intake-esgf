@@ -7,8 +7,7 @@ from pathlib import Path
 from typing import Any
 
 import pandas as pd
-import requests
-from pystac_client import Client, ItemSearch
+from pystac_client import Client
 from pystac_client.stac_api_io import StacApiIO
 
 import intake_esgf
@@ -16,114 +15,96 @@ import intake_esgf.base as base
 import intake_esgf.logging
 from intake_esgf.projects import projects
 
-# the stac extension additions that need `properties.cmip6:` prepended
-CMIP6_PREPENDS = [
-    "activity_id",
-    "cf_standard_name",
-    "citation_url",
-    "data_specs_version",
-    "experiment_id",
-    "experiment_title",
-    "frequency",
-    "further_info_url",
-    "grid",
-    "grid_label",
-    "institution_id",
-    "member_id",
-    "nominal_resolution",
-    "product",
-    "realm",
-    "source_id",
-    "source_type",
-    "table_id",
-    "variable",
-    "variable_id",
-    "variable_long_name",
-    "variable_units",
-    "variant_label",
-]
 
-
-def _search_facet_fixes(**search_facets: Any) -> dict[str, Any]:
+def _get_endpoint_collections(client: Client) -> list[str]:
     """
-    Make changes to the search facets based on STAC differences.
+    Return the collections of a client.
     """
-    # There is no such thing as Dataset/File 'types'
-    if "type" in search_facets:
-        search_facets.pop("type")
-    return search_facets
+    collection_search = client.collection_search()
+    collections = [
+        col["id"]
+        for page in collection_search.pages_as_dicts()
+        for col in page["collections"]
+    ]
+    return collections
 
 
-def _pre_search_hacks(**search_facets: Any) -> dict[str, Any]:
-    # The dc06 index uses variable and not variable_id
-    if "variable_id" in search_facets:
-        search_facets["variable"] = search_facets.pop("variable_id")
-    return search_facets
+def _get_collection_queryables(client: Client, project: str) -> list[str]:
+    """
+    Return the queryables of the client's collection.
+
+    Note
+    ----
+    Ultimately we hope to be able to get this information from the /queryables
+    endpoint of the catalog/collection. For the moment we write this function
+    and can switch the implementation later if/when this capability is
+    implemented.
+    """
+    items = client.search(collections=project, max_items=1).item_collection_as_dict()
+    if not items["features"]:
+        raise ValueError(f"No queryables for {project=}")
+    queryables = [prop for prop in items["features"][0]["properties"]]
+    return queryables
 
 
-def _post_search_hacks(
-    row: dict[str, Any], properties: dict[str, Any]
+def _fix_facets(
+    search_facets: dict[str, Any], project: str, queryables: list[str]
 ) -> dict[str, Any]:
-    # activity_drs is not in the extension
-    if "cmip6:activity_id" in properties:
-        row["activity_drs"] = properties["cmip6:activity_id"]
-    # The dc06 index uses variable and not variable_id
-    if "cmip6:variable" in properties:
-        row["variable_id"] = properties["cmip6:variable"]
-    # mip_era is not in the extension
-    row["mip_era"] = row["project"]
-    return row
-
-
-def search_cmip6(
-    session: requests.Session,
-    base_url: str,
-    items_per_page: int = 100,
-    **search_facets: Any,
-) -> ItemSearch:
     """
-    Returns a STAC client item search filtered by the search facets.
+    Transform the traditional search facets for a given project into
+    STAC-compliant facets.
 
-    Parameters
-    ----------
-    session:
-        The requests session to use for the STAC API.
-    base_url : str
-        The URL of the STAC API.
-    items_per_page : int, optional
-        The number of items to return per page.
-    **search_facets : str, list[str]
-        The traditional search facts expressed as additional keyword arguments,
-        for example `variable_id=['tas','pr']` or `source_id='UKESM1-0-LL'`.
-
-    Returns
-    -------
-    ItemSearch
-        The STAC search results.
+    Note
+    ----
+    1. They should be prepended with `properties` unless not querying in the
+       properies. At the moment, I am not sure users will do this. FIX.
+    2. If part of the project's extension, they should also be prepended with
+       `project:`
     """
-    # Create a filter using Common Query Language 2
+    project_prepends = [
+        q.split(":")[-1] for q in queryables if q.startswith(f"{project.lower()}:")
+    ]
+    search_facets = {
+        f"{project.lower() + ':' if key in project_prepends else ''}{key}": value
+        for key, value in search_facets.items()
+    }
+    not_valid = set(search_facets) - set(queryables)
+    if not_valid:
+        possible = [q.replace(f"{project.lower()}:", "") for q in queryables]
+        raise ValueError(
+            f"Some of your search criteria {not_valid=} are not supported in this {project=}. These are {possible=}."
+        )
+    search_facets = {
+        f"properties.{key}": value if isinstance(value, list) else [value]
+        for key, value in search_facets.items()
+    }
+    return search_facets
+
+
+def _search_facets_to_cql_filter(
+    search_facets: dict[str, Any], project: str, queryables: list[str]
+) -> dict[str, Any]:
+    """
+    Convert traditional search facets to a STAC filter.
+
+    Note
+    ----
+    STAC extensions require prepending additional properties with a namespace.
+    This makes sense in a world where you need to be able to search across
+    projects, but in our case is not needed.
+    """
+    search_facets = _fix_facets(search_facets, project, queryables)
     cql_filter = {
         "op": "and",
         "args": [
             {
                 "op": "in",
-                "args": [
-                    {
-                        "property": f"properties.{'cmip6:' if facet in CMIP6_PREPENDS else ''}{facet}"
-                    },
-                    facet_values if isinstance(facet_values, list) else [facet_values],
-                ],
+                "args": [{"property": facet}, facet_values],
             }
             for facet, facet_values in search_facets.items()
         ],
     }
-    # Initialize the client and search
-    stac_io = StacApiIO()
-    stac_io.session = session
-    results = Client.open(base_url, stac_io=stac_io).search(
-        collections="CMIP6", limit=items_per_page, filter=cql_filter
-    )
-    return results
+    return cql_filter
 
 
 def _get_content_path(url: str, project: str) -> Path:
@@ -195,18 +176,29 @@ class STACESGFIndex:
     def search(self, **search) -> pd.DataFrame:
         response_time = time.time()
 
-        # only for CMIP6 for now
+        # Intercept some options, some have special handling, others aren't used
         limit = search.pop("limit") if "limit" in search else 100
         project = search.pop("project") if "project" in search else "CMIP6"
-        if project.lower() != "cmip6":
-            raise ValueError("STAC index only for CMIP6")
+        _ = search.pop("type") if "type" in search else ""
 
-        # add some default facets if not given
-        search = _search_facet_fixes(**search)
-        search = _pre_search_hacks(**search)
-        items = search_cmip6(self.session, f"https://{self.url}", limit, **search)
+        # Initialize the client
+        stac_io = StacApiIO()
+        stac_io.session = self.session
+        client = Client.open(f"https://{self.url}", stac_io=stac_io)
 
-        # what facets do we expect?
+        # Ensure there is something to find
+        collections = _get_endpoint_collections(client)
+        if project not in collections:
+            response_time = time.time() - response_time
+            self.logger.info(f"└─{self} project not found {response_time=:.2f}")
+            return pd.DataFrame()
+
+        # Form the filter and search
+        queryables = _get_collection_queryables(client, project)
+        cql_filter = _search_facets_to_cql_filter(search, project, queryables)
+        items = client.search(collections=project, limit=limit, filter=cql_filter)
+
+        # What facets do we expect in the output?
         facets = (
             [
                 "project",
@@ -215,16 +207,20 @@ class STACESGFIndex:
             + intake_esgf.conf["additional_df_cols"]
         )
 
-        # populate the dataframe with hacks
+        # Populate the dataframe
         dfs = []
         for page in items.pages_as_dicts():
             for item in page["features"]:
                 properties = item["properties"]
                 row = {}
                 for col in facets:
-                    lookup = f"cmip6:{col}" if col in CMIP6_PREPENDS else col
+                    if col in queryables:
+                        lookup = col
+                    elif f"cmip6:{col}" in queryables:
+                        lookup = f"cmip6:{col}"
+                    else:
+                        lookup = ""  # Not in there, just skip
                     row[col] = properties[lookup] if lookup in properties else None
-                row = _post_search_hacks(row, properties)
                 # to make STAC consistent with other index types
                 row["data_node"] = self.url
                 row["id"] = f"{item['id']}|{row['data_node']}"
@@ -236,7 +232,7 @@ class STACESGFIndex:
                         for key, val in row.items()
                     }
                 )
-                self.cache[row["id"]] = item
+                self.cache[str(row["id"])] = item
 
         df = pd.DataFrame(dfs)
         response_time = time.time() - response_time
