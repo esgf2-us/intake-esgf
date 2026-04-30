@@ -1,5 +1,6 @@
 """A ESGF1 Solr index class."""
 
+import itertools
 import logging
 import time
 from collections.abc import Iterator
@@ -13,6 +14,8 @@ import intake_esgf.base as base
 import intake_esgf.logging
 from intake_esgf.exceptions import NoSearchResults
 from intake_esgf.projects import get_project_facets
+
+FILE_INFO_BATCH_SIZE = 15
 
 
 def esg_search(
@@ -130,33 +133,38 @@ class SolrESGFIndex:
             latest=True,
             retracted=False,
             distrib=self.distrib,
-            dataset_id=dataset_ids,
         )
         search.update(facets)
         infos = []
-        for response in esg_search(self.session, self.url, **search):
-            response = response["response"]
-            if not response["numFound"]:
-                self.logger.info(f"└─{self} no results")
-                raise NoSearchResults
-            for doc in response["docs"]:
-                info = {}
-                info["dataset_id"] = doc["dataset_id"]
-                info["checksum_type"] = doc["checksum_type"][0]
-                info["checksum"] = doc["checksum"][0]
-                info["size"] = doc["size"]
-                info["path"] = base.get_content_path(doc)
-                for entry in doc["url"]:
-                    link, _, link_type = entry.split("|")
-                    if link_type not in info:
-                        info[link_type] = []
-                    info[link_type].append(link)
-                infos.append(info)
-                tstart, tend = base.get_time_extent(str(info["path"]))
-                info["file_start"] = info["file_end"] = None
-                if tstart is not None:
-                    info["file_start"] = tstart
-                    info["file_end"] = tend
+        numFound = 0
+        for dataset_id_batch in itertools.batched(dataset_ids, FILE_INFO_BATCH_SIZE):
+            search["dataset_id"] = dataset_id_batch
+            for response in esg_search(self.session, self.url, **search):
+                response = response["response"]
+                if not response["numFound"]:
+                    continue
+                numFound += response["numFound"]
+                for doc in response["docs"]:
+                    info = {}
+                    info["dataset_id"] = doc["dataset_id"]
+                    info["checksum_type"] = doc["checksum_type"][0]
+                    info["checksum"] = doc["checksum"][0]
+                    info["size"] = doc["size"]
+                    info["path"] = base.get_content_path(doc)
+                    for entry in doc["url"]:
+                        link, _, link_type = entry.split("|")
+                        if link_type not in info:
+                            info[link_type] = []
+                        info[link_type].append(link)
+                    infos.append(info)
+                    tstart, tend = base.get_time_extent(str(info["path"]))
+                    info["file_start"] = info["file_end"] = None
+                    if tstart is not None:
+                        info["file_start"] = tstart
+                        info["file_end"] = tend
+        if not numFound:
+            self.logger.info(f"└─{self} no results")
+            raise NoSearchResults()
         response_time = time.time() - response_time
         self.logger.info(f"└─{self} results={len(infos)} {response_time=:.2f}")
         return infos
