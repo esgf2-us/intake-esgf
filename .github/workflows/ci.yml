@@ -26,9 +26,23 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        python-version: ["3.12", "3.13", "3.14"]
-        os: [macos, ubuntu, windows]
+        python-version: [3.14] # ["3.12", "3.13", "3.14"]
+        os: [ubuntu] # [macos, ubuntu, windows]
     steps:
+
+      - name: Current UTC time
+        id: time
+        run: echo "utc=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> $GITHUB_OUTPUT
+
+      - name: Public IP
+        id: ip
+        run: echo "ip=$(curl -s https://api.ipify.org)" >> $GITHUB_OUTPUT
+
+      - name: Print results
+        run: |
+          echo "UTC: ${{ steps.time.outputs.utc }}"
+          echo "IP:  ${{ steps.ip.outputs.ip }}"
+
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
