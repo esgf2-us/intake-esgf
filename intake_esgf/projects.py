@@ -427,6 +427,54 @@ class WrPMIP(ESGFProject):
         return "grid_label"
 
 
+class CMIP7(ESGFProject):
+    def __init__(self):
+        self.facets = [
+            "drs_specs",
+            "project",
+            "activity_id",
+            "institution_id",
+            "source_id",
+            "experiment_id",
+            "variant_label",
+            "region",
+            "variable_id",
+            "variable_branding_suffix",
+            "grid_label",
+            "version",
+        ]
+
+    def master_id_facets(self) -> list[str]:
+        return self.facets[:-1]
+
+    def id_facets(self) -> list[str]:
+        return self.facets
+
+    def relaxation_facets(self) -> list[str]:
+        return [
+            "variable_branding_suffix",
+            "variant_label",
+            "experiment_id",
+            "activity_id",
+            "institution_id",
+        ]
+
+    def variable_description_facets(self) -> list[str]:
+        return ["variable_id", "variable_branding_suffix"]
+
+    def variable_facet(self) -> str:
+        return "variable_id"
+
+    def model_facet(self) -> str:
+        return "source_id"
+
+    def variant_facet(self) -> str:
+        return "variant_label"
+
+    def grid_facet(self) -> str | None:
+        return "grid_label"
+
+
 projects = {
     "cmip6": CMIP6(),
     "cmip5": CMIP5(),
@@ -437,6 +485,7 @@ projects = {
     "cmip6plus": CMIP6Plus(),
     "e3sm": e3sm(),
     "wrpmip": WrPMIP(),
+    "cmip7": CMIP7(),
 }
 
 
