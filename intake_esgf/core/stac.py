@@ -3,6 +3,7 @@
 import logging
 import re
 import time
+import warnings
 from pathlib import Path
 from typing import Any
 
@@ -155,7 +156,7 @@ def _parse_file_daterange(info: dict[str, Any]) -> dict[str, Any]:
 
 
 class STACESGFIndex:
-    def __init__(self, url: str = "api.stac.ceda.ac.uk"):
+    def __init__(self, url: str = "api.stac.esgf.ceda.ac.uk"):
         self.url = url
         self.cache: dict[str, Any] = {}
         self.session = intake_esgf.conf.get_cached_session()
@@ -199,11 +200,12 @@ class STACESGFIndex:
         items = client.search(collections=project, limit=limit, filter=cql_filter)
 
         # What facets do we expect in the output?
+        lower_project = project.lower()
         facets = (
             [
                 "project",
             ]
-            + projects[project.lower()].master_id_facets()
+            + projects[lower_project].master_id_facets()
             + intake_esgf.conf["additional_df_cols"]
         )
 
@@ -216,9 +218,12 @@ class STACESGFIndex:
                 for col in facets:
                     if col in queryables:
                         lookup = col
-                    elif f"cmip6:{col}" in queryables:
-                        lookup = f"cmip6:{col}"
+                    elif f"{lower_project}:{col}" in queryables:
+                        lookup = f"{lower_project}:{col}"
                     else:
+                        warnings.warn(
+                            f"Expected column '{col}' not found in response from {self.url}"
+                        )
                         lookup = ""  # Not in there, just skip
                     row[col] = properties[lookup] if lookup in properties else None
                 # to make STAC consistent with other index types
