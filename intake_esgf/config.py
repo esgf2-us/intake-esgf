@@ -13,9 +13,9 @@ import intake_esgf.logging
 
 defaults = {
     "stac_indices": {
-        # "api.stac.esgf.ceda.ac.uk": False,
-        "data-challenge-04-discovery.api.stac.esgf-west.org": False,
+        "api.stac.esgf.ceda.ac.uk": False,
         "data-challenge-06-discovery.api.stac.esgf-west.org": False,
+        "integration-testing.api.stac.esgf-west.org": False,
     },
     "globus_indices": {
         "ESGF2-US-1.5-Catalog": True,
