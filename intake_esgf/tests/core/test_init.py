@@ -28,6 +28,7 @@ def test_search_is_cached(index_type, tmp_path):
             )
 
     facets = {
+        "project": "CMIP6",
         "experiment_id": ["historical"],
         "source_id": ["CanESM5"],
         "variable_id": ["tas"],
