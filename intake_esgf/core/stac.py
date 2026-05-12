@@ -108,10 +108,17 @@ def _search_facets_to_cql_filter(
     return cql_filter
 
 
-def _get_content_path(url: str, project: str) -> Path:
+def _get_content_path(asset: dict[str, Any], project: str) -> Path:
     """
-    Return the local file path parsed from a https url.
+    Return the local file path.
     """
+    # This should be in ESGF STAC entries...
+    if "file:local_path" in asset:
+        return Path(asset["file:local_path"])
+    # ...but let's not count on it.
+    url = asset.get("href")
+    if url is None:
+        raise ValueError(f"Asset does not contain 'href' {asset=}")
     match = re.search(rf".*({project}.*.nc)|.*", url)
     if not match:
         raise ValueError(f"Could not parse out the path from {url}")
@@ -263,8 +270,8 @@ class STACESGFIndex:
                 if not asset["description"] == "HTTPServer Link":
                     continue
 
-                url = str(asset["href"])
-                path = _get_content_path(asset["href"], "CMIP6")
+                # Where do we put this file?
+                path = _get_content_path(asset, item["properties"]["project"])
 
                 # We could need to append to an existing location
                 if str(path) in infos:
@@ -276,7 +283,7 @@ class STACESGFIndex:
                 info["dataset_id"] = dataset_id
                 if "HTTPServer" not in info:
                     info["HTTPServer"] = []
-                info["HTTPServer"] += [url]
+                info["HTTPServer"] += [str(asset["href"])]
                 info["path"] = path
 
                 # Parse out information
