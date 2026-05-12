@@ -489,7 +489,7 @@ class ESGFCatalog:
             self._set_project()
         self.df["key"] = self.df.apply(
             lambda row: separator.join(
-                [row[f] for f in self.project.master_id_facets()]
+                [str(row[f]) for f in self.project.master_id_facets()]
             ),
             axis=1,
         )
