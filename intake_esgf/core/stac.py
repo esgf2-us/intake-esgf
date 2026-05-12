@@ -23,7 +23,7 @@ def _get_endpoint_collections(client: Client) -> list[str]:
     """
     collection_search = client.collection_search()
     collections = [
-        col["id"]
+        col["title"]
         for page in collection_search.pages_as_dicts()
         for col in page["collections"]
     ]
