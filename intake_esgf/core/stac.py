@@ -72,7 +72,7 @@ def _fix_facets(
     not_valid = set(search_facets) - set(queryables)
     if not_valid:
         possible = [q.replace(f"{project.lower()}:", "") for q in queryables]
-        raise ValueError(
+        warnings.warn(
             f"Some of your search criteria {not_valid=} are not supported in this {project=}. These are {possible=}."
         )
     search_facets = {
