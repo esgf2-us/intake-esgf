@@ -26,6 +26,7 @@ dependencies = [
     "pyyaml>=6.0.2",
     "requests>=2.32.3",
     "requests-cache>=1.2.1",
+    "rich>=15.0.0",
     "tqdm>=4.67.1",
     "xarray>=2024.11.0",
 ]

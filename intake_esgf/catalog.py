@@ -12,10 +12,10 @@ from typing import Any, Literal, Self, cast
 import pandas as pd
 import requests
 import xarray as xr
+from rich.progress import track
 
 import intake_esgf
 import intake_esgf.base as base
-from intake_esgf import IN_NOTEBOOK
 from intake_esgf.core import GlobusESGFIndex, SolrESGFIndex, STACESGFIndex
 from intake_esgf.core.globus import (
     create_globus_transfer,
@@ -34,11 +34,6 @@ from intake_esgf.exceptions import (
     ProjectHasNoFacet,
 )
 from intake_esgf.projects import projects as esgf_projects
-
-if IN_NOTEBOOK:
-    from tqdm import tqdm_notebook as tqdm  # type: ignore
-else:
-    from tqdm import tqdm  # type: ignore
 
 
 class ESGFCatalog:
@@ -370,15 +365,11 @@ class ESGFCatalog:
         with ThreadPool(len(self.indices)) as pool:
             dfs = pool.imap_unordered(_search, self.indices)
             self.df = base.combine_results(
-                tqdm(
+                track(
                     dfs,
-                    disable=quiet,
-                    bar_format=base.bar_format,
-                    unit="index",
-                    unit_scale=False,
-                    desc="Searching indices",
-                    ascii=False,
+                    description="Searching indices",
                     total=len(self.indices),
+                    disable=quiet,
                 ),
                 logger=self.logger,
             )
@@ -437,14 +428,10 @@ class ESGFCatalog:
         with ThreadPool(len(self.indices)) as pool:
             dfs = pool.imap_unordered(_from_tracking_ids, self.indices)
             self.df = base.combine_results(
-                tqdm(
+                track(
                     dfs,
                     disable=quiet,
-                    bar_format=base.bar_format,
-                    unit="index",
-                    unit_scale=False,
-                    desc="Searching indices",
-                    ascii=False,
+                    description="Searching indices",
                     total=len(self.indices),
                 ),
                 logger=self.logger,
@@ -534,14 +521,10 @@ class ESGFCatalog:
                 self.indices,
             )
             index_infos = list(
-                tqdm(
+                track(
                     get_file_info,
                     disable=quiet,
-                    bar_format=base.bar_format,
-                    unit="index",
-                    unit_scale=False,
-                    desc="Get file information",
-                    ascii=False,
+                    description="Get file information",
                     total=len(self.indices),
                 )
             )
@@ -788,14 +771,10 @@ class ESGFCatalog:
 
         # attempt to add cell measures (serial), only work for CMIP6 for now
         if ds and add_measures and "cmip6" in str(self.project.__class__).lower():
-            for key in tqdm(
+            for key in track(
                 ds,
                 disable=quiet,
-                bar_format=base.bar_format,
-                unit="dataset",
-                unit_scale=False,
-                desc="Adding cell measures",
-                ascii=False,
+                description="Adding cell measures",
                 total=len(ds),
             ):
                 ds[key] = base.add_cell_measures(ds[key], self)
