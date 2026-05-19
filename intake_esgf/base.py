@@ -625,7 +625,12 @@ def expand_cmip5_record(
 def get_content_path(content: dict[str, Any]) -> Path:
     """Get the local path where the data is to be stored."""
     parts = content["id"].split("|")[0].split(".")
-    return Path(*parts[:-1]).with_suffix(f".{parts[-1]}")
+    # I hate that I have to address bad publishing with software fixes, but for
+    # some reason we just won't fix the index. Some files are published with a
+    # `.nc_0` as the suffix, which causes problems as we think they are
+    # different files.
+    path = Path(*parts[:-1]).with_suffix(".nc")
+    return path
 
 
 def get_time_extent(
