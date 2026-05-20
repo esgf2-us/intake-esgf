@@ -624,34 +624,25 @@ class ESGFCatalog:
 
         # download in parallel using threads
         if infos["https"]:
-            # inform user of download sizes
-            download_size = sum([info["size"] for info in infos["https"]]) * 1e-6
-            download_unit = "Mb"
-            if download_size > 1e3:
-                download_size *= 1e-3
-                download_unit = "Gb"
-            if not quiet:
-                print(f"Downloading {download_size:.1f} [{download_unit}]...")
             if intake_esgf.conf["confirm_download"]:
-                response = input("Proceed with download? [y/N]: ").strip().lower()
+                download_size, download_unit = base.get_total_size(infos["https"])
+                response = (
+                    input(
+                        f"Procees to download {download_size:.1f} [{download_unit}]? [y/N]: "
+                    )
+                    .strip()
+                    .lower()
+                )
                 if response not in ("y", "yes"):
                     print("Download cancelled.")
                     return {}
-            with ThreadPool(
-                min(intake_esgf.conf["num_threads"], len(infos["https"]))
-            ) as pool:
-                list(
-                    pool.imap_unordered(
-                        partial(
-                            base.parallel_download,
-                            local_cache=self.local_cache,
-                            download_db=self.download_db,
-                            logger=self.logger,
-                            esg_dataroot=self.esg_dataroot,
-                        ),
-                        infos["https"],
-                    )
-                )
+            base.download_urls(
+                infos["https"],
+                self.local_cache,
+                self.download_db,
+                self.logger,
+                self.esg_dataroot,
+            )
 
         # unpack the https files which should now exist in local cache
         dsd = _load_into_dsd(dsd, infos["https"])
