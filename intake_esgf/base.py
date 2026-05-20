@@ -1,11 +1,14 @@
 """General functions used in various parts of intake-esgf."""
 
 import re
+import signal
 import tempfile
 import time
 from collections.abc import Iterable
+from concurrent.futures import ThreadPoolExecutor
 from functools import partial
 from pathlib import Path
+from threading import Event
 from typing import Any
 
 import multihash  # type: ignore
@@ -14,6 +17,7 @@ import requests
 import xarray as xr
 from globus_sdk import TransferAPIError
 from multihash import Multihash  # type: ignore
+from rich.progress import Progress, TaskID
 
 import intake_esgf
 import intake_esgf.core.globus as globus
@@ -25,13 +29,6 @@ from intake_esgf.database import (
 )
 from intake_esgf.exceptions import NoSearchResults, ProjectNotSupported, StalledDownload
 from intake_esgf.projects import projects
-
-if intake_esgf.IN_NOTEBOOK:
-    from tqdm import tqdm_notebook as tqdm  # type: ignore
-else:
-    from tqdm import tqdm  # type: ignore
-
-bar_format = "{desc:>20}: {percentage:3.0f}%|{bar}|{n_fmt}/{total_fmt} [{rate_fmt:>15s}{postfix}]"
 
 
 def get_local_file(path: Path, dataroots: list[Path]) -> Path:
@@ -335,6 +332,18 @@ def _setup_hasher(hash: str | None, hash_algorithm: str | None) -> Multihash | N
     return mh
 
 
+PROGRESS = Progress()
+MASTER_ID = 0
+done_event = Event()
+
+
+def handle_sigint(signum, frame):
+    done_event.set()
+
+
+signal.signal(signal.SIGINT, handle_sigint)
+
+
 def download_and_verify(
     url: str,
     local_file: str | Path,
@@ -343,6 +352,8 @@ def download_and_verify(
     content_length: int,
     download_db: Path,
     logger: intake_esgf.logging.Logger,
+    task_id: TaskID,
+    master_id: TaskID,
     break_slow_downloads: bool = False,
     quiet: bool = False,
 ) -> None:
@@ -357,14 +368,7 @@ def download_and_verify(
     )
     tmp_file = Path(tmp_filename)
     hasher = _setup_hasher(hash, hash_algorithm)
-
-    # Limit the filename size
-    LMAX = 40
-    (desc,) = (
-        local_file.name
-        if len(local_file.name) < LMAX
-        else f"{local_file.name[: (LMAX - 3)]}...",
-    )
+    host = url[: url.index("/", 10)].replace("http://", "").replace("https://", "")
 
     # Download, verify and log transfer
     CHUNKSIZE = 2**20  # 1 [Mb]
@@ -375,49 +379,40 @@ def download_and_verify(
     transfer_time = time.time()
     chunk_time_prev = time.perf_counter()
     smoothed_rate = intake_esgf.conf["slow_download_threshold"]
+    PROGRESS.update(task_id, total=content_length)
     with open(tmp_fh, "wb") as fdl:
-        with tqdm(
-            disable=quiet,
-            bar_format="{desc}: {percentage:3.0f}%|{bar}|{n_fmt}/{total_fmt} [{rate_fmt}{postfix}]",
-            total=content_length,
-            unit="B",
-            unit_scale=True,
-            leave=False,
-            desc=desc,
-        ) as pbar:
-            for chunk in resp.iter_content(chunk_size=CHUNKSIZE):
-                if chunk:
-                    # Check slow downloads by using exponential smoothing
-                    chunk_time = time.perf_counter()
-                    rate = CHUNKSIZE * 1e-6 / (chunk_time - chunk_time_prev)
-                    smoothed_rate = SMOOTHING * rate + (1 - SMOOTHING) * smoothed_rate
-                    chunk_time_prev = chunk_time
-                    if (
-                        break_slow_downloads
-                        and (time.time() - transfer_time) > SLOW_DOWNLOAD_SAFETY
-                        and smoothed_rate < intake_esgf.conf["slow_download_threshold"]
-                    ):
-                        logger.info(
-                            f"\x1b[38;5;209mbreaking slow download\033[0m {smoothed_rate:.2f} < {intake_esgf.conf['slow_download_threshold']:.2f} [Mb s-1] {url}"
-                        )
-                        host = (
-                            url[: url.index("/", 10)]
-                            .replace("http://", "")
-                            .replace("https://", "")
-                        )
-                        transfer_time = time.time() - transfer_time
-                        log_download_information(
-                            download_db,
-                            host,
-                            transfer_time,
-                            smoothed_rate * transfer_time,
-                        )
-                        resp.close()
-                        raise StalledDownload()
+        PROGRESS.start_task(task_id)
+        for chunk in resp.iter_content(chunk_size=CHUNKSIZE):
+            if chunk:
+                # Check slow downloads by using exponential smoothing
+                chunk_time = time.perf_counter()
+                rate = CHUNKSIZE * 1e-6 / (chunk_time - chunk_time_prev)
+                smoothed_rate = SMOOTHING * rate + (1 - SMOOTHING) * smoothed_rate
+                chunk_time_prev = chunk_time
+                if (
+                    break_slow_downloads
+                    and (time.time() - transfer_time) > SLOW_DOWNLOAD_SAFETY
+                    and smoothed_rate < intake_esgf.conf["slow_download_threshold"]
+                ):
+                    logger.info(
+                        f"\x1b[38;5;209mbreaking slow download\033[0m {smoothed_rate:.2f} < {intake_esgf.conf['slow_download_threshold']:.2f} [Mb s-1] {url}"
+                    )
+                    transfer_time = time.time() - transfer_time
+                    log_download_information(
+                        download_db,
+                        host,
+                        transfer_time,
+                        smoothed_rate * transfer_time,
+                    )
+                    resp.close()
+                    raise StalledDownload()
 
-                    # Write and updates
-                    fdl.write(chunk)
-                    pbar.update(len(chunk))
+                # Write and updates
+                fdl.write(chunk)
+                PROGRESS.update(task_id, advance=len(chunk))
+                if done_event.is_set():
+                    return
+
     if hasher is None:
         logger.info(
             f"\x1b[91;20m{local_file=} could not be verified with given {hash_algorithm=} and {hash=}, skipping.\033[0m"
@@ -439,6 +434,7 @@ def download_and_verify(
     host = url[: url.index("/", 10)].replace("http://", "").replace("https://", "")
     logger.info(f"{transfer_time=:.2f} [s] at {rate:.2f} [Mb s-1] {url}")
     log_download_information(download_db, host, transfer_time, content_length * 1e-6)
+    PROGRESS.update(master_id, advance=1)
 
 
 def parallel_download(
@@ -446,22 +442,19 @@ def parallel_download(
     local_cache: list[Path],
     download_db: Path,
     logger: intake_esgf.logging.Logger,
-    esg_dataroot: None | list[Path] = None,
+    esg_dataroot: list[Path],
+    task_id: TaskID,
+    master_id: TaskID,
 ):
     """."""
     # does this exist on a copy we have access to?
-    if esg_dataroot is not None:
-        for path in esg_dataroot:
-            local_file = path / info["path"]
-            if local_file.exists():
-                logger.info(f"accessed {local_file}")
-                return info["key"], local_file
-    # have we already downloaded this?
-    for path in local_cache:
-        local_file = path / info["path"]
-        if local_file.exists():
-            logger.info(f"accessed {local_file}")
-            return info["key"], local_file
+    try:
+        local_file = get_local_file(info["path"], esg_dataroot + local_cache)
+        logger.info(f"accessed {local_file}")
+        return info["key"], local_file
+    except FileNotFoundError:
+        pass
+
     # else we try to download it, first we sort links by the fastest host to you
     df_rate = get_download_rate_dataframe(download_db)
     info["HTTPServer"] = sorted(
@@ -470,17 +463,20 @@ def parallel_download(
         reverse=True,
     )
     # keep trying to download until one works out
+    local_file = local_cache[0] / info["path"]
     for url in info["HTTPServer"]:
         try:
             download_and_verify(
                 url,
-                local_cache[0] / info["path"],
+                local_file,
                 info["checksum"],
                 info["checksum_type"],
                 info["size"],
                 download_db=download_db,
                 logger=logger,
                 break_slow_downloads=(url != info["HTTPServer"][-1]),
+                task_id=task_id,
+                master_id=master_id,
             )
         except (StalledDownload, ValueError):
             continue
@@ -490,6 +486,39 @@ def parallel_download(
         if local_file.exists():
             return info["key"], local_file
     return None, None
+
+
+def download_urls(
+    infos: list[dict[str, Any]],
+    local_cache: list[Path],
+    download_db: Path,
+    logger: intake_esgf.logging.Logger,
+    esg_dataroot: None | list[Path],
+):
+    """
+    Download URLs in parallel using a thread pool.
+    """
+    download = partial(
+        parallel_download,
+        local_cache=local_cache,
+        download_db=download_db,
+        logger=logger,
+        esg_dataroot=esg_dataroot if esg_dataroot is not None else [],
+    )
+    with PROGRESS:
+        download_size, download_unit = get_total_size(infos)
+        master_id = PROGRESS.add_task(
+            f"Downloading {len(infos)} file(s) totalling {download_size:.1f} [{download_unit}]",
+            total=len(infos),
+        )
+        with ThreadPoolExecutor(intake_esgf.conf["num_threads"]) as pool:
+            for info in infos:
+                task_id = PROGRESS.add_task(
+                    info["path"].name,
+                    filename=info["path"].name,
+                    start=False,
+                )
+                pool.submit(download, info=info, task_id=task_id, master_id=master_id)
 
 
 def get_search_criteria(
@@ -656,3 +685,15 @@ def get_time_extent(
     except Exception:
         return None, None
     return t0, tf
+
+
+def get_total_size(infos: list[dict[str, Any]]) -> tuple[float, str]:
+    """
+    Get the total size of all files to be downloaded.
+    """
+    download_size = sum([info["size"] for info in infos]) * 1e-6
+    download_unit = "Mb"
+    if download_size > 1e3:
+        download_size *= 1e-3
+        download_unit = "Gb"
+    return download_size, download_unit
