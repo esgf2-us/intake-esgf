@@ -15,6 +15,10 @@ from intake_esgf import ESGFCatalog
 
 # Streaming Data
 
+```{warning}
+ESGF is in transition, moving to [STAC](https://stacspec.org/en/)-based catalogs as CMIP7 becomes available. It is our experience that some services have become fragile, especially OPeNDAP links. While `intake-esgf` will only return streaming links that have returned a successful response, we are seeing that many links are not functional. You may find that even this tutorial fails with connection issues.
+```
+
 In addition to the transfer of entire files, data may be streamed to the user as it is required by their script. The benefit is that if only a small portion of the data is to be used, we avoid downloading the whole file. At the time of this writing, ESGF indices only contain [OPeNDAP](https://www.opendap.org/) access information. However, as we consider expanding support, the below interface will extend to other streaming/cloud-ready technologies such as [Zarr](https://zarr.dev/) stores, [kerchunk](https://github.com/fsspec/kerchunk), and [VirtualiZarr](https://github.com/zarr-developers/VirtualiZarr).
 
 To demonstrate this functionality, consider the following search for some future surface air temperature data from the UKESM model.
