@@ -153,6 +153,6 @@ def test_slow_cancel(tmp_path):
             download_db=Path(intake_esgf.conf["download_db"]).expanduser(),
             logger=intake_esgf.conf.get_logger(),
             break_slow_downloads=True,
-            task_id=1,
-            master_id=0,
+            task_id=-1,
+            master_id=-1,
         )
