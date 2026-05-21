@@ -42,15 +42,3 @@ pprint(paths)
 ```
 
 Note that this will also check first to see if data is available locally and download if not just as with `to_dataset_dict()`. In fact, internally our `to_dataset_dict()` function calls `to_path_dict()` first. You can also use this to obtain the OPenDAP links if you prefer.
-
-```{code-cell}
-cat = ESGFCatalog().search(
-    experiment_id="historical",
-    source_id="CanESM5",
-    frequency="mon",
-    variable_id="pr",
-    member_id="r1i1p1f1",
-)
-paths = cat.to_path_dict(prefer_streaming=True)
-pprint(paths)
-```
