@@ -2,6 +2,7 @@ import tempfile
 from pathlib import Path
 from typing import Any
 
+import numpy as np
 import pandas as pd
 import pytest
 import xarray as xr
@@ -343,3 +344,12 @@ def test_hashing(hash: str, hash_algorithm: str | None):
     if hasher is None:
         raise ValueError("Unexpected None multihash")
     assert hasher.verify(b"data")
+
+
+def test_get_total_size():
+    size, unit = base.get_total_size([{"size": 1e9}])
+    assert np.allclose(size, 1000)
+    assert unit == "Mb"
+    size, unit = base.get_total_size([{"size": 1e12}])
+    assert np.allclose(size, 1000)
+    assert unit == "Gb"
