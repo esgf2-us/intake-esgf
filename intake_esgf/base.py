@@ -369,6 +369,7 @@ def download_and_verify(
     tmp_file = Path(tmp_filename)
     hasher = _setup_hasher(hash, hash_algorithm)
     host = url[: url.index("/", 10)].replace("http://", "").replace("https://", "")
+    quiet = True if (task_id < 0 or master_id < 0) else quiet
 
     # Download, verify and log transfer
     CHUNKSIZE = 2**20  # 1 [Mb]
@@ -379,9 +380,11 @@ def download_and_verify(
     transfer_time = time.time()
     chunk_time_prev = time.perf_counter()
     smoothed_rate = intake_esgf.conf["slow_download_threshold"]
-    PROGRESS.update(task_id, total=content_length)
+    if not quiet:
+        PROGRESS.update(task_id, total=content_length)
     with open(tmp_fh, "wb") as fdl:
-        PROGRESS.start_task(task_id)
+        if not quiet:
+            PROGRESS.start_task(task_id)
         for chunk in resp.iter_content(chunk_size=CHUNKSIZE):
             if chunk:
                 # Check slow downloads by using exponential smoothing
@@ -409,7 +412,8 @@ def download_and_verify(
 
                 # Write and updates
                 fdl.write(chunk)
-                PROGRESS.update(task_id, advance=len(chunk))
+                if not quiet:
+                    PROGRESS.update(task_id, advance=len(chunk))
                 if done_event.is_set():
                     return
 
@@ -434,7 +438,8 @@ def download_and_verify(
     host = url[: url.index("/", 10)].replace("http://", "").replace("https://", "")
     logger.info(f"{transfer_time=:.2f} [s] at {rate:.2f} [Mb s-1] {url}")
     log_download_information(download_db, host, transfer_time, content_length * 1e-6)
-    PROGRESS.update(master_id, advance=1)
+    if not quiet:
+        PROGRESS.update(master_id, advance=1)
 
 
 def parallel_download(
@@ -494,6 +499,7 @@ def download_urls(
     download_db: Path,
     logger: intake_esgf.logging.Logger,
     esg_dataroot: None | list[Path],
+    quiet: bool = False,
 ):
     """
     Download URLs in parallel using a thread pool.
@@ -505,6 +511,7 @@ def download_urls(
         logger=logger,
         esg_dataroot=esg_dataroot if esg_dataroot is not None else [],
     )
+    PROGRESS.disable = quiet
     with PROGRESS:
         download_size, download_unit = get_total_size(infos)
         master_id = PROGRESS.add_task(

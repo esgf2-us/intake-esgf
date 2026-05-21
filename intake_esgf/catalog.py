@@ -642,6 +642,7 @@ class ESGFCatalog:
                 self.download_db,
                 self.logger,
                 self.esg_dataroot,
+                quiet,
             )
 
         # unpack the https files which should now exist in local cache
