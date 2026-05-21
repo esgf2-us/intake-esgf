@@ -19,8 +19,6 @@ defaults = {
     },
     "globus_indices": {
         "ESGF2-US-1.5-Catalog": True,
-        "anl-dev": False,
-        "ornl-dev": False,
     },
     "solr_indices": {
         "esgf.ceda.ac.uk": False,
@@ -28,8 +26,6 @@ defaults = {
         "esgf-node.ipsl.upmc.fr": False,
         "esg-dn1.nsc.liu.se": False,
         "esgf.nci.org.au": False,
-        "esgf-node.ornl.gov": False,
-        "esgf-node.llnl.gov": False,
     },
     "additional_df_cols": [],
     "esg_dataroot": [
