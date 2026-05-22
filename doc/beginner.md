@@ -1,7 +1,4 @@
 ---
-jupytext:
-  text_representation:
-    format_name: myst
 kernelspec:
   display_name: Python 3
   name: python3
@@ -18,14 +15,14 @@ At the highest level, ESGF stores data in *projects* such as `CMIP5` and `CMIP6`
 Perhaps the most important search criteria to determine is the name of the variable you wish to use. `intake-esgf` has some functionality to assist.
 First, import and instantiate the catalog.
 
-```{code-cell}
+```{code-cell} python
 from intake_esgf import ESGFCatalog
 cat = ESGFCatalog()
 ```
 
 Then you can use the catalog to perform a free text search for any word that may be related to the variable for which you are searching. In this case, we will search for `air temperature surface`.
 
-```{code-cell}
+```{code-cell} python
 cat.variable_info("air temperature surface")
 ```
 
@@ -39,8 +36,13 @@ One of the more useful search facets is the `experiment_id`, a unique identifier
 
 One commonly used experiment is `historical`, where models are run using reconstructions of the historical earth state from 1850 until 2015. We will use this in our example search.
 
-```{code-cell}
+```{code-cell} python
+:tags: [remove-output]
 cat.search(variable_id="tas",experiment_id="historical")
+```
+```{code-cell} python
+:tags: [remove-input]
+cat
 ```
 
 This will populate an underlying pandas dataframe with the search results. The columns of that dataframe and unique values are presented . This exposes more of the control vocabulary for CMIP6. We have already explored `variable_id` and `experiment_id`. Now we explain more of the control vocabulary emphasizing what we find to be the more useful facets.
@@ -57,7 +59,8 @@ This will populate an underlying pandas dataframe with the search results. The c
 
 We will refine our search to select a single model `CanESM5`, variant `r1i1p1f1`, and table `Amon`.
 
-```{code-cell}
+```{code-cell} python
+:tags: [remove-output]
 cat.search(
     variable_id="tas",
     experiment_id="historical",
@@ -66,11 +69,20 @@ cat.search(
     table_id="Amon"
 )
 ```
+```{code-cell} python
+:tags: [remove-input]
+cat
+```
 
 Once your search has been sufficiently narrowed, you may download into a dictionary of [xarray](https://docs.xarray.dev/en/stable/) datasets.
 
-```{code-cell}
+```{code-cell} python
+:tags: [remove-output]
 dsd = cat.to_dataset_dict()
+```
+```{code-cell} python
+:tags: [remove-input]
+dsd
 ```
 
 Note that you do not need to explicitly search for cell measures such as `areacella`. These will be included [automatically](measures). The files are downloaded locally to a cache directory which mirrors the directory structure of the remote storate. So while the above code is how you download data, it is also how you load it into memory for your analysis scripts. There is no need to handle files in your working directory or write complicated code to load them into memory.
@@ -79,9 +91,9 @@ Note that you do not need to explicitly search for cell measures such as `areace
 
 In this example, we will just take a temporal mean and plot the result using matplotlib.
 
-```{code-cell}
+```{code-cell} python
 import matplotlib.pyplot as plt
 fig, ax = plt.subplots(figsize=(6, 4), tight_layout=True)
 ds = dsd["tas"]["tas"].mean(dim="time") - 273.15  # to [C]
-ds.plot(ax=ax, cmap="bwr", vmin=-40, vmax=40, cbar_kwargs={"label": "tas [C]"})
+ds.plot(ax=ax, cmap="bwr", vmin=-40, vmax=40, cbar_kwargs={"label": "tas [C]"});
 ```

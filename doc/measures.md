@@ -1,7 +1,4 @@
 ---
-jupytext:
-  text_representation:
-    format_name: myst
 kernelspec:
   display_name: Python 3
   name: python3
@@ -24,7 +21,8 @@ are, we find them for you and add them to your dataset by default (disable with
 
 Consider the following search for data with `UKESM1-0-LL`. We are looking for a land variable `gpp`, the gross primary productivity.
 
-```{code-cell}
+```{code-cell} python
+:tags: [remove-output]
 from intake_esgf import ESGFCatalog
 cat = ESGFCatalog().search(
     variable_id="gpp",
@@ -36,20 +34,24 @@ cat = ESGFCatalog().search(
 dsd = cat.to_dataset_dict()
 ```
 
-The progress bar will let you know that we are searching for cell measure
-information. We determine which measures need downloaded by looking in the
-dataset attributes. Since `gpp` is a land variable, we see that its
+The progress bar (not shown) will let you know that we are searching for cell
+measure information. We determine which measures need downloaded by looking in
+the dataset attributes. Since `gpp` is a land variable, we see that its
 `cell_measures ='area: areacella'` which indicates that this data should be also
 downloaded. However you will also find `where land` in the `cell_methods`
 meaning that we also need `sftlf`, the land fractions. If you look at the
 resulting dataset, you will find that both have been associated.
 
-```{code-cell}
+```{code-cell} python
+:tags: [remove-input]
 dsd["gpp"]
 ```
 
-What makes this particular example difficult is that the cell measures for this model are only found in the `piControl` experiment, for the `r1i1p1f2` variant. Our methods finds the right measures, which you can see by printing out the session log and looking for which `areacella` files are downloaded / accessed.
+What makes this particular example difficult is that the cell measures for this
+model are only found in the `piControl` experiment, for the `r1i1p1f2` variant.
+Our methods finds the right measures, which you can see by printing out the
+session log and looking for which `areacella` files are downloaded / accessed.
 
-```{code-cell}
+```{code-cell} python
 print(cat.session_log())
 ```

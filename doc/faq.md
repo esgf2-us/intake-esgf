@@ -1,7 +1,4 @@
 ---
-jupytext:
-  text_representation:
-    format_name: myst
 kernelspec:
   display_name: Python 3
   name: python3
@@ -23,7 +20,7 @@ No, intake-esgf catalogs are initially empty and are populated only when you per
 
 You can check the projects which are currently supported:
 
-```{code-cell}
+```{code-cell} python
 from intake_esgf import supported_projects
 print(supported_projects())
 ```

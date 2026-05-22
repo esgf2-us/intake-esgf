@@ -1,7 +1,4 @@
 ---
-jupytext:
-  text_representation:
-    format_name: myst
 kernelspec:
   display_name: Python 3
   name: python3
@@ -13,7 +10,7 @@ At a simple level, you can think of `intake-esgf` as analagous to the ESGF web [
 
 Consider the following search, motivated by a desire to study controls (temperature, precipitation) on the carbon cycle (gross primary productivty) across a number of historical and future scenarios.
 
-```{code-cell}
+```{code-cell} python
 from intake_esgf import ESGFCatalog
 cat = ESGFCatalog().search(
     experiment_id=["historical", "ssp585", "ssp370", "ssp245"],
@@ -25,7 +22,7 @@ print(cat)
 
 Even if this exact application does not resonate with you, the situation is a familiar one. We have several thousand results with many different models and variants to sort through. To help guide you to which groups of models might be useful to you, we provide the following function.
 
-```{code-cell}
+```{code-cell} python
 cat.model_groups()
 ```
 
@@ -35,7 +32,7 @@ This returns a pandas series where the results have been grouped and sorted by `
 
 If you glance through the model groups, you will see that, relative to our search, many will be *incomplete*. By this we mean, that there are many model groups that will not have all the variables in all the experiments that we wish to include in our analysis. Since we are looking for 4 experiments and 3 variables, we need the model groups with 12 dataset results. We can check which groups satisfy this condition by operating on the model group pandas series.
 
-```{code-cell}
+```{code-cell} python
 mgs = cat.model_groups()
 print(mgs[mgs==12])
 ```
@@ -44,7 +41,7 @@ The rest are incomplete and we would like a fast way to remove them from the sea
 
 `intake-esgf` provides an interface which uses a user-provided function to remove incomplete entries. Internally, we will loop over all model groups in the results and pass your function the portion of the dataframe that corresponds to the current model group. Your function then needs to return a boolean based on the contents of that sub-dataframe.
 
-```{code-cell}
+```{code-cell} python
 def should_i_keep_it(sub_df):
     # this model group has all experiments/variables
     if len(sub_df) == 12:
@@ -59,7 +56,7 @@ def should_i_keep_it(sub_df):
 
 Then we pass this function to the catalog by the `remove_incomplete()` function and observe how it has impacted the search results.
 
-```{code-cell}
+```{code-cell} python
 cat.remove_incomplete(should_i_keep_it)
 print(cat.model_groups())
 ```
@@ -68,7 +65,7 @@ print(cat.model_groups())
 
 Depending on the goals and scope of your analysis, you may want to use only a single variant per model. This can be challenging to locate as not all variants have all the experiments and models. However, now that we have removed the incomplete results, we can now call the `remove_ensembles()` function which will only keep the *smallest* `member_id` for each model group. By smallest, we mean that first entry after a hierarchical sort using the integer index values of each label in the `member_id`.
 
-```{code-cell}
+```{code-cell} python
 cat.remove_ensembles()
 print(cat.model_groups())
 ```

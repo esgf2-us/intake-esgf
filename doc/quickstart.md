@@ -1,7 +1,4 @@
 ---
-jupytext:
-  text_representation:
-    format_name: myst
 kernelspec:
   display_name: Python 3
   name: python3
@@ -23,7 +20,7 @@ conda install -c conda-forge intake-esgf
 
 Next you will need to import the `ESGFCatalog` and `matplotlib` for plotting later in the document.
 
-```{code-cell}
+```{code-cell} python
 from intake_esgf import ESGFCatalog
 import matplotlib.pyplot as plt
 ```
@@ -37,7 +34,7 @@ default to query a Globus-based index which has information about holdings at
 the Argonne Leadership Computing Facility (ALCF) only. We will demonstrate how
 this may be expanded to include other nodes [later](configure).
 
-```{code-cell}
+```{code-cell} python
 cat = ESGFCatalog()
 print(cat)  # <-- nothing to see here yet
 ```
@@ -46,13 +43,18 @@ To populate the catalog, perform a search using the traditional facets. If you
 are not familiar with these, we recommend you starting with
 our [beginner](beginner) tutorial.
 
-```{code-cell}
+```{code-cell} python
+:tags: [remove-output]
 cat.search(
     experiment_id="historical",
     source_id="CanESM5",
     frequency="mon",
     variable_id=["gpp", "tas", "pr"],
 )
+```
+```{code-cell} python
+:tags: [remove-input]
+cat
 ```
 
 The search has populated the catalog where results are stored internally as a
@@ -65,7 +67,8 @@ cumulative and so we need to repeat the previous facets in this subsequent
 search. Also, while for the tutorial's sake we repeat the search here, in your
 own analysis codes, you could simply edit your previous search.
 
-```{code-cell}
+```{code-cell} python
+:tags: [remove-output]
 cat.search(
     experiment_id="historical",
     source_id="CanESM5",
@@ -73,6 +76,10 @@ cat.search(
     variable_id=["gpp", "tas", "pr"],
     variant_label="r1i1p1f1",  # addition from the last search
 )
+```
+```{code-cell} python
+:tags: [remove-input]
+cat
 ```
 
 ## Obtaining the datasets
@@ -99,23 +106,28 @@ quickly as we can.
    these locations. Once downloaded, we check file validity, and load into
    `xarray` containers.
 
-```{code-cell}
+```{code-cell} python
+:tags: [remove-output]
 dsd = cat.to_dataset_dict(ignore_facets='table_id')
 ```
+```{code-cell} python
+:tags: [remove-input]
+dsd
+```
 
-You will notice that progress bars inform you that file information is being
-obtained and that downloads are taking place. As files are downloaded, they are
-placed into a local cache in `${HOME}/.esgf` in a directory structure that
-mirrors that of the remote storage. For future analysis which uses these
-datasets, `intake-esgf` will first check this cache to see if a file already
-exists and use it instead of re-downloading. Then it returns a dictionary whose
-keys are by default the minimal set of facets to uniquely describe a dataset in
-the current search.
+You will notice that progress bars (not shown)inform you that file information
+is being obtained and that downloads are taking place. As files are downloaded,
+they are placed into a local cache in `${HOME}/.esgf` (the location is
+[configurable](configure)) in a directory structure that mirrors that of the
+remote storage. For future analysis which uses these datasets, `intake-esgf`
+will first check this cache to see if a file already exists and use it instead
+of re-downloading. Then it returns a dictionary whose keys are by default the
+minimal set of facets to uniquely describe a dataset in the current search.
 
 Now that we have downloaded/accessed the data and loaded it into memory, we can
 look at the keys of the resulting dictionary.
 
-```{code-cell}
+```{code-cell} python
 print(dsd.keys())
 ```
 
@@ -128,7 +140,7 @@ needed.
 
 ## Plots
 
-```{code-cell}
+```{code-cell} python
 fig, axs = plt.subplots(figsize=(6, 12), nrows=3)
 
 # temperature

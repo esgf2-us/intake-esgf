@@ -42,16 +42,10 @@ dev = [
     "types-requests>=2.32.4.20250611",
 ]
 docs = [
-    "distributed>=2024.12.0",
-    "furo>=2024.8.6",
-    "ipywidgets>=8.1.5",
-    "matplotlib>=3.10.0",
-    "myst-nb>=1.1.2",
-    "nc-time-axis>=1.4.1",
-    "numpydoc>=1.8.0",
-    "sphinx<9.0.0",
-    "sphinx-autosummary-accessors>=2023.4.0",
-    "sphinx-copybutton>=0.5.2",
+    "ipykernel>=7.2.0",
+    "jupyterlab-myst>=2.6.0",
+    "matplotlib>=3.10.9",
+    "mystmd>=1.9.1",
 ]
 
 [build-system]

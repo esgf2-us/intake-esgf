@@ -1,7 +1,4 @@
 ---
-jupytext:
-  text_representation:
-    format_name: myst
 kernelspec:
   display_name: Python 3
   name: python3
@@ -27,13 +24,13 @@ A portion of the ESGF data archive is stored in public [Guest Collections](https
 
 There is Globus transfer information in several of the indices, including the default. For demonstration, we will search for a few files for a model whose file sizes are smaller.
 
-```{code-cell}
+```{code-cell} python
 :tags: [remove-cell]
 import intake_esgf
 from intake_esgf import ESGFCatalog
 ```
 
-```{code-cell}
+```{code-cell} python
 cat = ESGFCatalog()
 cat.search(
     experiment_id="historical",
@@ -50,7 +47,7 @@ cat.search(
 
 This portion of the process what you would do normally. To use globus transfers where possible, you need to include additional arguments to `to_dataset_dict()`. The first is `globus_endpoint`, the `UUID` of the destination collection to which you will transfer the data. The second is `globus_path`, any additional path you wish to add to the root path of the destination collection.
 
-```{code-cell}
+```{code-cell} python
 :tags: [skip-execution]
 dsd = cat.to_dataset_dict(
     globus_endpoint=COLLECTION_UUID, # <-- your data here
