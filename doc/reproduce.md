@@ -1,16 +1,11 @@
 ---
-jupytext:
-  text_representation:
-    format_name: myst
 kernelspec:
   display_name: Python 3
   name: python3
 ---
 
-```{code-cell}
----
+```{code-cell} python
 tags: [remove-cell]
----
 from intake_esgf import ESGFCatalog
 ```
 
@@ -23,7 +18,7 @@ current functionality. Consider the following query assumed to be used in an
 unspecified analysis. For comparison, we will print the underlying dataframe to
 show the results of the search.
 
-```{code-cell}
+```{code-cell} python
 cat = ESGFCatalog().search(
     experiment_id="historical",
     source_id="CanESM5",
@@ -36,14 +31,14 @@ cat.df
 
 In the course of the analysis, you would download the datasets into a dictionary.
 
-```{code-cell}
+```{code-cell} python
 dsd = cat.to_dataset_dict(add_measures=False)
 ```
 
 Then you may loop through the datasets and pull out the `tracking_id` from the
 global attributes of each dataset.
 
-```{code-cell}
+```{code-cell} python
 tracking_ids = [ds.tracking_id for _,ds in dsd.items()]
 for tracking_id in tracking_ids:
     print(tracking_id)
@@ -54,7 +49,7 @@ provided in some form in your paper or supplemental material to be precise about
 what ESGF data you used. If you have a list of `tracking_id`s, then you can pass
 them into `from_tracking_ids()` to reproduce the catalog.
 
-```{code-cell}
+```{code-cell} python
 new_cat = ESGFCatalog().from_tracking_ids(tracking_ids)
 new_cat.df
 ```

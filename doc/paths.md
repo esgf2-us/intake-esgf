@@ -1,13 +1,10 @@
 ---
-jupytext:
-  text_representation:
-    format_name: myst
 kernelspec:
   display_name: Python 3
   name: python3
 ---
 
-```{code-cell}
+```{code-cell} python
 :tags: [remove-cell]
 from intake_esgf import ESGFCatalog
 from pprint import pprint
@@ -24,7 +21,7 @@ While the basic paradigm of `intake-esgf` is to return xarray datasets for every
 
 There is a catalog method we call `to_path_dict()`. This works just like `to_dataset_dict()` except we do not call xarray dataset constructors on the paths returned for you. Both functions even have most of the same keyword arguments. If we perform a search
 
-```{code-cell}
+```{code-cell} python
 cat = ESGFCatalog().search(
     experiment_id="historical",
     source_id="CanESM5",
@@ -36,7 +33,7 @@ cat = ESGFCatalog().search(
 
 Then we can call instead the path function and then print the local paths.
 
-```{code-cell}
+```{code-cell} python
 paths = cat.to_path_dict()
 pprint(paths)
 ```

@@ -1,7 +1,4 @@
 ---
-jupytext:
-  text_representation:
-    format_name: myst
 kernelspec:
   display_name: Python 3
   name: python3
@@ -9,10 +6,8 @@ kernelspec:
 
 # Caching Requests
 
-```{code-cell}
----
+```{code-cell} python
 tags: [remove-cell]
----
 import time
 from intake_esgf import ESGFCatalog
 import intake_esgf
@@ -34,7 +29,7 @@ caching](https://requests-cache.readthedocs.io/en/stable/).
 
 Consider the following search, wrapped in a performance timer.
 
-```{code-cell}
+```{code-cell} python
 search_time = time.perf_counter()
 cat = ESGFCatalog().search(
     experiment_id=["historical"],
@@ -46,7 +41,7 @@ print(f"The first search took {time.perf_counter() - search_time:.1f} [s].")
 
 And now we repeat the search:
 
-```{code-cell}
+```{code-cell} python
 search_time = time.perf_counter()
 cat = ESGFCatalog().search(
     experiment_id=["historical"],
@@ -69,14 +64,14 @@ consider is the expiration of the cache. By default it is set to 1 hour, but you
 may wish to change it depending on your use case. The relevant option is
 `expire_after` (in seconds) in the options for `requests_cache`:
 
-```{code-cell}
+```{code-cell} python
 intake_esgf.conf.set(requests_cache=dict(expire_after=1)) # [s]
 time.sleep(2) # sleep long enough for cache to expire
 ```
 
 With these new cache options, repeating the search will again take more time.
 
-```{code-cell}
+```{code-cell} python
 search_time = time.perf_counter()
 cat = ESGFCatalog().search(
     experiment_id=["historical"],

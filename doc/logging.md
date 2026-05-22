@@ -1,7 +1,4 @@
 ---
-jupytext:
-  text_representation:
-    format_name: myst
 kernelspec:
   display_name: Python 3
   name: python3
@@ -13,7 +10,7 @@ If you would like details about what `intake-esgf` is doing, look in the local c
 
 You can also look at just this session (since you instantiated the catalog) by calling `session_log()` and printing it. Consider the following search.
 
-```{code-cell}
+```{code-cell} python
 from intake_esgf import ESGFCatalog
 
 cat = ESGFCatalog().search(
@@ -29,7 +26,7 @@ print(cat.session_log())
 
 In this case you will see how long each index took to return a response and if any failed as well as from where the file was downloaded if not already on your system. Initially we randomize download locations from all available, but as you use `intake-esgf` we will remember the hosts which provide you the fastest download times. You can see where your data has come from by:
 
-```{code-cell}
+```{code-cell} python
 cat.download_summary()
 ```
 

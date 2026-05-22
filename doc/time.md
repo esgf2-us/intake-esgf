@@ -1,7 +1,4 @@
 ---
-jupytext:
-  text_representation:
-    format_name: myst
 kernelspec:
   display_name: Python 3
   name: python3
@@ -23,7 +20,7 @@ when obtaining file information for loading/downloading, only touch files that
 fall within some part of that span. If, for example, we only wish to analyze
 data from the 60's through the 90's, we can add the following to our search:
 
-```{code-cell}
+```{code-cell} python
 from intake_esgf import ESGFCatalog
 cat = ESGFCatalog().search(
     experiment_id="historical",
@@ -39,13 +36,13 @@ dsd = cat.to_dataset_dict()
 The NorESM2-LM model tends to heavily split up their model output, in this case
 by decades. Notice the time span listed when we print the resulting dataset:
 
-```{code-cell}
+```{code-cell} python
 print(dsd["msftmz"])
 ```
 
 Note that you do not need to provide both timestamps. If you want to check what
 intake-esgf filtered, we write these out in the session log:
 
-```{code-cell}
+```{code-cell} python
 print(cat.session_log())
 ```
