@@ -4,6 +4,7 @@ build:
   os: "ubuntu-24.04"
   tools:
     python: "3.14"
+    nodejs: "22"
   commands:
     - asdf plugin add pandoc
     - asdf plugin add uv
