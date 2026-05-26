@@ -4,16 +4,16 @@ kernelspec:
   name: python3
 ---
 
+# Streaming Data
+
 ```{code-cell} python
 :tags: [remove-cell]
 import matplotlib.pyplot as plt
 from intake_esgf import ESGFCatalog
 ```
 
-# Streaming Data
-
 ```{warning}
-ESGF is in transition, moving to [STAC](https://stacspec.org/en/)-based catalogs as CMIP7 becomes available. It is our experience that some services have become fragile, especially OPeNDAP links. While `intake-esgf` will only return streaming links that have returned a successful response, we are seeing that many links are not functional. You may find that even this tutorial fails with connection issues.
+ESGF is in transition, moving to [STAC](https://stacspec.org/en/)-based catalogs as CMIP7 becomes available. It is our experience that some services have become fragile, especially OPeNDAP links. While `intake-esgf` will only return streaming links that have returned a successful response, we are seeing that even the returned links are not functional. You may find that even this tutorial fails to render with connection issues.
 ```
 
 In addition to the transfer of entire files, data may be streamed to the user as it is required by their script. The benefit is that if only a small portion of the data is to be used, we avoid downloading the whole file. At the time of this writing, ESGF indices only contain [OPeNDAP](https://www.opendap.org/) access information. However, as we consider expanding support, the below interface will extend to other streaming/cloud-ready technologies such as [Zarr](https://zarr.dev/) stores, [kerchunk](https://github.com/fsspec/kerchunk), and [VirtualiZarr](https://github.com/zarr-developers/VirtualiZarr).
@@ -21,6 +21,7 @@ In addition to the transfer of entire files, data may be streamed to the user as
 To demonstrate this functionality, consider the following search for some future surface air temperature data from the UKESM model.
 
 ```{code-cell} python
+:tags: [remove-output]
 cat = ESGFCatalog().search(
     experiment_id="ssp585",
     source_id="UKESM1-0-LL",
@@ -29,12 +30,21 @@ cat = ESGFCatalog().search(
 )
 cat.remove_ensembles()
 ```
-
+```{code-cell} python
+:tags: [remove-input]
+cat
+```
 To harvest the OPeNDAP access link from the index nodes, you tell the package that you `prefer_streaming=True`. Not all files will have this capability, but if they do, then this will tell `intake-esgf` to use them. Also, in this example we do not need any cell measures and so we will disable that in this search.
 
 ```{code-cell} python
+:tags: [remove-output]
 dsd = cat.to_dataset_dict(prefer_streaming=True, add_measures=False)
 ```
+```{code-cell} python
+:tags: [remove-input]
+dsd
+```
+
 
 At this point, the dataset dictionary is returned but you will notice that no file download messages were received. The OPeNDAP access link was passed to the xarray constructor. We now proceed with our analysis as if the data is local. In this example, we wish to see what future temperatures will be under the SSP585 scenario over my hometown.
 

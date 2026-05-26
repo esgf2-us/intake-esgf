@@ -22,6 +22,7 @@ While the basic paradigm of `intake-esgf` is to return xarray datasets for every
 There is a catalog method we call `to_path_dict()`. This works just like `to_dataset_dict()` except we do not call xarray dataset constructors on the paths returned for you. Both functions even have most of the same keyword arguments. If we perform a search
 
 ```{code-cell} python
+:tags: [remove-output]
 cat = ESGFCatalog().search(
     experiment_id="historical",
     source_id="CanESM5",
@@ -34,7 +35,12 @@ cat = ESGFCatalog().search(
 Then we can call instead the path function and then print the local paths.
 
 ```{code-cell} python
+:tags: [remove-output]
 paths = cat.to_path_dict()
+```
+
+```{code-cell} python
+:tags: [remove-input]
 pprint(paths)
 ```
 

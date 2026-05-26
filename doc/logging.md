@@ -6,11 +6,10 @@ kernelspec:
 
 # Logging
 
-If you would like details about what `intake-esgf` is doing, look in the local cache directory (the default location is `${HOME}/.esgf/`) for a `esgf.log` file. This is a full history of everything we have searched, downloaded, or accessed.
-
-You can also look at just this session (since you instantiated the catalog) by calling `session_log()` and printing it. Consider the following search.
+If you would like details about what `intake-esgf` is doing, you can consult your catalog's session log. This will be everything we have done since your catalog was instantiated. Consider the following search.
 
 ```{code-cell} python
+:tags: [remove-output]
 from intake_esgf import ESGFCatalog
 
 cat = ESGFCatalog().search(
@@ -21,6 +20,10 @@ cat = ESGFCatalog().search(
     frequency="fx",
 )
 ds = cat.to_dataset_dict(add_measures=False)
+print(cat.session_log())
+```
+```{code-cell} python
+:tags: [remove-input]
 print(cat.session_log())
 ```
 

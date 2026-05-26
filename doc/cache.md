@@ -30,25 +30,36 @@ caching](https://requests-cache.readthedocs.io/en/stable/).
 Consider the following search, wrapped in a performance timer.
 
 ```{code-cell} python
+:tags: [remove-output]
 search_time = time.perf_counter()
 cat = ESGFCatalog().search(
     experiment_id=["historical"],
     variable_id=["tas", "thetao"],
     frequency="mon",
 )
-print(f"The first search took {time.perf_counter() - search_time:.1f} [s].")
+search_time = time.perf_counter() - search_time
+print(f"The first search took {search_time:.1f} [s].")
 ```
-
+```{code-cell} python
+:tags: [remove-input]
+print(f"The first search took {search_time:.1f} [s].")
+```
 And now we repeat the search:
 
 ```{code-cell} python
+:tags: [remove-output]
 search_time = time.perf_counter()
 cat = ESGFCatalog().search(
     experiment_id=["historical"],
     variable_id=["tas", "thetao"],
     frequency="mon",
 )
-print(f"The second search took {time.perf_counter() - search_time:.1f} [s].")
+search_time = time.perf_counter() - search_time
+print(f"The second search took {search_time:.1f} [s].")
+```
+```{code-cell} python
+:tags: [remove-input]
+print(f"The second search took {search_time:.1f} [s].")
 ```
 
 Notice that the second search is faster. The first time your search made a
@@ -72,11 +83,17 @@ time.sleep(2) # sleep long enough for cache to expire
 With these new cache options, repeating the search will again take more time.
 
 ```{code-cell} python
+:tags: [remove-output]
 search_time = time.perf_counter()
 cat = ESGFCatalog().search(
     experiment_id=["historical"],
     variable_id=["tas", "thetao"],
     frequency="mon",
 )
-print(f"The third search took {time.perf_counter() - search_time:.1f} [s].")
+search_time = time.perf_counter() - search_time
+print(f"The third search took {search_time:.1f} [s].")
+```
+```{code-cell} python
+:tags: [remove-input]
+print(f"The third search took {search_time:.1f} [s].")
 ```

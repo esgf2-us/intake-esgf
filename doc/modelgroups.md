@@ -11,13 +11,17 @@ At a simple level, you can think of `intake-esgf` as analagous to the ESGF web [
 Consider the following search, motivated by a desire to study controls (temperature, precipitation) on the carbon cycle (gross primary productivty) across a number of historical and future scenarios.
 
 ```{code-cell} python
+:tags: [remove-output]
 from intake_esgf import ESGFCatalog
 cat = ESGFCatalog().search(
     experiment_id=["historical", "ssp585", "ssp370", "ssp245"],
     variable_id=["gpp", "tas", "pr"],
     table_id=["Amon", "Lmon"],
 )
-print(cat)
+```
+```{code-cell} python
+:tags: [remove-input]
+cat
 ```
 
 Even if this exact application does not resonate with you, the situation is a familiar one. We have several thousand results with many different models and variants to sort through. To help guide you to which groups of models might be useful to you, we provide the following function.
