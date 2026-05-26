@@ -9,6 +9,7 @@ kernelspec:
 You have a lot of control over how you want they keys of the output dictionary to appear. For demonstration purposes, consider the following search.
 
 ```{code-cell} python
+:tags: [remove-output]
 from intake_esgf import ESGFCatalog
 cat = ESGFCatalog().search(
     experiment_id="historical",
@@ -17,14 +18,22 @@ cat = ESGFCatalog().search(
     source_id=["IPSL-CM6A-LR", "CanESM5"],
     variable_id=["tas", "gpp"],
 )
-print(cat)
+```
+```{code-cell} python
+:tags: [remove-input]
+cat
 ```
 
 By default, we will build keys out of the facet values that are different among the entries in the output dictionary. So since all the datasets are in the same activity, experiment and use the same variant and grid labels, these facets need not be in the output dictionary keys.
 
 ```{code-cell} python
-ds = cat.to_dataset_dict()
-for key in ds.keys():
+:tags: [remove-output]
+dsd = cat.to_dataset_dict()
+print(dsd.keys())
+```
+```{code-cell} python
+:tags: [remove-input]
+for key in dsd.keys():
     print(key)
 ```
 
@@ -33,8 +42,13 @@ for key in ds.keys():
 However, on inspection you will notice that the institution and table are not needed either, but because they have different values were included in the keys by default. You can specify that certain facets be ignored in the output dictionary keys.
 
 ```{code-cell} python
-ds = cat.to_dataset_dict(ignore_facets=["institution_id", "table_id"])
-for key in ds.keys():
+:tags: [remove-output]
+dsd = cat.to_dataset_dict(ignore_facets=["institution_id", "table_id"])
+print(dsd.keys())
+```
+```{code-cell} python
+:tags: [remove-input]
+for key in dsd.keys():
     print(key)
 ```
 
@@ -43,8 +57,13 @@ for key in ds.keys():
 You may decide that you do not like our attempt to provide simpler keys in which case you may use the full set of facets.
 
 ```{code-cell} python
-ds = cat.to_dataset_dict(minimal_keys=False)
-for key in ds.keys():
+:tags: [remove-output]
+dsd = cat.to_dataset_dict(minimal_keys=False)
+print(dsd.keys())
+```
+```{code-cell} python
+:tags: [remove-input]
+for key in dsd.keys():
     print(key)
 ```
 
@@ -53,7 +72,12 @@ for key in ds.keys():
 You may also use a different separator. By default use the `.` symbol, but you may choose any character. This can be useful if you wish to use [`xarray.DataTree`](https://docs.xarray.dev/en/latest/user-guide/data-structures.html#datatree).
 
 ```{code-cell} python
-ds = cat.to_dataset_dict(minimal_keys=False,separator="/")
-for key in ds.keys():
+:tags: [remove-output]
+dsd = cat.to_dataset_dict(minimal_keys=False,separator="/")
+print(dsd.keys())
+```
+```{code-cell} python
+:tags: [remove-input]
+for key in dsd.keys():
     print(key)
 ```

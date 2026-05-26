@@ -4,12 +4,12 @@ kernelspec:
   name: python3
 ---
 
+# Reproducibility
+
 ```{code-cell} python
-tags: [remove-cell]
+:tags: [remove-cell]
 from intake_esgf import ESGFCatalog
 ```
-
-# Reproducibility
 
 If you are using ESGF data in an analysis publication, the journal to which you
 are submitting may require that you provide data citations or availability.
@@ -19,6 +19,7 @@ unspecified analysis. For comparison, we will print the underlying dataframe to
 show the results of the search.
 
 ```{code-cell} python
+:tags: [remove-output]
 cat = ESGFCatalog().search(
     experiment_id="historical",
     source_id="CanESM5",
@@ -28,10 +29,15 @@ cat = ESGFCatalog().search(
 )
 cat.df
 ```
+```{code-cell} python
+:tags: [remove-input]
+cat.df
+```
 
 In the course of the analysis, you would download the datasets into a dictionary.
 
 ```{code-cell} python
+:tags: [remove-output]
 dsd = cat.to_dataset_dict(add_measures=False)
 ```
 
@@ -50,7 +56,11 @@ what ESGF data you used. If you have a list of `tracking_id`s, then you can pass
 them into `from_tracking_ids()` to reproduce the catalog.
 
 ```{code-cell} python
+:tags: [remove-output]
 new_cat = ESGFCatalog().from_tracking_ids(tracking_ids)
+```
+```{code-cell} python
+:tags: [remove-input]
 new_cat.df
 ```
 

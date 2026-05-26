@@ -31,6 +31,7 @@ from intake_esgf import ESGFCatalog
 ```
 
 ```{code-cell} python
+:tags: [remove-output]
 cat = ESGFCatalog()
 cat.search(
     experiment_id="historical",
@@ -44,7 +45,10 @@ cat.search(
     member_id="r1i1p1f1",
 )
 ```
-
+```{code-cell} python
+:tags: [remove-input]
+cat
+```
 This portion of the process what you would do normally. To use globus transfers where possible, you need to include additional arguments to `to_dataset_dict()`. The first is `globus_endpoint`, the `UUID` of the destination collection to which you will transfer the data. The second is `globus_path`, any additional path you wish to add to the root path of the destination collection.
 
 ```{code-cell} python
