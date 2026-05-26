@@ -5,6 +5,7 @@ from typing import Any
 import numpy as np
 import pandas as pd
 import pytest
+import requests
 import xarray as xr
 
 import intake_esgf
@@ -34,6 +35,10 @@ def test_select_streaming_links(file_info, df_rate, monkeypatch):
         class FakeResponse:
             status_code = 200 if url.startswith("http://esgf-node.ornl.gov") else 400
 
+            def raise_for_status(self):
+                if self.status_code != 200:
+                    raise requests.exceptions.HTTPError()
+
         return FakeResponse()
 
     # Replace the head functionality with the above
@@ -59,6 +64,10 @@ def test_partition_infos(file_infos, monkeypatch):
     def fake_head(url: str, timeout: int) -> Any:
         class FakeResponse:
             status_code = 200
+
+            def raise_for_status(self):
+                if self.status_code != 200:
+                    raise requests.exceptions.HTTPError()
 
         return FakeResponse()
 
