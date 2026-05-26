@@ -46,6 +46,7 @@ docs = [
     "jupyterlab-myst>=2.6.0",
     "matplotlib>=3.10.9",
     "mystmd>=1.9.1",
+    "nc-time-axis>=1.4.1",
 ]
 
 [build-system]
