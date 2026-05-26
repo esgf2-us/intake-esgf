@@ -7,7 +7,7 @@ kernelspec:
 # Caching Requests
 
 ```{code-cell} python
-tags: [remove-cell]
+:tags: [remove-cell]
 import time
 from intake_esgf import ESGFCatalog
 import intake_esgf
