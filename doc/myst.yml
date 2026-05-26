@@ -1,0 +1,40 @@
+# See docs at: https://mystmd.org/guide/frontmatter
+version: 1
+project:
+  id: c27ca160-5168-45a6-8ac4-6f8e3e2e94f9
+  title: intake-esgf Documentation
+  # description:
+  # keywords: []
+  # authors: []
+  github: https://github.com/esgf2-us/intake-esgf
+  toc:
+    - file: index.md
+    - title: User Guide
+      children:
+        - file: beginner.md
+        - file: intake.md
+        - file: quickstart.md
+        - file: faq.md
+        - url: "https://intake-esgf.readthedocs.io/en/latest/cheatsheet.pdf"
+          title: "Cheat Sheet"
+    - title: Features
+      children:
+        - file: measures.md
+        - file: stream.md
+        - file: time.md
+        - file: modelgroups.md
+        - file: configure.md
+        - file: paths.md
+        - file: datalake.md
+        - file: reproduce.md
+        - file: dictkeys.md
+        - file: logging.md
+        - file: cache.md
+    - title: Experimental
+      children:
+        - file: globus.md
+site:
+  template: book-theme
+  options:
+    #   favicon: favicon.ico
+    logo_text: intake-esgf

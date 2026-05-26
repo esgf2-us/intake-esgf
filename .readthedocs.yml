@@ -3,12 +3,15 @@ version: 2
 build:
   os: "ubuntu-24.04"
   tools:
-    python: "3.12"
+    python: "3.14"
   commands:
     - asdf plugin add pandoc
     - asdf plugin add uv
     - asdf install uv latest
     - asdf global uv latest
     - uv sync --group docs
-    - uv run -m sphinx -T -b html -d doc/_build/doctrees -D language=en doc $READTHEDOCS_OUTPUT/html
+    - cd doc; uv run myst build --html --execute
+    - mkdir -p $READTHEDOCS_OUTPUT/html/
+    - cp -r doc/_build/html/. "$READTHEDOCS_OUTPUT/html"
     - pandoc doc/cheatsheet.md -o $READTHEDOCS_OUTPUT/html/cheatsheet.pdf
+    - rm -rf doc/_build
