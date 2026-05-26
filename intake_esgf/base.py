@@ -109,9 +109,12 @@ def select_streaming_link(links: list[str], df_rate: pd.DataFrame) -> str:
     # This is particular to OPENDAP and will need rethought for other virtual
     # methods.
     for link in links:
-        resp = requests.head(link + ".html", timeout=10)
-        if resp.status_code == 200:
-            return link
+        resp = requests.head(link, timeout=10)
+        try:
+            resp.raise_for_status()
+        except requests.exceptions.HTTPError:
+            continue
+        return link
     raise ValueError(f"None of these links appears functional {links}")
 
 
