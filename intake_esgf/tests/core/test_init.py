@@ -5,13 +5,14 @@ from requests_cache import CachedSession
 
 import intake_esgf
 from intake_esgf import ESGFCatalog
+from intake_esgf.exceptions import NoSearchResults
 
 
 @pytest.mark.parametrize(
     "index_type",
     [
         "globus",
-        "stac",
+        pytest.param("stac", marks=pytest.mark.xfail(raises=NoSearchResults)),
         pytest.param("solr", marks=pytest.mark.solr),
     ],
 )

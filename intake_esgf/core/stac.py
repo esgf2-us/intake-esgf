@@ -14,6 +14,7 @@ from pystac_client.stac_api_io import StacApiIO
 import intake_esgf
 import intake_esgf.base as base
 import intake_esgf.logging
+from intake_esgf.exceptions import NoSearchResults
 from intake_esgf.projects import projects
 
 
@@ -43,7 +44,7 @@ def _get_collection_queryables(client: Client, project: str) -> list[str]:
     """
     items = client.search(collections=project, max_items=1).item_collection_as_dict()
     if not items["features"]:
-        raise ValueError(f"No queryables for {project=}")
+        raise NoSearchResults()
     queryables = [prop for prop in items["features"][0]["properties"]]
     return queryables
 
@@ -57,10 +58,7 @@ def _fix_facets(
 
     Note
     ----
-    1. They should be prepended with `properties` unless not querying in the
-       properies. At the moment, I am not sure users will do this. FIX.
-    2. If part of the project's extension, they should also be prepended with
-       `project:`
+    If part of the project's extension, they should be prepended with `project:`
     """
     project_prepends = [
         q.split(":")[-1] for q in queryables if q.startswith(f"{project.lower()}:")
@@ -76,7 +74,7 @@ def _fix_facets(
             f"Some of your search criteria {not_valid=} are not supported in this {project=}. These are {possible=}."
         )
     search_facets = {
-        f"properties.{key}": value if isinstance(value, list) else [value]
+        f"{key}": value if isinstance(value, list) else [value]
         for key, value in search_facets.items()
     }
     return search_facets
@@ -84,7 +82,7 @@ def _fix_facets(
 
 def _search_facets_to_cql_filter(
     search_facets: dict[str, Any], project: str, queryables: list[str]
-) -> dict[str, Any]:
+) -> dict[str, Any] | None:
     """
     Convert traditional search facets to a STAC filter.
 
@@ -95,6 +93,8 @@ def _search_facets_to_cql_filter(
     projects, but in our case is not needed.
     """
     search_facets = _fix_facets(search_facets, project, queryables)
+    if not search_facets:
+        return None
     cql_filter = {
         "op": "and",
         "args": [
@@ -168,6 +168,7 @@ class STACESGFIndex:
         self.cache: dict[str, Any] = {}
         self.session = intake_esgf.conf.get_cached_session()
         self.logger = logging.getLogger(intake_esgf.logging.NAME)
+        self.last_project: str | None = None
 
     def __getstate__(self) -> dict[str, Any]:
         state = self.__dict__.copy()
@@ -187,6 +188,7 @@ class STACESGFIndex:
         # Intercept some options, some have special handling, others aren't used
         limit = search.pop("limit") if "limit" in search else 100
         project = search.pop("project") if "project" in search else "CMIP6"
+        self.last_project = project
         _ = search.pop("type") if "type" in search else ""
 
         # Initialize the client
@@ -271,7 +273,7 @@ class STACESGFIndex:
                     continue
 
                 # Where do we put this file?
-                path = _get_content_path(asset, item["properties"]["project"])
+                path = _get_content_path(asset, str(self.last_project))
 
                 # We could need to append to an existing location
                 if str(path) in infos:
