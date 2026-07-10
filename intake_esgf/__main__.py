@@ -14,8 +14,6 @@ def handle_sigint(signum, frame):
 
 signal.signal(signal.SIGINT, handle_sigint)
 signal.signal(signal.SIGTERM, handle_sigint)
-signal.signal(signal.SIGHUP, handle_sigint)
-
 
 if __name__ == "__main__":
     sentences = [
