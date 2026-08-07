@@ -249,6 +249,7 @@ class STACESGFIndex:
                 self.cache[str(row["id"])] = item
 
         df = pd.DataFrame(dfs)
+        df["project"] = project
         response_time = time.time() - response_time
         self.logger.info(f"└─{self} results={len(df)} {response_time=:.2f}")
         return df
