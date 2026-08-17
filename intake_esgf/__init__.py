@@ -11,7 +11,7 @@ def supported_projects() -> list[str]:
     """What projects are supported?"""
     from intake_esgf.projects import projects
 
-    return list(projects.keys())
+    return sorted([p.__class__.__name__ for _, p in projects.items()])
 
 
 from intake_esgf.catalog import ESGFCatalog  # noqa
