@@ -187,7 +187,11 @@ class STACESGFIndex:
 
         # Intercept some options, some have special handling, others aren't used
         limit = search.pop("limit") if "limit" in search else 100
-        project = search.pop("project") if "project" in search else "CMIP6"
+        project = (
+            search.pop("project")
+            if "project" in search
+            else intake_esgf.conf["default_project"]
+        )
         self.last_project = project
         _ = search.pop("type") if "type" in search else ""
 

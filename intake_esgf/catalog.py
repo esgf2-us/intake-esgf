@@ -342,14 +342,18 @@ class ESGFCatalog:
         search.update(
             dict(
                 type="Dataset",
-                project=search["project"] if "project" in search else "CMIP6",
+                project=search["project"]
+                if "project" in search
+                else intake_esgf.conf["default_project"],
                 latest=search["latest"] if "latest" in search else True,
                 retracted=search["retracted"] if "retracted" in search else False,
             )
         )
         if isinstance(search["project"], list):
             if len(search["project"]) > 1:
-                raise ValueError("For now, projects may only be searched one at a time")
+                raise ValueError(
+                    "Cross projects searches are not allowed natively. Try breaking up your search into several, one for each project."
+                )
 
         # log what is being searched for
         search_str = ", ".join(
