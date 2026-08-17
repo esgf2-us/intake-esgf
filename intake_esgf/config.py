@@ -54,6 +54,7 @@ defaults = {
         compat="override",
         chunks="auto",
     ),
+    "default_project": "CMIP6",
 }
 
 
@@ -108,6 +109,7 @@ class Config(dict):
         slow_download_threshold: float | None = None,
         print_log_on_error: bool | None = None,
         default_open_kwargs: dict[str, Any] | None = None,
+        default_project: str | None = None,
     ):
         """Change intake-esgf configuration options.
 
@@ -158,6 +160,9 @@ class Config(dict):
         default_open_kwargs: dict
             The default key word arguments that are passed to
             `xarray.open_mfdataset`.
+        default_project: str
+            The implicit project that will be searched, analagous to
+            `cat.search(project=default_project)`.
 
         Examples
         --------
@@ -225,6 +230,12 @@ class Config(dict):
             self["print_log_on_error"] = bool(print_log_on_error)
         if default_open_kwargs is not None:
             self["default_open_kwargs"] = default_open_kwargs
+        if default_project is not None:
+            if default_project not in intake_esgf.supported_projects():
+                raise ValueError(
+                    f"Invalid value for {default_project=}, must be one of {intake_esgf.supported_projects()}"
+                )
+            self["default_project"] = default_project
         return self._unset(temp)
 
     def __getitem__(self, item):
