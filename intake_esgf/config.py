@@ -54,7 +54,7 @@ defaults = {
         compat="override",
         chunks="auto",
     ),
-    "default_project": "CMIP6",
+    "default_project": "CMIP7",
 }
 
 
