@@ -13,8 +13,8 @@ import intake_esgf.logging
 
 defaults = {
     "stac_indices": {
-        "api.stac.esgf.ceda.ac.uk": False,
-        "discovery.integration.esgf-west.org": False,
+        "discovery.east.esgf.io": True,
+        "discovery.west.esgf.io": True,
     },
     "globus_indices": {
         "ESGF2-US-1.5-Catalog": True,
