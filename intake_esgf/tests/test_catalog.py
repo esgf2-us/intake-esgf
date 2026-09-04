@@ -115,6 +115,7 @@ def test_open_kwargs(conf, kwargs, result):
     intake_esgf.conf.set(default_open_kwargs=conf)
     cat = intake_esgf.ESGFCatalog()
     cat.search(
+        project="CMIP6",
         experiment_id="historical",
         source_id="NorESM2-LM",
         variable_id="tas",

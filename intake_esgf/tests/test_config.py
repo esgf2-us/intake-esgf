@@ -88,6 +88,7 @@ def test_set_indices():
 def test_confirm(monkeypatch):
     with intake_esgf.conf.set(confirm_download=True):
         cat = intake_esgf.ESGFCatalog().search(
+            project="CMIP6",
             experiment_id="historical",
             source_id="CanESM5",
             variable_id=["areacella"],
@@ -112,6 +113,7 @@ def test_break_on_error(monkeypatch):
     with pytest.raises(DatasetInitError):
         with intake_esgf.conf.set(break_on_error=True):
             cat = intake_esgf.ESGFCatalog().search(
+                project="CMIP6",
                 experiment_id="historical",
                 source_id="CanESM5",
                 variable_id=["areacella"],
@@ -120,6 +122,7 @@ def test_break_on_error(monkeypatch):
             cat.to_dataset_dict()
     with intake_esgf.conf.set(break_on_error=False):
         cat = intake_esgf.ESGFCatalog().search(
+            project="CMIP6",
             experiment_id="historical",
             source_id="CanESM5",
             variable_id=["areacella"],
@@ -133,6 +136,7 @@ def test_additional_df_cols():
     extra = ["datetime_start", "datetime_stop"]
     with intake_esgf.conf.set(additional_df_cols=extra):
         cat = intake_esgf.ESGFCatalog().search(
+            project="CMIP6",
             experiment_id="historical",
             source_id="CanESM5",
             variable_id=["gpp"],

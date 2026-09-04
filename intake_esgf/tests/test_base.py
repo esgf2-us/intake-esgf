@@ -330,6 +330,7 @@ def test_download_without_checksum(monkeypatch):
     monkeypatch.setattr(ESGFCatalog, "_get_file_info", _get_stripped_file_info)
 
     cat = ESGFCatalog().search(
+        project="CMIP6",
         variable_id="areacello",
         source_id="UKESM1-0-LL",
     )
