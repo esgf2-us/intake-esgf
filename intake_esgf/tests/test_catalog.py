@@ -127,3 +127,8 @@ def test_open_kwargs(conf, kwargs, result):
         open_kwargs=kwargs,
     )
     assert dsd["tas"]["tas"].chunksizes["time"] == result
+
+
+@pytest.mark.xfail(reason="only single project at a time")
+def test_no_multiple_projects():
+    intake_esgf.ESGFCatalog().search(project=["CMIP6", "CMIP7"])
