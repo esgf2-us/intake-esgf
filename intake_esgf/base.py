@@ -583,6 +583,7 @@ def add_variable(variable_id: str, ds: xr.Dataset, catalog) -> xr.Dataset:
     search = get_search_criteria(ds, project_id)
     [search.pop(key) for key in project.variable_description_facets() if key in search]
     search[project.variable_facet()] = variable_id
+    search["project"] = project_id
     # relax search criteria
     relaxation = project.relaxation_facets()
     while True:
