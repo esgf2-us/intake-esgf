@@ -163,3 +163,20 @@ def test_slow_cancel(tmp_path):
             task_id=-1,
             master_id=-1,
         )
+
+
+def test_set_default_project():
+    intake_esgf.conf.set(default_project="CMIP3")
+    # this search is already cached from another test
+    cat = intake_esgf.ESGFCatalog().search(
+        experiment=["historical", "1pctCO2"],
+        model=["ncar_ccsm3_0", "ukmo_hadcm3"],
+        variable=["tas", "snc"],
+        time_frequency="mon",
+    )
+    assert len(cat.df) == 19
+
+
+@pytest.mark.xfail(reason="no such supported project")
+def test_set_wrong_default_project():
+    intake_esgf.conf.set(default_project="not_a_project")
