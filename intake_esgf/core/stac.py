@@ -270,7 +270,8 @@ class STACESGFIndex:
         for dataset_id in dataset_ids:
             # Load the file info from the saved items
             if dataset_id not in self.cache:
-                raise ValueError(f"{dataset_id=} not in the STAC index cache")
+                # it may be that another index has info for this id, just skip
+                continue
             item = self.cache[dataset_id]
             for _, asset in item["assets"].items():
                 # Only http links
