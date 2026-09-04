@@ -93,7 +93,9 @@ def test_cmip6_add_cell_measures():
     Test that we can add cell measures even far away.
     """
     # these measures are in r1i1p1f2 / piControl
+    intake_esgf.conf.set(no_indices=True, indices={"ESGF2-US-1.5-Catalog": True})
     cat = ESGFCatalog().search(
+        project="CMIP6",
         variable_id="mrros",
         source_id="UKESM1-0-LL",
         variant_label="r2i1p1f2",
