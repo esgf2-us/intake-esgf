@@ -229,6 +229,8 @@ class STACESGFIndex:
                 properties = item["properties"]
                 row = {}
                 for col in facets:
+                    if col == "project":
+                        continue
                     if col in queryables:
                         lookup = col
                     elif f"{lower_project}:{col}" in queryables:
@@ -240,6 +242,7 @@ class STACESGFIndex:
                         lookup = ""  # Not in there, just skip
                     row[col] = properties[lookup] if lookup in properties else None
                 # to make STAC consistent with other index types
+                row["project"] = project
                 row["data_node"] = self.url
                 row["id"] = f"{item['id']}|{row['data_node']}"
                 dfs.append(
@@ -253,7 +256,6 @@ class STACESGFIndex:
                 self.cache[str(row["id"])] = item
 
         df = pd.DataFrame(dfs)
-        df["project"] = project
         response_time = time.time() - response_time
         self.logger.info(f"└─{self} results={len(df)} {response_time=:.2f}")
         return df
