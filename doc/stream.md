@@ -23,6 +23,7 @@ To demonstrate this functionality, consider the following search for some future
 ```{code-cell} python
 :tags: [remove-output]
 cat = ESGFCatalog().search(
+    project="CMIP6",
     experiment_id="ssp585",
     source_id="UKESM1-0-LL",
     variable_id="tas",
@@ -30,21 +31,23 @@ cat = ESGFCatalog().search(
 )
 cat.remove_ensembles()
 ```
+
 ```{code-cell} python
 :tags: [remove-input]
 cat
 ```
+
 To harvest the OPeNDAP access link from the index nodes, you tell the package that you `prefer_streaming=True`. Not all files will have this capability, but if they do, then this will tell `intake-esgf` to use them. Also, in this example we do not need any cell measures and so we will disable that in this search.
 
 ```{code-cell} python
 :tags: [remove-output]
 dsd = cat.to_dataset_dict(prefer_streaming=True, add_measures=False)
 ```
+
 ```{code-cell} python
 :tags: [remove-input]
 dsd
 ```
-
 
 At this point, the dataset dictionary is returned but you will notice that no file download messages were received. The OPeNDAP access link was passed to the xarray constructor. We now proceed with our analysis as if the data is local. In this example, we wish to see what future temperatures will be under the SSP585 scenario over my hometown.
 

@@ -28,14 +28,20 @@ format. You will notice a few keywords:
 
 ## Indices
 
-Information about the datasets that may be downloaded as part of ESGF is located around the world. While many models have data records on more than one index, there is no single index that has information about all ESGF datasets. However, you will also find that some indices are slow to return a response and may not provide records that cannot be obtained elsewhere. For this reason, in `intake-esgf` indices may all be turned on and off as you desire. You will have to balance how long you are willing to wait with your need for complete information globally.
+As of this writing in Fall of 2026, ESGF is in a state of transition. Formerly, information about the datasets that may be downloaded as part of ESGF holdings were distributed around the world. The federation is restructuring and moving to storing ESGF dataset information (metadata and download locations) as part of [Spatiotemporal Asset Catalogs (STAC)](https://stacspec.org/en). In the future, you will be able to configure a single STAC index and be confident that you will receive all the information we have globally on any given dataset. In the interim or if you are looking for data from old projects, you may need to configure additional indices. We have written intake-esgf to understand all present and former index styles so it is simply a matter of enabling the appropriate index. The indices are organized by their underlying technology:
 
-If for example, you wish to include Oak Ridge National Laboratory's (ORNL) Solr index:
+1. Solr: The former ESGF-1.0 index technology that is being phased out. We maintain a list of known index nodes inside our configuration variable `intake_esgf.conf['solr_indices']`. These will be disabled by default and may not return a response. If you know that one of these indices has been permamently turned off, please open an [issue](https://github.com/esgf2-us/intake-esgf/issues) and let us know and we will remove it from the list. We recommend enabling these as a last resort if no other option returns results.
+2. Globus: As a temporary solution to allow the federation to retire the Solr technology, a US-based ESGF project migrated all Solr records from any US-based index node and put them in `intake_esgf.conf['globus_indices']`. This includes most older projects and a lot of `CMIP6` but not all of it. For this reason, it will be enabled by default.
+3. STAC: At the time of this writing, ESGF has two STAC-based indices, enabled by default in `intake_esgf.conf['stac_indices']`. These indices should be identical but in the short term while CMIP7 publishing is ramping up, we recommend leaving them both enabled. These indices will contain `CMIP7` information and represent the future of all ESGF publishing. While the federation has not committed to republishing all old projects, they are actively working on republishing `CMIP6` records into these indices.
+
+While many models have data records on more than one index, there is no single index that has information about all ESGF datasets for all projects. However, you will also find that some indices are slow to return a response and may not provide records that cannot be obtained elsewhere. For this reason, in `intake-esgf` indices may all be turned on and off as you desire. You will have to balance how long you are willing to wait with your need for complete information globally.
+
+If for example, you wish to exclude the west (US-based) STAC index:
 
 ```{code-cell} python
 from intake_esgf import ESGFCatalog
 
-intake_esgf.conf.set(indices={"esgf-node.ornl.gov":True})
+intake_esgf.conf.set(indices={"discovery.west.esgf.io":False})
 cat = ESGFCatalog()
 for ind in cat.indices:
     print(ind)

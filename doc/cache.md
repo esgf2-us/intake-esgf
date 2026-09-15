@@ -33,6 +33,7 @@ Consider the following search, wrapped in a performance timer.
 :tags: [remove-output]
 search_time = time.perf_counter()
 cat = ESGFCatalog().search(
+    project="CMIP6",
     experiment_id=["historical"],
     variable_id=["tas", "thetao"],
     frequency="mon",
@@ -40,16 +41,19 @@ cat = ESGFCatalog().search(
 search_time = time.perf_counter() - search_time
 print(f"The first search took {search_time:.1f} [s].")
 ```
+
 ```{code-cell} python
 :tags: [remove-input]
 print(f"The first search took {search_time:.1f} [s].")
 ```
+
 And now we repeat the search:
 
 ```{code-cell} python
 :tags: [remove-output]
 search_time = time.perf_counter()
 cat = ESGFCatalog().search(
+    project="CMIP6",
     experiment_id=["historical"],
     variable_id=["tas", "thetao"],
     frequency="mon",
@@ -57,6 +61,7 @@ cat = ESGFCatalog().search(
 search_time = time.perf_counter() - search_time
 print(f"The second search took {search_time:.1f} [s].")
 ```
+
 ```{code-cell} python
 :tags: [remove-input]
 print(f"The second search took {search_time:.1f} [s].")
@@ -86,6 +91,7 @@ With these new cache options, repeating the search will again take more time.
 :tags: [remove-output]
 search_time = time.perf_counter()
 cat = ESGFCatalog().search(
+    project="CMIP6",
     experiment_id=["historical"],
     variable_id=["tas", "thetao"],
     frequency="mon",
@@ -93,6 +99,7 @@ cat = ESGFCatalog().search(
 search_time = time.perf_counter() - search_time
 print(f"The third search took {search_time:.1f} [s].")
 ```
+
 ```{code-cell} python
 :tags: [remove-input]
 print(f"The third search took {search_time:.1f} [s].")

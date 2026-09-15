@@ -13,6 +13,7 @@ If you would like details about what `intake-esgf` is doing, you can consult you
 from intake_esgf import ESGFCatalog
 
 cat = ESGFCatalog().search(
+    project="CMIP6",
     source_id="IPSL-CM6A-LR",
     experiment_id="piControl",
     variable_id="areacella",
@@ -22,6 +23,7 @@ cat = ESGFCatalog().search(
 ds = cat.to_dataset_dict(add_measures=False)
 print(cat.session_log())
 ```
+
 ```{code-cell} python
 :tags: [remove-input]
 print(cat.session_log())

@@ -17,7 +17,7 @@ Chances are if you are reading this, you are already familiar with [Globus](http
 A portion of the ESGF data archive is stored in public [Guest Collections](https://docs.globus.org/globus-connect-server/v5/reference/collection/) and access information included in some ESGF index nodes. This means that a portion of the ESGF archive can be accessed using Globus Transfer. These transfers can be triggered seamlessly in `intake-esgf` if you satisfy a few requirements. You will need:
 
 1. A Globus login. In order to manage permissions, Globus requires an identity. Simply try to login at [https://www.globus.org/](https://www.globus.org/) and first look through the list of supported institutions to login with your credentials. If your institution is not listed, you may login with another option list below the institution pulldown.
-2. A place to send data. Globus transfer uses custom software to both send and receive data. In their parlance, you need write access to another *collection* which represents where you will send the data. It is possible to download to your personal computer. You will need to download [Globus Connect Personal](https://app.globus.org/collections/gcp) and have it running and connected when you initiate the transfer.
+2. A place to send data. Globus transfer uses custom software to both send and receive data. In their parlance, you need write access to another _collection_ which represents where you will send the data. It is possible to download to your personal computer. You will need to download [Globus Connect Personal](https://app.globus.org/collections/gcp) and have it running and connected when you initiate the transfer.
 3. The `UUID` of the destination collection. The `UUID` can be found by navigating to the [collection](https://app.globus.org/file-manager/collections) in Globus, clicking the `⋮` to show the collection properties, and copying the `UUID` value listed.
 
 ## Initiating the Transfer
@@ -34,6 +34,7 @@ from intake_esgf import ESGFCatalog
 :tags: [remove-output]
 cat = ESGFCatalog()
 cat.search(
+    project="CMIP6",
     experiment_id="historical",
     source_id="CanESM5",
     frequency="mon",
@@ -45,10 +46,12 @@ cat.search(
     member_id="r1i1p1f1",
 )
 ```
+
 ```{code-cell} python
 :tags: [remove-input]
 cat
 ```
+
 This portion of the process what you would do normally. To use globus transfers where possible, you need to include additional arguments to `to_dataset_dict()`. The first is `globus_endpoint`, the `UUID` of the destination collection to which you will transfer the data. The second is `globus_path`, any additional path you wish to add to the root path of the destination collection.
 
 ```{code-cell} python

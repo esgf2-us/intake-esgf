@@ -7,7 +7,7 @@ kernelspec:
 # Filter Files by Date
 
 The intake-esgf paradigm is meant to somewhat hide from you the notion of
-*files*. You search for *datasets* and the related files are loaded and
+_files_. You search for _datasets_ and the related files are loaded and
 aggregated into a dictionary of xarray Datasets. However, many times your
 intended use of any given dataset is only part of the whole time series. While
 there is not a consistent convention throughout ESGF, many centers will save the
@@ -24,6 +24,7 @@ data from the 60's through the 90's, we can add the following to our search:
 :tags: [remove-output]
 from intake_esgf import ESGFCatalog
 cat = ESGFCatalog().search(
+    project="CMIP6",
     experiment_id="historical",
     variable_id="msftmz",
     source_id="NorESM2-LM",
