@@ -216,7 +216,7 @@ class STACESGFIndex:
         lower_project = project.lower()
         facets = (
             [
-                "project",
+                "version",
             ]
             + projects[lower_project].master_id_facets()
             + intake_esgf.conf["additional_df_cols"]
@@ -229,8 +229,6 @@ class STACESGFIndex:
                 properties = item["properties"]
                 row = {}
                 for col in facets:
-                    if col == "project":
-                        continue
                     if col in queryables:
                         lookup = col
                     elif f"{lower_project}:{col}" in queryables:
@@ -245,6 +243,15 @@ class STACESGFIndex:
                 row["project"] = project
                 row["data_node"] = self.url
                 row["id"] = f"{item['id']}|{row['data_node']}"
+                # Our STAC catalogs now store all activity_id's but for our
+                # search display we only want the primary activity.
+                if (
+                    "activity_id" in row
+                    and isinstance(row["activity_id"], list)
+                    and len(row["activity_id"]) > 0
+                ):
+                    # Assumes the first activity is primary
+                    row["activity_id"] = row["activity_id"][0]
                 dfs.append(
                     {
                         key: val[0]
