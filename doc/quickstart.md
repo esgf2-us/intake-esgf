@@ -46,12 +46,14 @@ our [beginner](beginner) tutorial.
 ```{code-cell} python
 :tags: [remove-output]
 cat.search(
+    project="CMIP6",
     experiment_id="historical",
     source_id="CanESM5",
     frequency="mon",
     variable_id=["gpp", "tas", "pr"],
 )
 ```
+
 ```{code-cell} python
 :tags: [remove-input]
 cat
@@ -70,6 +72,7 @@ own analysis codes, you could simply edit your previous search.
 ```{code-cell} python
 :tags: [remove-output]
 cat.search(
+    project="CMIP6",
     experiment_id="historical",
     source_id="CanESM5",
     frequency="mon",
@@ -77,6 +80,7 @@ cat.search(
     variant_label="r1i1p1f1",  # addition from the last search
 )
 ```
+
 ```{code-cell} python
 :tags: [remove-input]
 cat
@@ -110,6 +114,7 @@ quickly as we can.
 :tags: [remove-output]
 dsd = cat.to_dataset_dict(ignore_facets='table_id')
 ```
+
 ```{code-cell} python
 :tags: [remove-input]
 dsd

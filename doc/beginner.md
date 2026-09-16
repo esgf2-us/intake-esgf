@@ -10,7 +10,7 @@ This guide is targetted at users who are new to obtaining [CMIP](https://www.wcr
 
 ## Which Variable Do We Need?
 
-At the highest level, ESGF stores data in *projects* such as `CMIP5` and `CMIP6`. While there are some similarities between projects, the *control vocabulary*, that is the metadata used to identify unique datasets, varies. In this tutorial we will explain some of the CMIP6 vocabulary, which is the default project for `intake-esgf`.
+At the highest level, ESGF stores data in _projects_ such as `CMIP5` and `CMIP6`. While there are some similarities between projects, the _control vocabulary_, that is the metadata used to identify unique datasets, varies. In this tutorial we will explain some of the CMIP6 vocabulary, which is the default project for `intake-esgf`.
 
 Perhaps the most important search criteria to determine is the name of the variable you wish to use. `intake-esgf` has some functionality to assist.
 First, import and instantiate the catalog.
@@ -40,6 +40,7 @@ One commonly used experiment is `historical`, where models are run using reconst
 :tags: [remove-output]
 cat.search(variable_id="tas",experiment_id="historical")
 ```
+
 ```{code-cell} python
 :tags: [remove-input]
 cat
@@ -47,12 +48,12 @@ cat
 
 This will populate an underlying pandas dataframe with the search results. The columns of that dataframe and unique values are presented . This exposes more of the control vocabulary for CMIP6. We have already explored `variable_id` and `experiment_id`. Now we explain more of the control vocabulary emphasizing what we find to be the more useful facets.
 
-- `source_id` - The identifier of the model. We use the term *source* instead of *model* in an attempt to make the control vocabulary more general and in the future unify vocabularies among projects. Each model or model version will have a unique string identifying which model and/or configuration was run, which can be [browsed](https://wcrp-cmip.github.io/CMIP6_CVs/docs/CMIP6_source_id.html).
+- `source_id` - The identifier of the model. We use the term _source_ instead of _model_ in an attempt to make the control vocabulary more general and in the future unify vocabularies among projects. Each model or model version will have a unique string identifying which model and/or configuration was run, which can be [browsed](https://wcrp-cmip.github.io/CMIP6_CVs/docs/CMIP6_source_id.html).
 - `member_id` - The label for the variant of the model run (also known as `variant_label`). The precise meaning of these labels is specific to each model group. For CMIP6 these take the form `r...i...p...f...` where integers after each character reflect a separate run. Usually (but not with all models) the main result will be `r1i1p1f1`.
-  - `r` stands for the *realization*. Models can be run with small pertubations of the initial conditions to produce an ensemble. Model runs with the same `r` number started with the same initial conditions.
-  - `i` stands for the *initialization*. Models use different methods to spin up their states into quasi-equilibrium. This integer reflects the method that was used by the model.
-  - `p` stands for the *physics*. Modern models have many configuration options and while most submit results in a single configuration, this designation provides a method to distinguish among them if desired.
-  - `f` stands for the *forcing*. When multiple methods for forcing an experiment are possible, this label distinguishes among them.
+  - `r` stands for the _realization_. Models can be run with small pertubations of the initial conditions to produce an ensemble. Model runs with the same `r` number started with the same initial conditions.
+  - `i` stands for the _initialization_. Models use different methods to spin up their states into quasi-equilibrium. This integer reflects the method that was used by the model.
+  - `p` stands for the _physics_. Modern models have many configuration options and while most submit results in a single configuration, this designation provides a method to distinguish among them if desired.
+  - `f` stands for the _forcing_. When multiple methods for forcing an experiment are possible, this label distinguishes among them.
 - `table_id` - Variables are organized into what CMIP refers to as tables. This tends to be a juxtaposition of a problem realm (`A` for atmosphere, `O` for ocean) along with time frequency (`mon` for month, `day` for day). Note that a variable can exist in several tables. In our search we see that there is `day` temperature data as well as monthly `Amon`.
 
 ## Downloading Data
@@ -62,6 +63,7 @@ We will refine our search to select a single model `CanESM5`, variant `r1i1p1f1`
 ```{code-cell} python
 :tags: [remove-output]
 cat.search(
+    project="CMIP6",
     variable_id="tas",
     experiment_id="historical",
     source_id="CanESM5",
@@ -69,6 +71,7 @@ cat.search(
     table_id="Amon"
 )
 ```
+
 ```{code-cell} python
 :tags: [remove-input]
 cat
@@ -80,6 +83,7 @@ Once your search has been sufficiently narrowed, you may download into a diction
 :tags: [remove-output]
 dsd = cat.to_dataset_dict()
 ```
+
 ```{code-cell} python
 :tags: [remove-input]
 dsd

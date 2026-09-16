@@ -6,7 +6,7 @@ kernelspec:
 
 # Simplifying Search with Model Groups
 
-At a simple level, you can think of `intake-esgf` as analagous to the ESGF web [interface](https://aims2.llnl.gov/search) but where results are presented to you as a pandas dataframe in place of pages of web results. However, we believe that the user does not want to wade through either of these. Many times you want to see model results organized by unique combinations of `source_id`, `member_id`, and `grid_label`. That is to say, when you are going to perform an analysis, you would like your model outputs to be self-consistent and from the same run and grid, even across experiments. To assist you in honing in on what sets of results may be useful to your analysis, we introduce the notion of *model groups*.
+At a simple level, you can think of `intake-esgf` as analagous to the ESGF web [interface](https://aims2.llnl.gov/search) but where results are presented to you as a pandas dataframe in place of pages of web results. However, we believe that the user does not want to wade through either of these. Many times you want to see model results organized by unique combinations of `source_id`, `member_id`, and `grid_label`. That is to say, when you are going to perform an analysis, you would like your model outputs to be self-consistent and from the same run and grid, even across experiments. To assist you in honing in on what sets of results may be useful to your analysis, we introduce the notion of _model groups_.
 
 Consider the following search, motivated by a desire to study controls (temperature, precipitation) on the carbon cycle (gross primary productivty) across a number of historical and future scenarios.
 
@@ -14,11 +14,13 @@ Consider the following search, motivated by a desire to study controls (temperat
 :tags: [remove-output]
 from intake_esgf import ESGFCatalog
 cat = ESGFCatalog().search(
+    project="CMIP6",
     experiment_id=["historical", "ssp585", "ssp370", "ssp245"],
     variable_id=["gpp", "tas", "pr"],
     table_id=["Amon", "Lmon"],
 )
 ```
+
 ```{code-cell} python
 :tags: [remove-input]
 cat
@@ -34,14 +36,14 @@ This returns a pandas series where the results have been grouped and sorted by `
 
 ## Removing Incomplete Groups
 
-If you glance through the model groups, you will see that, relative to our search, many will be *incomplete*. By this we mean, that there are many model groups that will not have all the variables in all the experiments that we wish to include in our analysis. Since we are looking for 4 experiments and 3 variables, we need the model groups with 12 dataset results. We can check which groups satisfy this condition by operating on the model group pandas series.
+If you glance through the model groups, you will see that, relative to our search, many will be _incomplete_. By this we mean, that there are many model groups that will not have all the variables in all the experiments that we wish to include in our analysis. Since we are looking for 4 experiments and 3 variables, we need the model groups with 12 dataset results. We can check which groups satisfy this condition by operating on the model group pandas series.
 
 ```{code-cell} python
 mgs = cat.model_groups()
 print(mgs[mgs==12])
 ```
 
-The rest are incomplete and we would like a fast way to remove them from the search results. But the reality is that many times our *completeness* criteria is more complicated than just a number. In the above example, we may want all the variables for all the experiments, but if a model does not have a submission for, say, `ssp245`, that is acceptable.
+The rest are incomplete and we would like a fast way to remove them from the search results. But the reality is that many times our _completeness_ criteria is more complicated than just a number. In the above example, we may want all the variables for all the experiments, but if a model does not have a submission for, say, `ssp245`, that is acceptable.
 
 `intake-esgf` provides an interface which uses a user-provided function to remove incomplete entries. Internally, we will loop over all model groups in the results and pass your function the portion of the dataframe that corresponds to the current model group. Your function then needs to return a boolean based on the contents of that sub-dataframe.
 
@@ -67,7 +69,7 @@ print(cat.model_groups())
 
 ## Removing Ensembles
 
-Depending on the goals and scope of your analysis, you may want to use only a single variant per model. This can be challenging to locate as not all variants have all the experiments and models. However, now that we have removed the incomplete results, we can now call the `remove_ensembles()` function which will only keep the *smallest* `member_id` for each model group. By smallest, we mean that first entry after a hierarchical sort using the integer index values of each label in the `member_id`.
+Depending on the goals and scope of your analysis, you may want to use only a single variant per model. This can be challenging to locate as not all variants have all the experiments and models. However, now that we have removed the incomplete results, we can now call the `remove_ensembles()` function which will only keep the _smallest_ `member_id` for each model group. By smallest, we mean that first entry after a hierarchical sort using the integer index values of each label in the `member_id`.
 
 ```{code-cell} python
 cat.remove_ensembles()

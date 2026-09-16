@@ -12,6 +12,7 @@ You have a lot of control over how you want they keys of the output dictionary t
 :tags: [remove-output]
 from intake_esgf import ESGFCatalog
 cat = ESGFCatalog().search(
+    project="CMIP6",
     experiment_id="historical",
     variant_label="r1i1p1f1",
     frequency="mon",
@@ -19,6 +20,7 @@ cat = ESGFCatalog().search(
     variable_id=["tas", "gpp"],
 )
 ```
+
 ```{code-cell} python
 :tags: [remove-input]
 cat
@@ -31,6 +33,7 @@ By default, we will build keys out of the facet values that are different among 
 dsd = cat.to_dataset_dict()
 print(dsd.keys())
 ```
+
 ```{code-cell} python
 :tags: [remove-input]
 for key in dsd.keys():
@@ -46,6 +49,7 @@ However, on inspection you will notice that the institution and table are not ne
 dsd = cat.to_dataset_dict(ignore_facets=["institution_id", "table_id"])
 print(dsd.keys())
 ```
+
 ```{code-cell} python
 :tags: [remove-input]
 for key in dsd.keys():
@@ -61,6 +65,7 @@ You may decide that you do not like our attempt to provide simpler keys in which
 dsd = cat.to_dataset_dict(minimal_keys=False)
 print(dsd.keys())
 ```
+
 ```{code-cell} python
 :tags: [remove-input]
 for key in dsd.keys():
@@ -76,6 +81,7 @@ You may also use a different separator. By default use the `.` symbol, but you m
 dsd = cat.to_dataset_dict(minimal_keys=False,separator="/")
 print(dsd.keys())
 ```
+
 ```{code-cell} python
 :tags: [remove-input]
 for key in dsd.keys():

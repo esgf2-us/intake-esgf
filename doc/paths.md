@@ -24,6 +24,7 @@ There is a catalog method we call `to_path_dict()`. This works just like `to_dat
 ```{code-cell} python
 :tags: [remove-output]
 cat = ESGFCatalog().search(
+    project="CMIP6",
     experiment_id="historical",
     source_id="CanESM5",
     frequency="mon",

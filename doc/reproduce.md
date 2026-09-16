@@ -21,6 +21,7 @@ show the results of the search.
 ```{code-cell} python
 :tags: [remove-output]
 cat = ESGFCatalog().search(
+    project="CMIP6",
     experiment_id="historical",
     source_id="CanESM5",
     variable_id=["gpp", "tas"],
@@ -29,6 +30,7 @@ cat = ESGFCatalog().search(
 )
 cat.df
 ```
+
 ```{code-cell} python
 :tags: [remove-input]
 cat.df
@@ -59,6 +61,7 @@ them into `from_tracking_ids()` to reproduce the catalog.
 :tags: [remove-output]
 new_cat = ESGFCatalog().from_tracking_ids(tracking_ids)
 ```
+
 ```{code-cell} python
 :tags: [remove-input]
 new_cat.df

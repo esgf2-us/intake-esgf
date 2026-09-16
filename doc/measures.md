@@ -13,7 +13,7 @@ submissions. This can be frustrating for the user.
 
 In `intake-esgf`, when you call `to_dataset_dict()`, we perform a search for
 each dataset being placed in the dataset dictionary, progressively dropping
-facets to find, if possible, the cell measures that are *closest* to the dataset
+facets to find, if possible, the cell measures that are _closest_ to the dataset
 being downloaded. Sometimes they are simply in another `variant_label`, but
 other times they could be in a different `activity_id`. No matter where they
 are, we find them for you and add them to your dataset by default (disable with
@@ -25,6 +25,7 @@ Consider the following search for data with `UKESM1-0-LL`. We are looking for a 
 :tags: [remove-output]
 from intake_esgf import ESGFCatalog
 cat = ESGFCatalog().search(
+    project="CMIP6",
     variable_id="gpp",
     source_id="UKESM1-0-LL",
     variant_label="r2i1p1f2",
