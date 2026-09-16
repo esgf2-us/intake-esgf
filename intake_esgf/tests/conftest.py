@@ -129,7 +129,7 @@ def df_ornl():
                 9: "CMIP6",
                 10: "CMIP6",
             },
-            "activity_drs": {
+            "activity_id": {
                 1: "CMIP",
                 2: "CMIP",
                 5: "CMIP",
@@ -238,7 +238,7 @@ def df_ceda():
         {
             "project": {0: "CMIP6"},
             "mip_era": {0: "CMIP6"},
-            "activity_drs": {0: "CMIP"},
+            "activity_id": {0: "CMIP"},
             "institution_id": {0: "CCCma"},
             "source_id": {0: "CanESM5"},
             "experiment_id": {0: "historical"},
@@ -674,7 +674,7 @@ def df_catalog():
         {
             "project": {0: "CMIP6", 4: "CMIP6"},
             "mip_era": {0: "CMIP6", 4: "CMIP6"},
-            "activity_drs": {0: "CMIP", 4: "CMIP"},
+            "activity_id": {0: "CMIP", 4: "CMIP"},
             "institution_id": {0: "CCCma", 4: "CCCma"},
             "source_id": {0: "CanESM5", 4: "CanESM5"},
             "experiment_id": {0: "historical", 4: "historical"},

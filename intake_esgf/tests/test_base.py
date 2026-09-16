@@ -154,6 +154,7 @@ def test_combine_results(df_ornl, df_ceda):
 
 def test_get_search_criteria(dataset):
     reference_search = dict(
+        activity_id="CMIP",
         institution_id="CCCma",
         source_id="CanESM5",
         experiment_id="historical",

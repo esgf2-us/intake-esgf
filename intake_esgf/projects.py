@@ -133,7 +133,7 @@ class CMIP6(ESGFProject):
     def __init__(self):
         self.facets = [
             "mip_era",
-            "activity_drs",
+            "activity_id",
             "institution_id",
             "source_id",
             "experiment_id",
@@ -152,7 +152,7 @@ class CMIP6(ESGFProject):
         return self.facets
 
     def relaxation_facets(self) -> list[str]:
-        return ["member_id", "experiment_id", "activity_drs", "institution_id"]
+        return ["member_id", "experiment_id", "activity_id", "institution_id"]
 
     def variable_description_facets(self) -> list[str]:
         return ["table_id", "variable_id"]
