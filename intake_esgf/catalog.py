@@ -12,6 +12,7 @@ from typing import Any, Literal, Self, cast
 import pandas as pd
 import requests
 import xarray as xr
+from pystac_client.exceptions import APIError
 from rich.progress import track
 
 import intake_esgf
@@ -317,7 +318,7 @@ class ESGFCatalog:
                 df = index.search(**search)
             except NoSearchResults:
                 return pd.DataFrame([])
-            except requests.exceptions.RequestException:
+            except (requests.exceptions.RequestException, APIError):
                 self.logger.info(f"└─{index} \x1b[91;20mno response\033[0m")
                 warnings.warn(
                     f"{index} failed to return a response, results may be incomplete"
