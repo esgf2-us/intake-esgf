@@ -13,7 +13,12 @@
 
 ## Announcement
 
-ESGF is in the process of decomissioning the old index technology (Solr). While this process takes place, you may find some services may be broken or disappear completely. The information in the US-based Solr indices has been moved into a Globus (ElasticSearch) index which is this package's default index. As the federation prepares for CMIP7, we will enable a new/additional index architecure based on the Spatio Temporal Asset Catalog (STAC) specification.
+There are two important ESGF changes to note as you use intake-esgf:
+
+1. CMIP7 data is now available and therefore has become the default project. If you have old scripts that you wish to still be operational, you will need to add `project="CMIP6"` to your search.
+2. ESGF has decomissioned the old index technology (Solr). However, some Solr indices may still be running and intake-esgf will still be able to interact with them, but they are not [configured](configure.md) by default. By default, we enable:
+   - `ESGF2-US-1.5-Catalog`, a globus-based index with information about previous projects apart from CMIP7. This includes most anything from a previous US-based Solr index.
+   - Two STAC-based indices (`discovery.east.esgf.io` and `discovery.west.esgf.io`). Long-term these indices will be identical and you will only want one of them enabled. While publishing (CMIP7 and some older projects) is ramping up, you may find they differ slightly and so we leave them both enabled for now.
 
 ## Overview
 
@@ -21,12 +26,12 @@ ESGF is in the process of decomissioning the old index technology (Solr). While 
 
 [<img width=700px src=./doc/_static/basic.gif>](https://intake-esgf.readthedocs.io/en/latest/?badge=latest)
 
-* Indices are queried in parallel and report when they fail to return a response. The results are aggregated and presented to the user as a [pandas](https://pandas.pydata.org/) DataFrame.
-* The locations of the data are hidden from the user. Internally we track which locations provide the user the fastest transfers and automatically favor them for you.
-* Files are downloaded in parallel into a local cache which mirrors the remote storage directory structure. They are returned to the user as a dictionary of [xarray](https://xarray.dev/) Datasets. Your search script then becomes the way you download data as well as how you load it into memory for your analysis.
-* Prior to downloading data, we first check that it is not already available locally. This could be because you had previously downloaded it, but also because you are working on a server that has direct access.
-* Cell measure information is harvested from your search results and automatically included in the returned datasets.
-* The old (Solr) and new (STAC) index types are supported simultaneously.
+- Indices are queried in parallel and report when they fail to return a response. The results are aggregated and presented to the user as a [pandas](https://pandas.pydata.org/) DataFrame.
+- The locations of the data are hidden from the user. Internally we track which locations provide the user the fastest transfers and automatically favor them for you.
+- Files are downloaded in parallel into a local cache which mirrors the remote storage directory structure. They are returned to the user as a dictionary of [xarray](https://xarray.dev/) Datasets. Your search script then becomes the way you download data as well as how you load it into memory for your analysis.
+- Prior to downloading data, we first check that it is not already available locally. This could be because you had previously downloaded it, but also because you are working on a server that has direct access.
+- Cell measure information is harvested from your search results and automatically included in the returned datasets.
+- The old (Solr) and new (STAC) index types are supported simultaneously.
 
 For a full listing of features with code examples, please consult the [documentation](https://intake-esgf.readthedocs.io/en/latest/?badge=latest).
 
