@@ -31,12 +31,12 @@ def test_search_cmip6_west(west):
 
 def test_search_cmip7_west(west):
     df = west.search(
-        project="CMIP7",
-        source_id="UKCM2a-0-HH",
-        variable_id="tas",
-        frequency="mon",
-        experiment_id="historical",
-        variant_label="r1i1p1f1",
+        project=["CMIP7"],
+        source_id=["UKCM2a-0-HH"],
+        variable_id=["tas"],
+        frequency=["mon"],
+        experiment_id=["historical"],
+        variant_label=["r1i1p1f1"],
     )
     assert len(df) == 1
     infos = west.get_file_info(df["id"].to_list())

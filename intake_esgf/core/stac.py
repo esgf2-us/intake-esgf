@@ -4,6 +4,7 @@ import logging
 import re
 import time
 import warnings
+from collections.abc import Sequence
 from pathlib import Path
 from typing import Any
 
@@ -192,6 +193,8 @@ class STACESGFIndex:
             if "project" in search
             else intake_esgf.conf["default_project"]
         )
+        if not isinstance(project, str) and isinstance(project, Sequence):
+            project = project[0]
         self.last_project = project
         _ = search.pop("type") if "type" in search else ""
 
