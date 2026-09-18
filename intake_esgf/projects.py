@@ -438,6 +438,7 @@ class CMIP7(ESGFProject):
             "experiment_id",
             "variant_label",
             "region",
+            "frequency",
             "variable_id",
             "variable_branding_suffix",
             "grid_label",
