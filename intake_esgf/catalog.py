@@ -349,6 +349,7 @@ class ESGFCatalog:
                 raise ValueError(
                     "Cross projects searches are not allowed natively. Try breaking up your search into several, one for each project."
                 )
+        _warn_stac_cmip6(self, search["project"])
 
         # log what is being searched for
         search_str = ", ".join(
@@ -920,3 +921,16 @@ def _load_into_dsd(
             dsd[key] = []
         dsd[key] += [path]
     return dsd
+
+
+def _warn_stac_cmip6(cat: ESGFCatalog, project: str) -> None:
+    if project == "CMIP6" and any(
+        [isinstance(ind, STACESGFIndex) for ind in cat.indices]
+    ):
+        warnings.warn(
+            f"You are searching for {project=} with at least one STAC-based index enabled. "
+            "While republishing CMIP6 data to STAC is underway and may work well, we have found "
+            "a publishing error that affects many records. You may see some unexpected `member_id` "
+            "fields. Temporarily, we recommend disabling these indices for work with CMIP6:\n"
+            "intake_esgf.conf.set(indices={'discovery.east.esgf.io':False,'discovery.west.esgf.io': False})"
+        )
