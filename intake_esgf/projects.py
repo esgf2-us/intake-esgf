@@ -476,6 +476,54 @@ class CMIP7(ESGFProject):
         return "grid_label"
 
 
+class CORDEXCMIP6(ESGFProject):  # Coordinated Regional Climate Downscaling Experiment
+    # CORDEX-CMIP6.DD.NAM-25.CCCma.CanESM5-1.historical.r1i1p1f2.CanRCM5-SN.v1-r2.mon.tas
+    def __init__(self):
+        self.facets = [
+            "project_id",  # CORDEX-CMIP6
+            "activity_id",  # DD
+            "domain_id",  # NAM-25
+            "driving_institution_id",  # CCCma
+            "driving_source_id",  # CanESM5-1
+            "driving_experiment_id",  # historical
+            "driving_variant_label",  # r1i1p1f2
+            "source_id",  # CanRCM5-SN
+            "version_realization",  # v1-r2
+            "frequency",  # mon
+            "variable_id",  # tas
+            "version",
+            "data_node",
+        ]
+
+    def master_id_facets(self) -> list[str]:
+        return self.facets[:-2]
+
+    def id_facets(self) -> list[str]:
+        return self.facets
+
+    def relaxation_facets(self) -> list[str]:
+        # NOTE: This is used to find cell measures that are closely related to a given
+        # set of facets and in this project do not make sense.
+        return []
+
+    def variable_description_facets(self) -> list[str]:
+        # NOTE: This is used to find cell measures that are closely related to a given
+        # set of facets and in this project do not make sense.
+        return []
+
+    def variable_facet(self) -> str:
+        return "variable_id"
+
+    def model_facet(self) -> str:
+        return "source_id"
+
+    def variant_facet(self) -> str:
+        return "driving_variant_label"
+
+    def grid_facet(self) -> str | None:
+        return "domain_id"
+
+
 projects = {
     "cmip6": CMIP6(),
     "cmip5": CMIP5(),
@@ -487,6 +535,7 @@ projects = {
     "e3sm": e3sm(),
     "wrpmip": WrPMIP(),
     "cmip7": CMIP7(),
+    "cordex-cmip6": CORDEXCMIP6(),
 }
 
 
