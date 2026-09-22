@@ -761,15 +761,21 @@ class ESGFCatalog:
             row = row.iloc[0]
             ds[key].attrs.update(row[master_id_facets].to_dict())
 
-        # attempt to add cell measures (serial), only work for CMIP6 for now
-        if ds and add_measures and "cmip6" in str(self.project.__class__).lower():
+        # attempt to add cell measures
+        if ds and add_measures:
             for key in track(
                 ds,
                 disable=quiet,
                 description="Adding cell measures",
                 total=len(ds),
             ):
+                self.logger.info(f"\x1b[36;32mmeasures begin\033[0m {key}")
+                total_time = time.time()
                 ds[key] = base.add_cell_measures(ds[key], self)
+                total_time = time.time() - total_time
+                self.logger.info(
+                    f"\x1b[36;32mmeasures end\033[0m total_time={total_time:.2f}"
+                )
 
         # optionally simplify the keys
         if minimal_keys:
