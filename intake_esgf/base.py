@@ -636,7 +636,7 @@ def add_cell_measures(ds: xr.Dataset, catalog) -> xr.Dataset:
     """
     to_add = []
     for _, da in ds.items():
-        to_add = [
+        to_add += [
             varname
             for _, varname in re.findall(
                 r"(\w+):\s*(\S+)", da.attrs.get("cell_measures", "")

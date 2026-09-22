@@ -240,7 +240,7 @@ def test_add_cell_measures(monkeypatch):
     )
     monkeypatch.setattr("intake_esgf.base.add_variable", fake_add_variable)
 
-    ds = base.add_cell_measures(ds, None)
+    ds = base.add_cell_measures(ds, ESGFCatalog())
     assert "sftof" in ds
     assert "sftlf" in ds
     assert "areacella" in ds
