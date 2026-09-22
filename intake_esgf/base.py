@@ -585,24 +585,33 @@ def add_variable(variable_id: str, ds: xr.Dataset, catalog) -> xr.Dataset:
     search[project.variable_facet()] = variable_id
     search["project"] = project_id
     # relax search criteria
-    relaxation = project.relaxation_facets()
-    while True:
+    relaxation = [
+        "",
+    ] + project.relaxation_facets()
+    for i in range(len(relaxation)):
+        if i:
+            catalog.logger.info(f"relaxing {relaxation[i]}")
         try:
-            cat.search(quiet=True, **search)
+            cat.search(
+                quiet=True,
+                **{
+                    key: val
+                    for key, val in search.items()
+                    if key not in relaxation[: (i + 1)]
+                },
+            )
             cat.df = cat.df.iloc[:1]  # we just need 1
             break
         except NoSearchResults:
-            while True:
-                # no more criteria to relax... just can't find it
-                if not relaxation:
-                    raise NoSearchResults
-                relax = relaxation.pop(0)
-                if relax in search:
-                    search.pop(relax)
-                    break
+            continue
+    if cat.df is None or len(cat.df) == 0:
+        raise NoSearchResults
     # many times the coordinates of the measures differ in only precision of the
     # variables and will lead to unexpected merged results
-    var = cat.to_dataset_dict(quiet=True, add_measures=False)[variable_id]
+    msr_file = cat.to_path_dict(quiet=True)[variable_id]
+    msr_file = next(iter(msr_file))
+    catalog.logger.info(f"accessed {msr_file}")
+    var = xr.open_dataset(msr_file)
     var = var.reindex_like(ds, method="nearest", tolerance=1e-5)
     ds = xr.merge([ds, var[variable_id]], compat="override")
     return ds
@@ -627,22 +636,26 @@ def add_cell_measures(ds: xr.Dataset, catalog) -> xr.Dataset:
     """
     to_add = []
     for _, da in ds.items():
-        if "cell_measures" not in da.attrs:
-            continue
-        m = re.search(r"area:\s(.*)", da.attrs["cell_measures"])
-        if m:
-            to_add.append(m.group(1))
-        if "cell_methods" not in da.attrs:
-            continue
-        if "where land" in da.attrs["cell_methods"]:
-            to_add.append("sftlf")
-        if "where sea" in da.attrs["cell_methods"]:
-            to_add.append("sftof")
+        to_add += [
+            varname
+            for _, varname in re.findall(
+                r"(\w+):\s*(\S+)", da.attrs.get("cell_measures", "")
+            )
+        ]
+        to_add += [
+            val
+            for key, val in {"where land": "sftlf", "where sea": "sftof"}.items()
+            if key in da.attrs.get("cell_methods", "")
+        ]
+    missing = []
     for add in set(to_add):
+        catalog.logger.info(f"adding {add}")
         try:
             ds = add_variable(add, ds, catalog)
         except NoSearchResults:
-            pass
+            missing.append(add)
+    if missing:
+        catalog.logger.info(f"Failed to locate all measures, {missing=}")
     return ds
 
 
