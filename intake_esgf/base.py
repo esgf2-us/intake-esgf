@@ -647,6 +647,8 @@ def add_cell_measures(ds: xr.Dataset, catalog) -> xr.Dataset:
             for key, val in {"where land": "sftlf", "where sea": "sftof"}.items()
             if key in da.attrs.get("cell_methods", "")
         ]
+    if not to_add:
+        catalog.logger.info("dataset has no detectable measures to add")
     missing = []
     for add in set(to_add):
         catalog.logger.info(f"adding {add}")
