@@ -482,13 +482,13 @@ class CORDEXCMIP6(ESGFProject):  # Coordinated Regional Climate Downscaling Expe
         self.facets = [
             "project_id",  # CORDEX-CMIP6
             "activity_id",  # DD
-            "domain_id",  # NAM-25
-            "driving_institution_id",  # CCCma
-            "driving_source_id",  # CanESM5-1
+            "domain_id",  # NAM-12
+            "institution_id",  # OURANOS
+            "driving_source_id",  # CNRM-ESM2-1
             "driving_experiment_id",  # historical
             "driving_variant_label",  # r1i1p1f2
-            "source_id",  # CanRCM5-SN
-            "version_realization",  # v1-r2
+            "source_id",  # CRCM5-SN
+            "version_realization",  # v2-r1
             "frequency",  # mon
             "variable_id",  # tas
             "version",
