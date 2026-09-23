@@ -502,14 +502,15 @@ class CORDEXCMIP6(ESGFProject):  # Coordinated Regional Climate Downscaling Expe
         return self.facets
 
     def relaxation_facets(self) -> list[str]:
-        # NOTE: This is used to find cell measures that are closely related to a given
-        # set of facets and in this project do not make sense.
-        return []
+        return [
+            "driving_experiment_id",
+            "driving_variant_label",
+            "version_realization",
+            "institution_id",
+        ]
 
     def variable_description_facets(self) -> list[str]:
-        # NOTE: This is used to find cell measures that are closely related to a given
-        # set of facets and in this project do not make sense.
-        return []
+        return ["frequency", "variable_id"]
 
     def variable_facet(self) -> str:
         return "variable_id"
