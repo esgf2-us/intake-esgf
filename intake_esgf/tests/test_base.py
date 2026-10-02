@@ -148,9 +148,6 @@ def test_combine_results(df_ornl, df_ceda):
     assert len(df["id"].iloc[0]) == 8
 
 
-@pytest.mark.skipif(
-    sys.platform == "win32", reason="Windows does not support POSIX file permissions"
-)
 def test_download_and_verify_permissions(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -181,7 +178,9 @@ def test_download_and_verify_permissions(
         master_id=TaskID(-1),
     )
     assert local_file.read_bytes() == b"data"
-    assert local_file.stat().st_mode & 0o777 == 0o644
+    if sys.platform != "win32":
+        # Skip on Windows, as it does not support POSIX file permissions.
+        assert local_file.stat().st_mode & 0o777 == 0o644
 
 
 # def test_parallel_download():
