@@ -1,5 +1,6 @@
 """General functions used in various parts of intake-esgf."""
 
+import os
 import re
 import signal
 import tempfile
@@ -29,6 +30,17 @@ from intake_esgf.database import (
 )
 from intake_esgf.exceptions import NoSearchResults, ProjectNotSupported, StalledDownload
 from intake_esgf.projects import projects
+
+
+def _get_umask() -> int:
+    """Return the process umask (os.umask can only be read by setting it)."""
+    umask = os.umask(0o777)
+    os.umask(umask)
+    return umask
+
+
+# Read once at import time since setting the umask is not thread-safe.
+UMASK = _get_umask()
 
 
 def get_local_file(path: Path, dataroots: list[Path]) -> Path:
@@ -429,6 +441,8 @@ def download_and_verify(
             logger.info(f"\x1b[91;20mHash error\033[0m {url}")
             tmp_file.unlink()
             raise ValueError("Hash does not match")
+    # mkstemp creates files with mode 0o600, apply the default umask instead
+    tmp_file.chmod(0o666 & ~UMASK)
     tmp_file.rename(local_file)
 
     # If sizes not given, read it from the file for logging purposes
