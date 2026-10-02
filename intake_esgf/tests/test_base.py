@@ -1,3 +1,4 @@
+import sys
 import tempfile
 from collections.abc import Iterator
 from pathlib import Path
@@ -147,6 +148,9 @@ def test_combine_results(df_ornl, df_ceda):
     assert len(df["id"].iloc[0]) == 8
 
 
+@pytest.mark.skipif(
+    sys.platform == "win32", reason="Windows does not support POSIX file permissions"
+)
 def test_download_and_verify_permissions(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
