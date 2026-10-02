@@ -379,7 +379,7 @@ def download_and_verify(
         local_file = Path(local_file)
     local_file.parent.mkdir(parents=True, exist_ok=True)
     tmp_fh, tmp_filename = tempfile.mkstemp(
-        dir=local_file.parent, prefix=local_file.name
+        dir=local_file.parent, prefix=f"{local_file.name}."
     )
     tmp_file = Path(tmp_filename)
     hasher = _setup_hasher(hash, hash_algorithm)
