@@ -1,4 +1,6 @@
+import sys
 import tempfile
+from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
 
@@ -7,10 +9,12 @@ import pandas as pd
 import pytest
 import requests
 import xarray as xr
+from rich.progress import TaskID
 
 import intake_esgf
 import intake_esgf.base as base
 from intake_esgf import ESGFCatalog
+from intake_esgf.database import create_download_database
 from intake_esgf.exceptions import NoSearchResults, ProjectNotSupported
 
 
@@ -144,8 +148,39 @@ def test_combine_results(df_ornl, df_ceda):
     assert len(df["id"].iloc[0]) == 8
 
 
-# def test_download_and_verify():
-#    pass
+def test_download_and_verify_permissions(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    class FakeResponse:
+        def raise_for_status(self) -> None:
+            pass
+
+        def iter_content(self, chunk_size: int) -> Iterator[bytes]:
+            yield b"data"
+
+    def fake_get(*args: Any, **kwargs: Any) -> FakeResponse:
+        return FakeResponse()
+
+    monkeypatch.setattr("requests.get", fake_get)
+    monkeypatch.setattr(base, "UMASK", 0o022)
+    download_db = tmp_path / "download.db"
+    create_download_database(download_db)
+    local_file = tmp_path / "data.nc"
+    base.download_and_verify(
+        "https://example.org/data.nc",
+        local_file,
+        "3a6eb0790f39ac87c94f3856b2dd2c5d110e6811602261a9a923d3bb23adc8b7",
+        "sha256",
+        4,
+        download_db,
+        intake_esgf.conf.get_logger(),
+        task_id=TaskID(-1),
+        master_id=TaskID(-1),
+    )
+    assert local_file.read_bytes() == b"data"
+    if sys.platform != "win32":
+        # Skip on Windows, as it does not support POSIX file permissions.
+        assert local_file.stat().st_mode & 0o777 == 0o644
 
 
 # def test_parallel_download():
