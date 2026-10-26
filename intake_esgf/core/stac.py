@@ -155,11 +155,7 @@ def _parse_file_daterange(info: dict[str, Any]) -> dict[str, Any]:
     if "path" not in info:
         info["file_start"] = info["file_end"] = None
         return info
-    tstart, tend = base.get_time_extent(str(info["path"]))
-    if tstart is not None:
-        info["file_start"] = tstart
-    if tend is not None:
-        info["file_end"] = tend
+    info["file_start"], info["file_end"] = base.get_time_extent(str(info["path"]))
     return info
 
 
