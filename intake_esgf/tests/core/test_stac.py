@@ -1,8 +1,10 @@
 import pickle
 
+import pandas as pd
 import pytest
 
 from intake_esgf.core import STACESGFIndex
+from intake_esgf.core.stac import _parse_file_daterange
 
 
 @pytest.fixture
@@ -84,3 +86,18 @@ def test_pickle(east) -> None:
     assert repr(index) == repr(unpickled)
     assert str(index.session) == str(unpickled.session)
     assert index.logger == unpickled.logger
+
+
+@pytest.mark.parametrize(
+    "path, expected",
+    [
+        ("areacella_fx_CanESM5_historical_r1i1p1f1_gn.nc", (None, None)),
+        (
+            "tas_Amon_CanESM5_historical_r1i1p1f1_gn_185001-201412.nc",
+            (pd.Timestamp("1850-01-01"), pd.Timestamp("2014-12-01")),
+        ),
+    ],
+)
+def test_parse_file_daterange(path, expected):
+    info = _parse_file_daterange({"path": path})
+    assert (info["file_start"], info["file_end"]) == expected
