@@ -100,7 +100,7 @@ def select_streaming_link(links: list[str], df_rate: pd.DataFrame) -> str:
     """
     # There are some .nc and .nc.html links in these records, only the .nc links
     # can be read by xarray.
-    links = [link for link in links if link.endswith(".nc")]
+    links = [link for link in links if not link.endswith(".html")]
     # Sort the links by the fastest hostname we have seen when transferring.
     links = sorted(
         links, key=partial(sort_download_links, df_rate=df_rate), reverse=True
@@ -183,25 +183,17 @@ def partition_infos(
 
         # 2) does the user prefer to stream data?
         if prefer_streaming:
-            # What possible links are there to stream from?
-            preferred_sources = ["VirtualZarr", "OPENDAP"]  # move to configure
+            # What possible links are there to stream from, sorted by types
             links = [
                 link
-                for src in (set(preferred_sources) & set(info))
+                for src in intake_esgf.conf["streaming_preference"]
                 for link in info[src]
+                if src in info
             ]
+            # As long as we find one link conforming to the types preferred, partition
             if links:
-                # Try to find a streaming link from the fastest servers we have
-                # seen while downloading. If this fails, we revert to https.
-                try:
-                    link = select_streaming_link(links, df_rate)
-                    if key not in ds:
-                        ds[key] = []
-                    ds[key].append(link)
-                    infos_stream.append(info)
-                    continue
-                except ValueError:
-                    pass
+                infos_stream.append(info)
+                continue
 
         # 3) does the user prefer to use globus transfer?
         if prefer_globus:
