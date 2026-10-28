@@ -17,7 +17,9 @@ classifiers = [
 license = { file = "LICENSE" }
 requires-python = ">=3.12"
 dependencies = [
+    "aiohttp>=3.14.3",
     "dask>=2024.12.0",
+    "fastparquet>=2026.5.0",
     "globus-sdk<4.0.0",
     "netcdf4>=1.7.2",
     "pandas>=2.2.3",
@@ -28,6 +30,7 @@ dependencies = [
     "requests-cache>=1.2.1",
     "rich>=15.0.0",
     "xarray>=2024.11.0",
+    "zarr>=3.4.0",
 ]
 dynamic = ["version"]
 

@@ -615,9 +615,14 @@ class ESGFCatalog:
             prefer_globus,
         )
 
+        print("Raw infos")
+        print(raw_infos)
+        print("Streaming infos")
+        print(infos["stream"])
+
         # optionally use globus to transfer what we can
         tasks = []
-        if prefer_globus:
+        if infos["globus"]:
             tasks = create_globus_transfer(
                 infos["globus"], cast(str, globus_endpoint), str(globus_path)
             )
