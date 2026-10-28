@@ -451,7 +451,8 @@ def download_and_verify(
 
     # Log transfer information
     transfer_time = time.time() - transfer_time
-    rate = content_length * 1e-6 / transfer_time
+    MIN_TRANSFER_TIME = 1e-3  # 1 [ms]
+    rate = content_length * 1e-6 / max(transfer_time, MIN_TRANSFER_TIME)
     host = url[: url.index("/", 10)].replace("http://", "").replace("https://", "")
     logger.info(f"{transfer_time=:.2f} [s] at {rate:.2f} [Mb s-1] {url}")
     log_download_information(download_db, host, transfer_time, content_length * 1e-6)
