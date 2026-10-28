@@ -10,19 +10,28 @@ def test_cordexcmip6_discovery():
     cat = ESGFCatalog().search(
         project="CORDEX-CMIP6",
         variable_id=["pr"],
+        domain_id=["NAM-12", "MED-12", "EUR-12", "CAM-25"],
         driving_experiment_id=["historical", "ssp370"],
         driving_source_id=["NorESM2-MM", "MPI-ESM1-2-LR"],
         driving_variant_label=["r1i1p1f1", "r5i1p1f1"],
+        source_id=[
+            "CRCM5-SN",
+            "CNRM-RCSM6B-SN",
+            "HCLIM43-ALADIN",
+            "CNRM-ALADIN64E1",
+            "ICON-CLM-202407-1-3",
+            "CNRM-ALADIN64C1",
+        ],
         frequency="mon",
     )
-    assert len(cat.df) == 11
-    assert len(cat.model_groups()) == 6
+    assert len(cat.df) == 13
+    assert len(cat.model_groups()) == 7
     cat.remove_incomplete(lambda df: True if len(df) >= 2 else False)
+    assert len(cat.df) == 10
+    assert len(cat.model_groups()) == 4
+    cat.remove_ensembles()
     assert len(cat.df) == 8
     assert len(cat.model_groups()) == 3
-    cat.remove_ensembles()
-    assert len(cat.df) == 6
-    assert len(cat.model_groups()) == 2
 
 
 def test_cordexcmip6_download():
@@ -35,6 +44,7 @@ def test_cordexcmip6_download():
         driving_experiment_id="historical",
         driving_source_id="MIROC6",
         driving_variant_label="r1i1p1f1",
+        source_id="ICON-CLM-202407-1-1",
         variable_id="siconca",
         frequency="mon",
     )
