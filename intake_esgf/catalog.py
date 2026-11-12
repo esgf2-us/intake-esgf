@@ -615,10 +615,7 @@ class ESGFCatalog:
             prefer_globus,
         )
 
-        print("Raw infos")
-        print(raw_infos)
-        print("Streaming infos")
-        print(infos["stream"])
+        # handle the streamed datasets
 
         # optionally use globus to transfer what we can
         tasks = []
