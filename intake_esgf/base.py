@@ -161,9 +161,6 @@ def partition_infos(
     active_endpoints: set[str] = set()
 
     # Partition and setup all the file infos based on a priority
-    df_rate = get_download_rate_dataframe(
-        Path(intake_esgf.conf["download_db"]).expanduser()
-    )
     for i, info in enumerate(infos):
         key = info["key"]
 
