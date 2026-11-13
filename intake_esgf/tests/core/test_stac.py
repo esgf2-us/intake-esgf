@@ -34,6 +34,7 @@ def test_search_cmip7_west(west):
         project=["CMIP7"],
         source_id=["UKCM2a-0-HH"],
         variable_id=["tas"],
+        variable_branding_suffix=["tmaxavg-h2m-hxy-u"],
         frequency=["mon"],
         experiment_id=["historical"],
         variant_label=["r1i1p1f1"],

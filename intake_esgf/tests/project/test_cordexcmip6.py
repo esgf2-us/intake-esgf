@@ -8,6 +8,7 @@ def test_cordexcmip6_discovery():
     """
     intake_esgf.conf.set(no_indices=True, indices={"discovery.east.esgf.io": True})
     cat = ESGFCatalog().search(
+        domain_id=["NAM-12", "MED-12", "EUR-12", "CAM-25"],
         project="CORDEX-CMIP6",
         variable_id=["pr"],
         driving_experiment_id=["historical", "ssp370"],
@@ -15,14 +16,14 @@ def test_cordexcmip6_discovery():
         driving_variant_label=["r1i1p1f1", "r5i1p1f1"],
         frequency="mon",
     )
-    assert len(cat.df) == 11
-    assert len(cat.model_groups()) == 6
+    assert len(cat.df) == 13
+    assert len(cat.model_groups()) == 7
     cat.remove_incomplete(lambda df: True if len(df) >= 2 else False)
+    assert len(cat.df) == 10
+    assert len(cat.model_groups()) == 4
+    cat.remove_ensembles()
     assert len(cat.df) == 8
     assert len(cat.model_groups()) == 3
-    cat.remove_ensembles()
-    assert len(cat.df) == 6
-    assert len(cat.model_groups()) == 2
 
 
 def test_cordexcmip6_download():

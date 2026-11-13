@@ -181,14 +181,17 @@ def partition_infos(
         # 2) does the user prefer to stream data?
         if prefer_streaming:
             # What possible links are there to stream from, sorted by types
-            links = [
-                link
-                for src in intake_esgf.conf["streaming_preference"]
-                for link in info[src]
-                if src in info
-            ]
-            # As long as we find one link conforming to the types preferred, partition
+            links = []
+            for src in intake_esgf.conf["streaming_preference"]:
+                links += [link for link in info.get(src, [])]
+                if links:
+                    # If we find any kind of link we prefer, stop looking
+                    break
+
             if links:
+                if key not in ds:
+                    ds[key] = []
+                ds[key] += links
                 infos_stream.append(info)
                 continue
 

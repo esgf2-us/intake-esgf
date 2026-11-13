@@ -9,6 +9,7 @@ from multiprocessing.pool import ThreadPool
 from pathlib import Path
 from typing import Any, Literal, Self, cast
 
+import fsspec
 import pandas as pd
 import requests
 import xarray as xr
@@ -26,6 +27,7 @@ from intake_esgf.core.globus import (
 from intake_esgf.database import (
     create_download_database,
     get_download_rate_dataframe,
+    sort_download_links,
 )
 from intake_esgf.exceptions import (
     DatasetInitError,
@@ -615,7 +617,8 @@ class ESGFCatalog:
             prefer_globus,
         )
 
-        # handle the streamed datasets
+        #
+        dsd = _simplify_stream_links(infos["stream"], dsd)
 
         # optionally use globus to transfer what we can
         tasks = []
@@ -744,7 +747,7 @@ class ESGFCatalog:
         for key, files in paths.items():
             [self.logger.info(f"accessed {f}") for f in files]
             try:
-                ds[key] = xr.open_mfdataset(sorted(files), **open_kwargs)
+                ds[key] = _init_dataset(sorted(files), **open_kwargs)
             except Exception as ex:
                 warnings.warn(f"xarray threw an exception opening these files: {files}")
                 failed_keys.append(key)
@@ -929,6 +932,96 @@ def _load_into_dsd(
             dsd[key] = []
         dsd[key] += [path]
     return dsd
+
+
+def sort_by_transer_speed(links: list[str]) -> list[str]:
+    """
+    Sort a list of links using local download speed information.
+    """
+    return sorted(
+        links,
+        key=partial(
+            sort_download_links,
+            df_rate=get_download_rate_dataframe(
+                Path(intake_esgf.conf["download_db"]).expanduser()
+            ),
+        ),
+        reverse=True,
+    )
+
+
+def _simplify_stream_links(
+    infos: list[dict], dsd: dict[str, list[str | Path]]
+) -> dict[str, list[str | Path]]:
+    """
+    Multiple stream links may be given, we need to serve one.
+
+    Note
+    ----
+    This is part of a hack that I hope to improve later.
+    """
+
+    def _host(link: str) -> str:
+        return (
+            link[: link.index("/", 10)].replace("http://", "").replace("https://", "")
+        )
+
+    streamed_keys = [info["key"] for info in infos]
+    for key in streamed_keys:
+        links = [str(link) for link in set(dsd[key])]
+        links = sort_by_transer_speed(links)
+        if all([link.endswith(".nc") for link in links]):  # OPENDAP links
+            links = [link for link in links if _host(link) == _host(links[0])]
+        if any(
+            [
+                link
+                for link in links
+                if "kerchunk" in link.lower()
+                or link.endswith("json")
+                or link.endswith("parq")
+            ]
+        ):  # Kerchunk
+            links = [links[0]]
+        if all([link for link in links if link.endswith("nca")]):  # CFA
+            dsd[key] = [links[0]]
+    return dsd
+
+
+def _init_dataset(files: list[str | Path], **open_kwargs: Any) -> xr.Dataset:
+    """
+    Based on link contents, guess at how to initialize the dataset.
+
+    Note
+    ----
+    This is part 2 of a hack that will be factored out.
+    """
+    # files or OPENDAP
+    if all([link for link in files if str(link).endswith("nc")]):
+        return xr.open_mfdataset(sorted(files), **open_kwargs)
+    # CFA
+    link = str(files[0])
+    if len(files) == 1 and str(link).endswith("nca"):
+        ds = xr.open_mfdataset(link, **open_kwargs, engine="CFA")
+        ds.attrs["streaming_link"] = link
+        return ds
+    # Kerchunk
+    if len(files) == 1 and (
+        "kerchunk" in link.lower() or link.endswith("json") or link.endswith("parq")
+    ):
+        ds = xr.open_dataset(
+            fsspec.filesystem(
+                "reference",
+                fo=link,
+                remote_options={"asynchronous": True},
+                remote_protocol="https",
+                asynchronous=True,
+            ).get_mapper(""),
+            engine="zarr",
+            consolidated=False,
+        )
+        ds.attrs["streaming_link"] = link
+        return ds
+    raise ValueError(f"Could not initialize a dataset from {files=}")
 
 
 def _warn_stac_cmip6(cat: ESGFCatalog, project: str) -> None:
