@@ -8,8 +8,8 @@ def test_cordexcmip6_discovery():
     """
     intake_esgf.conf.set(no_indices=True, indices={"discovery.east.esgf.io": True})
     cat = ESGFCatalog().search(
-        domain_id=["NAM-12", "MED-12", "EUR-12", "CAM-25"],
         project="CORDEX-CMIP6",
+        domain_id=["NAM-12", "MED-12", "EUR-12", "CAM-25"],
         variable_id=["pr"],
         driving_experiment_id=["historical", "ssp370"],
         driving_source_id=["NorESM2-MM", "MPI-ESM1-2-LR"],
@@ -32,8 +32,8 @@ def test_cordexcmip6_download():
     """
     intake_esgf.conf.set(no_indices=True, indices={"discovery.east.esgf.io": True})
     cat = ESGFCatalog().search(
-        domain_id=["EUR-12"],
         project="CORDEX-CMIP6",
+        domain_id=["EUR-12"],
         driving_experiment_id="historical",
         driving_source_id="MIROC6",
         driving_variant_label="r1i1p1f1",
