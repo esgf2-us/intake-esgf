@@ -55,6 +55,7 @@ defaults = {
         chunks="auto",
     ),
     "default_project": "CMIP7",
+    "streaming_preference": ["Kerchunk", "OPENDAP"],
 }
 
 

@@ -150,13 +150,25 @@ def _parse_file_size(info: dict[str, Any], asset: dict[str, Any]) -> dict[str, A
 
 def _parse_file_daterange(info: dict[str, Any]) -> dict[str, Any]:
     """
-    Parse out the file time begin/end from the filename
+    Parse out the file time begin/end from the filename.
     """
     if "path" not in info:
         info["file_start"] = info["file_end"] = None
         return info
     info["file_start"], info["file_end"] = base.get_time_extent(str(info["path"]))
     return info
+
+
+def _globus_new_to_old(link: str) -> str:
+    """
+    Convert new style globus links to old.
+    """
+    return "globus:{origin_id}{origin_path}".format(
+        **{
+            arg.split("=")[0]: arg.split("=")[1]
+            for arg in link[(link.index("?") + 1) :].split("&")
+        }
+    )
 
 
 class STACESGFIndex:
@@ -281,32 +293,51 @@ class STACESGFIndex:
                 # it may be that another index has info for this id, just skip
                 continue
             item = self.cache[dataset_id]
+            files_added = []
             for _, asset in item["assets"].items():
-                # Only http links
-                if not asset["description"] == "HTTPServer Link":
+                # Handling others later
+                if asset["protocol"] != "https":
                     continue
 
-                # Where do we put this file?
+                # Load or initialize the file info
                 path = _get_content_path(asset, str(self.last_project))
-
-                # We could need to append to an existing location
                 if str(path) in infos:
                     info = infos[str(path)]
                 else:
                     info = {}
+                    info["dataset_id"] = dataset_id
+                    info["path"] = path
 
-                # Append location information
-                info["dataset_id"] = dataset_id
+                # Add https links
                 if "HTTPServer" not in info:
                     info["HTTPServer"] = []
                 info["HTTPServer"] += [str(asset["href"])]
-                info["path"] = path
-
-                # Parse out information
                 info = _parse_file_validation(info, asset)
                 info = _parse_file_size(info, asset)
                 info = _parse_file_daterange(info)
+                files_added += [path]
 
-                infos[str(path)] = info
+                infos[str(path)] = info  # replace/put the info
+
+            # Kerchunk reference files and Globus links are dataset level
+            # assets, which does not map well to our file-centric design. Here
+            # we will replicate information for each file to play well with the
+            # rest of our logic and then will collapse back later.
+            for _, asset in item["assets"].items():
+                # Add the same kerchunk handle to each file in this dataset
+                if asset["protocol"] == "kerchunk":
+                    for path in files_added:
+                        if "Kerchunk" not in infos[str(path)]:
+                            infos[str(path)]["Kerchunk"] = []
+                        infos[str(path)]["Kerchunk"] += [str(asset["href"])]
+
+                # Transform the globus link to the old style that will add assets to a transfer
+                if asset["protocol"] == "globus":
+                    base = _globus_new_to_old(asset["href"])
+                    for path in files_added:
+                        if "Globus" not in infos[str(path)]:
+                            infos[str(path)]["Globus"] = []
+                        infos[str(path)]["Globus"] += [str(Path(base) / path.name)]
+
         out = [info for _, info in infos.items()]
         return out
