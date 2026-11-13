@@ -32,6 +32,7 @@ def test_cordexcmip6_download():
     """
     intake_esgf.conf.set(no_indices=True, indices={"discovery.east.esgf.io": True})
     cat = ESGFCatalog().search(
+        domain_id=["EUR-12"],
         project="CORDEX-CMIP6",
         driving_experiment_id="historical",
         driving_source_id="MIROC6",
