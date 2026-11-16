@@ -279,9 +279,7 @@ class STACESGFIndex:
         return df
 
     def from_tracking_ids(self, tracking_ids: list[str]) -> pd.DataFrame:
-        raise NotImplementedError(
-            "The STAC catalogs encode this as `pid` in the properties."
-        )
+        return self.search(pid=tracking_ids)
 
     def get_file_info(
         self, dataset_ids: list[str], **facets: Any
