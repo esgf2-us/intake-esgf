@@ -42,6 +42,15 @@ def file_info():
             "globus:dea29ae8-bb92-4c63-bdbc-260522c92fe8/css03_data/CMIP6/CMIP/CCCma/CanESM5/historical/r1i1p1f1/Amon/tas/gn/v20190429/tas_Amon_CanESM5_historical_r1i1p1f1_gn_185001-201412.nc",
             "globus:8896f38e-68d1-4708-bce4-b1b3a3405809/css03_data/CMIP6/CMIP/CCCma/CanESM5/historical/r1i1p1f1/Amon/tas/gn/v20190429/tas_Amon_CanESM5_historical_r1i1p1f1_gn_185001-201412.nc",
         ],
+        "Kerchunk": [
+            "http://esgf-node.ornl.gov/link1.json",
+            "http://esgf-node.ornl.gov/link2.parq",
+            "http://esgf-node.ornl.gov/kerchunk.link3.junk",
+        ],
+        "CFA": [
+            "http://esgf-node.ornl.gov/link1.nca",
+            "http://esgf-node.ornl.gov/another.nca",
+        ],
         "path": Path(
             "CMIP6/CMIP/CCCma/CanESM5/historical/r1i1p1f1/Amon/tas/gn/v20190429/tas_Amon_CanESM5_historical_r1i1p1f1_gn_185001-201412.nc"
         ),

@@ -996,12 +996,12 @@ def _init_dataset(files: list[str | Path], **open_kwargs: Any) -> xr.Dataset:
     This is part 2 of a hack that will be factored out.
     """
     # files or OPENDAP
-    if all([link for link in files if str(link).endswith("nc")]):
+    if all([str(link).endswith("nc") for link in files]):
         return xr.open_mfdataset(sorted(files), **open_kwargs)
     # CFA
     link = str(files[0])
     if len(files) == 1 and str(link).endswith("nca"):
-        ds = xr.open_mfdataset(link, **open_kwargs, engine="CFA")
+        ds = xr.open_mfdataset([link], **open_kwargs, engine="CFA")
         ds.attrs["streaming_link"] = link
         return ds
     # Kerchunk
