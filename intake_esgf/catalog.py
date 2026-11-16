@@ -573,7 +573,7 @@ class ESGFCatalog:
 
     def to_path_dict(
         self,
-        prefer_streaming: bool = False,
+        prefer_streaming: bool | None = None,
         globus_endpoint: str | None = None,
         globus_path: Path = Path("/"),
         minimal_keys: bool = True,
@@ -607,6 +607,11 @@ class ESGFCatalog:
         """
         if self.df is None or len(self.df) == 0:
             raise ValueError("No entries to retrieve.")
+        prefer_streaming = (
+            intake_esgf.conf["prefer_streaming"]
+            if prefer_streaming is None
+            else prefer_streaming
+        )
         prefer_globus = globus_endpoint is not None
 
         # get and partition file info based on access method
@@ -687,7 +692,7 @@ class ESGFCatalog:
 
     def to_dataset_dict(
         self,
-        prefer_streaming: bool = False,
+        prefer_streaming: bool | None = None,
         globus_endpoint: str | None = None,
         globus_path: Path = Path("/"),
         add_measures: bool = True,
@@ -728,6 +733,11 @@ class ESGFCatalog:
         # if no kwargs are passed, use the default dictionary
         if open_kwargs is None:
             open_kwargs = intake_esgf.conf["default_open_kwargs"]
+        prefer_streaming = (
+            intake_esgf.conf["prefer_streaming"]
+            if prefer_streaming is None
+            else prefer_streaming
+        )
 
         # get the paths, passing along options
         paths = self.to_path_dict(

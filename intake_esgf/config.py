@@ -3,13 +3,16 @@
 import contextlib
 import copy
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal, get_args
 
 import requests_cache
 import yaml
 
 import intake_esgf
 import intake_esgf.logging
+
+# Supported methods and their default order of preference
+StreamMethod = Literal["Kerchunk", "CFA", "OPENDAP"]
 
 defaults = {
     "stac_indices": {
@@ -55,7 +58,8 @@ defaults = {
         chunks="auto",
     ),
     "default_project": "CMIP7",
-    "streaming_preference": ["Kerchunk", "OPENDAP"],
+    "prefer_streaming": False,
+    "streaming_preference": list(get_args(StreamMethod)),
 }
 
 
@@ -111,6 +115,8 @@ class Config(dict):
         print_log_on_error: bool | None = None,
         default_open_kwargs: dict[str, Any] | None = None,
         default_project: str | None = None,
+        prefer_streaming: bool | None = None,
+        streaming_preference: list[StreamMethod] | None = None,
     ):
         """Change intake-esgf configuration options.
 
@@ -237,6 +243,10 @@ class Config(dict):
                     f"Invalid value for {default_project=}, must be one of {intake_esgf.supported_projects()}"
                 )
             self["default_project"] = default_project
+        if prefer_streaming is not None:
+            self["prefer_streaming"] = bool(prefer_streaming)
+        if streaming_preference is not None:
+            self["streaming_preference"] = streaming_preference
         return self._unset(temp)
 
     def __getitem__(self, item):
