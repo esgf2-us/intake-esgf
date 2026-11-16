@@ -40,9 +40,9 @@ def test_search_cmip7_west(west):
         experiment_id=["historical"],
         variant_label=["r1i1p1f1"],
     )
-    assert len(df) == 1
+    assert len(df) == 3
     infos = west.get_file_info(df["id"].to_list())
-    assert len(infos) == 18
+    assert len(infos) == 54
 
 
 def test_search_cmip6plus_west(west):
