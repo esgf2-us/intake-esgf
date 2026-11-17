@@ -13,6 +13,6 @@ build:
     - uv sync --group docs
     - cd doc; uv run myst build --html --execute
     - mkdir -p $READTHEDOCS_OUTPUT/html/
-    - cp -r doc/_build/html/. "$READTHEDOCS_OUTPUT/html"
+    - cp -r doc/_build/html/* $READTHEDOCS_OUTPUT/html/
     - pandoc doc/cheatsheet.md -o $READTHEDOCS_OUTPUT/html/cheatsheet.pdf
     - rm -rf doc/_build
