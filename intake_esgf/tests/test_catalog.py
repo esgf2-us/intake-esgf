@@ -1,6 +1,10 @@
+from pathlib import Path
+
 import pytest
+import xarray as xr
 
 import intake_esgf
+from intake_esgf.catalog import _init_dataset, _simplify_stream_links
 from intake_esgf.database import log_download_information
 from intake_esgf.projects import CMIP6
 
@@ -132,3 +136,31 @@ def test_open_kwargs(conf, kwargs, result):
 @pytest.mark.xfail(reason="only single project at a time")
 def test_no_multiple_projects():
     intake_esgf.ESGFCatalog().search(project=["CMIP6", "CMIP7"])
+
+
+def test_simplify_stream_links(file_info):
+    key = file_info["key"]
+    for method in ["OPENDAP", "Kerchunk", "CFA"]:
+        dsd = _simplify_stream_links([file_info], {key: file_info[method]})
+        print(dsd)
+        assert len(dsd[key]) == 1
+
+
+@pytest.mark.parametrize(
+    "method",
+    ["OPENDAP", "Kerchunk", pytest.param("CFA", marks=pytest.mark.skip(reason="slow"))],
+)
+def test_init_dataset(method: str):
+    methods: dict[str, list[str | Path]] = {
+        "OPENDAP": [
+            "http://esgf-node.ornl.gov/thredds/dodsC/css03_data/CMIP6/CMIP/CCCma/CanESM5/historical/r1i1p1f1/Amon/tas/gn/v20190429/tas_Amon_CanESM5_historical_r1i1p1f1_gn_185001-201412.nc"
+        ],
+        "Kerchunk": [
+            "https://dap.ceda.ac.uk/badc/cmip6/metadata/aggregations/kerchunk/CMIP6/ScenarioMIP/MOHC/HadGEM3-GC31-LL/kr1.0/CMIP6.ScenarioMIP.MOHC.HadGEM3-GC31-LL.ssp585.r4i1p1f3.Amon.ua.gn.v20200604.kr1.0.json"
+        ],
+        "CFA": [
+            "https://dap.ceda.ac.uk/badc/cmip6/metadata/aggregations/cfa/CMIP6/ScenarioMIP/MOHC/HadGEM3-GC31-LL/cr1.0/CMIP6.ScenarioMIP.MOHC.HadGEM3-GC31-LL.ssp585.r4i1p1f3.Amon.ua.gn.v20200604.cr1.0.nca"
+        ],
+    }
+    ds = _init_dataset(methods[method])
+    assert isinstance(ds, xr.Dataset)
