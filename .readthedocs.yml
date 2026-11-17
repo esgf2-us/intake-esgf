@@ -11,8 +11,6 @@ build:
     - asdf install uv latest
     - asdf global uv latest
     - uv sync --group docs
-    - export BASE_URL=$READTHEDOCS_CANONICAL_URL
-    - printenv
     - cd doc; uv run myst build --html --execute
     - mkdir -p $READTHEDOCS_OUTPUT/html/
     - cp -r doc/_build/html/. "$READTHEDOCS_OUTPUT/html"

@@ -50,7 +50,7 @@ docs = [
     "ipykernel>=7.2.0",
     "jupyterlab-myst>=2.6.0",
     "matplotlib>=3.10.9",
-    "mystmd>=1.9.1",
+    "mystmd==1.12.0",
     "nc-time-axis>=1.4.1",
 ]
 
