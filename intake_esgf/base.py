@@ -574,6 +574,12 @@ def _stream_to_file(
         for chunk in resp.iter_content(chunk_size=CHUNKSIZE):
             if not chunk:
                 continue
+            # keep what we received, a later attempt resumes after it
+            fdl.write(chunk)
+            if task_id is not None:
+                PROGRESS.update(task_id, advance=len(chunk))
+            if done_event.is_set():
+                return False
             if break_slow_downloads and detector.is_slow(len(chunk)):
                 logger.info(
                     f"\x1b[38;5;209mbreaking slow download\033[0m {detector.rate:.2f} < {threshold:.2f} [Mb s-1] {url}"
@@ -583,11 +589,6 @@ def _stream_to_file(
                     download_db, get_url_host(url), elapsed, detector.rate * elapsed
                 )
                 raise StalledDownload()
-            fdl.write(chunk)
-            if task_id is not None:
-                PROGRESS.update(task_id, advance=len(chunk))
-            if done_event.is_set():
-                return False
     fdl.flush()
     return True
 

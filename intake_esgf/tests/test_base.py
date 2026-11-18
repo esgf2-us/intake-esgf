@@ -15,7 +15,11 @@ import intake_esgf
 import intake_esgf.base as base
 from intake_esgf import ESGFCatalog
 from intake_esgf.database import create_download_database, get_url_host
-from intake_esgf.exceptions import NoSearchResults, ProjectNotSupported
+from intake_esgf.exceptions import (
+    NoSearchResults,
+    ProjectNotSupported,
+    StalledDownload,
+)
 
 
 def test_get_local_file():
@@ -303,6 +307,31 @@ def test_download_verifies_complete_partial_beyond_range(
     _download(local_file, size=size)
     assert server.requests[0]["Range"] == f"bytes={len(DATA)}-"
     assert local_file.read_bytes() == DATA
+
+
+def test_slow_download_keeps_received_data(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # the chunk which shows the transfer is too slow is kept to resume from
+    monkeypatch.setattr("requests.get", FakeServer().get)
+    monkeypatch.setattr(base._SlowDownloadDetector, "is_slow", lambda self, n: True)
+    local_file = tmp_path / "data.nc"
+    download_db = tmp_path / "download.db"
+    create_download_database(download_db)
+    with pytest.raises(StalledDownload):
+        base.download_and_verify(
+            "https://example.org/data.nc",
+            local_file,
+            DATA_SHA256,
+            "sha256",
+            len(DATA),
+            download_db,
+            intake_esgf.conf.get_logger(),
+            task_id=TaskID(-1),
+            master_id=TaskID(-1),
+            break_slow_downloads=True,
+        )
+    assert base._partial_file(local_file).read_bytes() == DATA[:1]
 
 
 def test_download_without_hash_does_not_resume(

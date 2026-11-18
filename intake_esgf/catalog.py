@@ -558,10 +558,9 @@ class ESGFCatalog:
                 merged_info[path] = {"key": dataset_ids[info["dataset_id"]]}
             for key, val in info.items():
                 if isinstance(val, list):
-                    if key not in merged_info[path]:
-                        merged_info[path][key] = val
-                    else:
-                        merged_info[path][key] += val
+                    # several indices may list the same links, keep each once
+                    merged = merged_info[path].setdefault(key, [])
+                    merged += [v for v in val if v not in merged]
                 else:
                     if key not in merged_info[path]:
                         merged_info[path][key] = val
