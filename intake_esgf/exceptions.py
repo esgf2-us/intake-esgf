@@ -52,6 +52,7 @@ class DatasetLoadError(IntakeESGFException):
             [
                 "- We failed to find file access information for these datasets.",
                 "- All the access links we found failed. The data nodes may be offline.",
+                "- Only some of the files of these datasets could be retrieved.",
             ]
         )
         msg += "\nFor more information, consult the session log 'print(cat.session_log())'."

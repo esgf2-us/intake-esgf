@@ -1,11 +1,15 @@
+import warnings
 from pathlib import Path
+from typing import Any
 
 import pytest
 import xarray as xr
 
 import intake_esgf
+import intake_esgf.base as base
 from intake_esgf.catalog import _init_dataset, _simplify_stream_links
 from intake_esgf.database import log_download_information
+from intake_esgf.exceptions import DatasetLoadError
 from intake_esgf.projects import CMIP6
 
 
@@ -96,8 +100,127 @@ def test_download_summary(catalog):
 #    pass
 
 
-# def test_load_into_dsd():
-#    pass
+def _partial_download_catalog(
+    df_catalog, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> intake_esgf.ESGFCatalog:
+    """
+    A catalog of 2 datasets where file info is faked and downloads are mocked.
+
+    The tas dataset has 3 files, of which one will fail to download. The gpp dataset
+    has a single file which downloads fine.
+    """
+    intake_esgf.conf.set(local_cache=[str(tmp_path)])
+    cat = intake_esgf.ESGFCatalog()
+    cat.df = df_catalog
+    cat._set_project()
+    cat.df["key"] = cat.df.apply(
+        lambda row: ".".join([str(row[f]) for f in cat.project.master_id_facets()]),
+        axis=1,
+    )
+    tas_key, gpp_key = cat.df["key"]
+    root = "CMIP6/CMIP/CCCma/CanESM5/historical/r1i1p1f1"
+
+    def _info(key: str, path: str) -> dict[str, Any]:
+        return {
+            "key": key,
+            "path": Path(path),
+            "HTTPServer": [f"https://example.org/{path}"],
+            "checksum": "",
+            "checksum_type": "",
+            "size": 0,
+        }
+
+    infos = [
+        _info(tas_key, f"{root}/Amon/tas/gn/v20190429/tas_185001-189912.nc"),
+        _info(tas_key, f"{root}/Amon/tas/gn/v20190429/tas_190001-194912.nc"),
+        _info(tas_key, f"{root}/Amon/tas/gn/v20190429/tas_195001-201412.nc"),
+        _info(gpp_key, f"{root}/Lmon/gpp/gn/v20190429/gpp_185001-201412.nc"),
+    ]
+    monkeypatch.setattr(cat, "_get_file_info", lambda **kwargs: infos)
+
+    def fake_download_and_verify(url: str, local_file: Path, *args, **kwargs):
+        if "190001-194912" in url:
+            raise ValueError("Hash does not match")
+        local_file.parent.mkdir(parents=True, exist_ok=True)
+        local_file.write_bytes(b"data")
+
+    monkeypatch.setattr(base, "download_and_verify", fake_download_and_verify)
+    return cat
+
+
+def test_partial_download_warns(df_catalog, tmp_path, monkeypatch):
+    cat = _partial_download_catalog(df_catalog, tmp_path, monkeypatch)
+    with intake_esgf.conf.set(break_on_error=False):
+        with pytest.warns(UserWarning, match="tas_190001-194912.nc"):
+            dsd = cat.to_path_dict(minimal_keys=False, quiet=True)
+    # partial data is still returned, but the missing file is reported
+    tas_key, gpp_key = cat.df["key"]
+    assert sorted(Path(p).name for p in dsd[tas_key]) == [
+        "tas_185001-189912.nc",
+        "tas_195001-201412.nc",
+    ]
+    assert len(dsd[gpp_key]) == 1
+
+
+def test_partial_download_break_on_error(df_catalog, tmp_path, monkeypatch):
+    cat = _partial_download_catalog(df_catalog, tmp_path, monkeypatch)
+    tas_key, _ = cat.df["key"]
+    with intake_esgf.conf.set(break_on_error=True, print_log_on_error=False):
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", UserWarning)
+            with pytest.raises(DatasetLoadError) as exc:
+                cat.to_path_dict(minimal_keys=False, quiet=True)
+    assert exc.value.problem_keys == [tas_key]
+    assert "tas_190001-194912.nc" in str(exc.value)
+
+
+def test_download_urls_reports_failures(tmp_path, monkeypatch):
+    def fake_download_and_verify(url: str, local_file: Path, *args, **kwargs):
+        if "bad" in url:
+            raise RuntimeError("connection reset")
+        local_file.write_bytes(b"data")
+
+    def broken_rate_dataframe(*args, **kwargs):
+        raise RuntimeError("unexpected error in a worker thread")
+
+    monkeypatch.setattr(base, "download_and_verify", fake_download_and_verify)
+    infos = [
+        {
+            "key": "a",
+            "path": Path("good.nc"),
+            "size": 0,
+            "checksum": "",
+            "checksum_type": "",
+            "HTTPServer": ["https://example.org/good.nc"],
+        },
+        {
+            "key": "a",
+            "path": Path("bad.nc"),
+            "size": 0,
+            "checksum": "",
+            "checksum_type": "",
+            "HTTPServer": ["https://example.org/bad.nc"],
+        },
+        {
+            "key": "b",
+            "path": Path("nolinks.nc"),
+            "size": 0,
+            "checksum": "",
+            "checksum_type": "",
+        },
+    ]
+    download_db = Path(intake_esgf.conf["download_db"])
+    logger = intake_esgf.conf.get_logger()
+    failed = base.download_urls(infos, [tmp_path], download_db, logger, None, True)
+    assert sorted(info["path"].name for info in failed) == ["bad.nc", "nolinks.nc"]
+    assert (tmp_path / "good.nc").is_file()
+
+    # exceptions raised inside the worker threads must not be swallowed
+    (tmp_path / "good.nc").unlink()
+    monkeypatch.setattr(base, "get_download_rate_dataframe", broken_rate_dataframe)
+    failed = base.download_urls(infos[:1], [tmp_path], download_db, logger, None, True)
+    assert [info["path"].name for info in failed] == ["good.nc"]
+
 
 KWARGS = dict(
     data_vars="minimal",
