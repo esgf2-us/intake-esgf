@@ -656,25 +656,38 @@ class ESGFCatalog:
             )
 
         # unpack the https files which should now exist in local cache
-        dsd = _load_into_dsd(dsd, infos["https"])
+        dsd, missing_files = _load_into_dsd(dsd, infos["https"])
 
         if prefer_globus and infos["globus"]:
             monitor_globus_transfer(tasks)  # blocks while transfer continues
 
             # unpack the globus files which should now exist in local cache
-            dsd = _load_into_dsd(dsd, infos["globus"])
+            dsd, missing_globus = _load_into_dsd(dsd, infos["globus"])
+            missing_files += missing_globus
 
         # did we get everything that was in the catalog?
         missed = set(self.df["key"]) - set(dsd)
         if missed:
             warnings.warn(f"We could not download your entire catalog, {missed=}")
-            if intake_esgf.conf["break_on_error"]:
-                raise DatasetLoadError(
-                    list(missed),
-                    self.logger.read()
-                    if intake_esgf.conf["print_log_on_error"]
-                    else None,
+        incomplete = _group_missing_files(missing_files, exclude=missed)
+        if incomplete:
+            warnings.warn(
+                "Some datasets were only partially retrieved, the following files "
+                f"are missing:\n{_format_missing_files(incomplete)}"
+            )
+        if (missed or incomplete) and intake_esgf.conf["break_on_error"]:
+            msgs = []
+            if incomplete:
+                msgs.append(
+                    "These datasets are incomplete, missing files:\n"
+                    + _format_missing_files(incomplete)
                 )
+            if intake_esgf.conf["print_log_on_error"]:
+                msgs.append(self.logger.read())
+            raise DatasetLoadError(
+                sorted(missed | set(incomplete)),
+                "\n".join(msgs) if msgs else None,
+            )
 
         # optionally simplify the keys
         if minimal_keys:
@@ -915,7 +928,7 @@ class ESGFCatalog:
 
 def _load_into_dsd(
     dsd: dict[str, list[str | Path]], infos: list[dict]
-) -> dict[str, list[str | Path]]:
+) -> tuple[dict[str, list[str | Path]], list[dict]]:
     """
     Insert the local path into the dictinoary if the file exists.
 
@@ -930,18 +943,56 @@ def _load_into_dsd(
     -------
     dict[str,list[Path]]
         The dataset dictionary with paths from the file info loaded.
+    list[dict]
+        The file infos whose files do not exist locally.
     """
+    missing = []
     for info in infos:
         try:
             path = base.get_local_file(info["path"], intake_esgf.conf["local_cache"])
         except Exception:
-            # This means that the file isn't there, will be reported down the line
+            missing.append(info)
             continue
         key = info["key"]
         if key not in dsd:
             dsd[key] = []
         dsd[key] += [path]
-    return dsd
+    return dsd, missing
+
+
+def _group_missing_files(
+    infos: list[dict], exclude: set[str] | None = None
+) -> dict[str, list[str]]:
+    """
+    Group the filenames of missing files by dataset key.
+
+    Parameters
+    ----------
+    infos: list[dict]
+        The file infos of files which could not be retrieved.
+    exclude: set[str]
+        Dataset keys to leave out, for example those which are missing entirely.
+
+    Returns
+    -------
+    dict[str, list[str]]
+        Sorted missing filenames for each dataset key.
+    """
+    exclude = set() if exclude is None else exclude
+    grouped: dict[str, list[str]] = {}
+    for info in infos:
+        if info["key"] in exclude:
+            continue
+        grouped.setdefault(info["key"], []).append(Path(info["path"]).name)
+    return {key: sorted(files) for key, files in sorted(grouped.items())}
+
+
+def _format_missing_files(grouped: dict[str, list[str]]) -> str:
+    """Format the grouped missing files for warning/error messages."""
+    return "\n".join(
+        f"- {key}:\n" + "\n".join(f"    {f}" for f in files)
+        for key, files in grouped.items()
+    )
 
 
 def sort_by_transer_speed(links: list[str]) -> list[str]:

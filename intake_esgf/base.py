@@ -470,6 +470,11 @@ def parallel_download(
     except FileNotFoundError:
         pass
 
+    # files may end up here without any https links, nothing we can do for them
+    if not info.get("HTTPServer"):
+        logger.info(f"\x1b[91;20mno https links\033[0m {info['path']}")
+        return None, None
+
     # else we try to download it, first we sort links by the fastest host to you
     df_rate = get_download_rate_dataframe(download_db)
     info["HTTPServer"] = sorted(
@@ -500,6 +505,7 @@ def parallel_download(
             continue
         if local_file.exists():
             return info["key"], local_file
+    logger.info(f"\x1b[91;20mall download links failed\033[0m {info['path']}")
     return None, None
 
 
@@ -510,9 +516,14 @@ def download_urls(
     logger: intake_esgf.logging.Logger,
     esg_dataroot: None | list[Path],
     quiet: bool = False,
-):
+) -> list[dict[str, Any]]:
     """
     Download URLs in parallel using a thread pool.
+
+    Returns
+    -------
+    list[dict]
+        The file infos which we failed to download.
     """
     download = partial(
         parallel_download,
@@ -529,13 +540,33 @@ def download_urls(
             total=len(infos),
         )
         with ThreadPoolExecutor(intake_esgf.conf["num_threads"]) as pool:
+            futures = {}
             for info in infos:
                 task_id = PROGRESS.add_task(
                     info["path"].name,
                     filename=info["path"].name,
                     start=False,
                 )
-                pool.submit(download, info=info, task_id=task_id, master_id=master_id)
+                future = pool.submit(
+                    download, info=info, task_id=task_id, master_id=master_id
+                )
+                futures[future] = info
+
+    # The pool has shut down, so every future is complete. Any exception raised in
+    # a worker thread is stored on its future and would be lost if not retrieved.
+    failed = []
+    for future, info in futures.items():
+        exc = future.exception()
+        if exc is not None:
+            logger.info(
+                f"\x1b[91;20mdownload failed\033[0m {type(exc).__name__}: {exc} {info['path']}"
+            )
+            failed.append(info)
+            continue
+        key, _ = future.result()
+        if key is None:
+            failed.append(info)
+    return failed
 
 
 def get_search_criteria(
