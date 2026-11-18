@@ -35,6 +35,10 @@ defaults = {
         "/eagle/projects/ESGF2/esg_dataroot",
         "/global/cfs/projectdirs/m3522/cmip6/",
         "/glade/campaign/collections/cmip.mirror",
+        "/g/data/im55/publications",  # NCI: CMIP7 published at NCI
+        "/g/data/ib12/replicas",  # NCI: CMIP7 replicas
+        "/g/data/fs38/publications",  # NCI: CMIP6 published at NCI
+        "/g/data/oi10/replicas",  # NCI: CMIP6 replicas
     ],
     "local_cache": [
         "~/.esgf/",
