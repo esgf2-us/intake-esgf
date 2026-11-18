@@ -211,6 +211,7 @@ def test_download_urls_reports_failures(tmp_path, monkeypatch):
     ]
     download_db = Path(intake_esgf.conf["download_db"])
     logger = intake_esgf.conf.get_logger()
+    intake_esgf.conf.set(download_retries=0)
     failed = base.download_urls(infos, [tmp_path], download_db, logger, None, True)
     assert sorted(info["path"].name for info in failed) == ["bad.nc", "nolinks.nc"]
     assert (tmp_path / "good.nc").is_file()

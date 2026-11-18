@@ -17,6 +17,10 @@ class StalledDownload(IntakeESGFException):
     """Download speed has fallen below a set threshold."""
 
 
+class DownloadIncomplete(IntakeESGFException):
+    """A download ended before the whole file was received."""
+
+
 class LocalCacheNotWritable(IntakeESGFException):
     """You do not have permission to write in the cache directories."""
 

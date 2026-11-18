@@ -54,6 +54,7 @@ defaults = {
     "break_on_error": True,
     "confirm_download": False,
     "slow_download_threshold": 0.5,  # [Mb s-1]
+    "download_retries": 3,
     "print_log_on_error": False,
     "default_open_kwargs": dict(
         data_vars="minimal",
@@ -116,6 +117,7 @@ class Config(dict):
         break_on_error: bool | None = None,
         confirm_download: bool | None = None,
         slow_download_threshold: float | None = None,
+        download_retries: int | None = None,
         print_log_on_error: bool | None = None,
         default_open_kwargs: dict[str, Any] | None = None,
         default_project: str | None = None,
@@ -164,6 +166,10 @@ class Config(dict):
         slow_download_threshold: float
             The download rate in [Mb s-1] below which a download will be
             canceled in favor of another link.
+        download_retries: int
+            How many more times we try all links of a file after the first round
+            fails, waiting with an exponential backoff in between. Partially
+            downloaded files are resumed rather than restarted.
         print_log_on_error: bool
             Enable to print the session log when a DatasetLoadError is
             encountered. This is meant to be used in debugging CI to understand
@@ -237,6 +243,8 @@ class Config(dict):
             self["confirm_download"] = bool(confirm_download)
         if slow_download_threshold is not None:
             self["slow_download_threshold"] = float(slow_download_threshold)
+        if download_retries is not None:
+            self["download_retries"] = int(download_retries)
         if print_log_on_error is not None:
             self["print_log_on_error"] = bool(print_log_on_error)
         if default_open_kwargs is not None:

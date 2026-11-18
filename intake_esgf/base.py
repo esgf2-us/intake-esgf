@@ -1,9 +1,9 @@
 """General functions used in various parts of intake-esgf."""
 
+import contextlib
 import os
 import re
 import signal
-import tempfile
 import time
 from collections.abc import Iterable
 from concurrent.futures import ThreadPoolExecutor
@@ -28,7 +28,12 @@ from intake_esgf.database import (
     log_download_information,
     sort_download_links,
 )
-from intake_esgf.exceptions import NoSearchResults, ProjectNotSupported, StalledDownload
+from intake_esgf.exceptions import (
+    DownloadIncomplete,
+    NoSearchResults,
+    ProjectNotSupported,
+    StalledDownload,
+)
 from intake_esgf.projects import projects
 
 
@@ -351,6 +356,201 @@ def handle_sigint(signum, frame):
 signal.signal(signal.SIGINT, handle_sigint)
 
 
+def _partial_file(local_file: Path) -> Path:
+    """Return the path where a partial download of `local_file` is stored."""
+    return local_file.with_name(f"{local_file.name}.part")
+
+
+def _remove_if_empty(path: Path) -> None:
+    """Remove a file if it exists and has no content."""
+    try:
+        if path.stat().st_size == 0:
+            path.unlink()
+    except OSError:
+        pass
+
+
+def _lock_partial(fh: Any) -> bool:
+    """
+    Take an exclusive lock on an open partial download file.
+
+    This keeps several processes which share a cache from writing into the same
+    partial file. The lock is released by the OS when the file is closed or the
+    process dies. Where locking is not available (Windows, some network
+    filesystems) we proceed without it.
+
+    Returns
+    -------
+    bool
+        False if we were interrupted while waiting for the lock.
+    """
+    try:
+        import fcntl
+    except ImportError:
+        return True
+    while True:
+        try:
+            fcntl.flock(fh.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+            return True
+        except BlockingIOError:
+            # another process is downloading this file, wait for it to finish
+            if done_event.wait(1.0):
+                return False
+        except OSError:
+            return True
+
+
+def _url_host(url: str) -> str:
+    """Return the host part of a url."""
+    return url[: url.index("/", 10)].replace("http://", "").replace("https://", "")
+
+
+def _resume_offset(fdl: Any, content_length: int) -> int:
+    """
+    Return the byte offset from which to continue a partial download.
+
+    A partial file larger than the expected size cannot be right and is discarded.
+    """
+    offset = os.fstat(fdl.fileno()).st_size
+    if content_length > 0 and offset > content_length:
+        fdl.truncate(0)
+        return 0
+    return offset
+
+
+def _request_from(url: str, fdl: Any, offset: int) -> tuple[requests.Response, int]:
+    """
+    Request the url starting at the byte `offset` of a partial file.
+
+    Returns the response and the offset at which its content starts. If the server
+    ignores the range request we get the whole file and restart the partial file.
+    """
+    headers = {"Accept-Encoding": "identity"}  # byte offsets must be of raw data
+    if offset:
+        headers["Range"] = f"bytes={offset}-"
+    resp = requests.get(url, stream=True, timeout=10, headers=headers)
+    if offset and resp.status_code == 206:
+        match = re.match(r"bytes\s+(\d+)-", resp.headers.get("Content-Range", ""))
+        if match and int(match.group(1)) == offset:
+            return resp, offset
+    if offset and resp.status_code in (206, 416):
+        # the server cannot continue where we left off, start over next attempt
+        resp.close()
+        fdl.truncate(0)
+        raise DownloadIncomplete(f"cannot resume at {offset} [bytes] from {url}")
+    try:
+        resp.raise_for_status()
+    except requests.HTTPError:
+        resp.close()
+        raise
+    if offset:
+        # the server ignored the range and sends the whole file
+        fdl.truncate(0)
+    return resp, 0
+
+
+class _SlowDownloadDetector:
+    """Track the transfer rate with exponential smoothing to detect stalls."""
+
+    SMOOTHING = 0.3  # must be in [0,1]
+    SAFETY = 2.0  # [s] grace period before we judge a transfer
+
+    def __init__(self, threshold: float):
+        self.threshold = threshold  # [Mb s-1]
+        self.rate = threshold
+        self.start = self.prev = time.perf_counter()
+
+    def is_slow(self, nbytes: int) -> bool:
+        """Register `nbytes` received now, return if the transfer is too slow."""
+        now = time.perf_counter()
+        rate = nbytes * 1e-6 / max(now - self.prev, 1e-9)
+        self.rate = self.SMOOTHING * rate + (1 - self.SMOOTHING) * self.rate
+        self.prev = now
+        return (now - self.start) > self.SAFETY and self.rate < self.threshold
+
+
+def _stream_to_file(
+    resp: requests.Response,
+    fdl: Any,
+    url: str,
+    download_db: Path,
+    logger: intake_esgf.logging.Logger,
+    break_slow_downloads: bool,
+    task_id: TaskID | None,
+) -> bool:
+    """
+    Append the content of the response to the open file.
+
+    Returns
+    -------
+    bool
+        False if the download was interrupted by the user.
+
+    Raises
+    ------
+    StalledDownload
+        If `break_slow_downloads` and the transfer rate falls below the threshold.
+    """
+    CHUNKSIZE = 2**20  # 1 [Mb]
+    threshold = intake_esgf.conf["slow_download_threshold"]
+    detector = _SlowDownloadDetector(threshold)
+    with contextlib.closing(resp):
+        for chunk in resp.iter_content(chunk_size=CHUNKSIZE):
+            if not chunk:
+                continue
+            if break_slow_downloads and detector.is_slow(len(chunk)):
+                logger.info(
+                    f"\x1b[38;5;209mbreaking slow download\033[0m {detector.rate:.2f} < {threshold:.2f} [Mb s-1] {url}"
+                )
+                elapsed = time.perf_counter() - detector.start
+                log_download_information(
+                    download_db, _url_host(url), elapsed, detector.rate * elapsed
+                )
+                raise StalledDownload()
+            fdl.write(chunk)
+            if task_id is not None:
+                PROGRESS.update(task_id, advance=len(chunk))
+            if done_event.is_set():
+                return False
+    fdl.flush()
+    return True
+
+
+def _verify_partial(
+    fdl: Any,
+    part_file: Path,
+    content_length: int,
+    hash: str,
+    hash_algorithm: str,
+    url: str,
+    logger: intake_esgf.logging.Logger,
+) -> None:
+    """Check size and hash of a finished partial file, emptying it if corrupt."""
+    size = os.fstat(fdl.fileno()).st_size
+    if content_length > 0 and size != content_length:
+        raise DownloadIncomplete(
+            f"received {size} of {content_length} [bytes] from {url}"
+        )
+    hasher = _setup_hasher(hash, hash_algorithm)
+    if hasher is None:
+        logger.info(
+            f"\x1b[91;20m{part_file=} could not be verified with given {hash_algorithm=} and {hash=}, skipping.\033[0m"
+        )
+        return
+    with open(part_file, "rb") as fin:
+        verified = hasher.verify(fin.read())
+    if not verified:
+        logger.info(f"\x1b[91;20mHash error\033[0m {url}")
+        fdl.truncate(0)  # start over, the data is corrupt
+        raise ValueError("Hash does not match")
+
+
+def _finalize(part_file: Path, local_file: Path) -> None:
+    """Move a verified partial file into place, applying the default umask."""
+    part_file.chmod(0o666 & ~UMASK)
+    part_file.replace(local_file)
+
+
 def download_and_verify(
     url: str,
     local_file: str | Path,
@@ -364,92 +564,77 @@ def download_and_verify(
     break_slow_downloads: bool = False,
     quiet: bool = False,
 ) -> None:
-    """Download the url to a local file and check for validity, removing if not."""
+    """
+    Download the url to a local file and check for validity, removing if not.
 
-    # Get local/tmp file paths
-    if not isinstance(local_file, Path):
-        local_file = Path(local_file)
+    Data is written to a partial file (`<name>.part`) next to the local file which
+    is renamed once verified. If a partial file is already present, for example
+    from an interrupted or stalled earlier attempt, we resume from where it left
+    off using an HTTP range request.
+    """
+    local_file = Path(local_file)
     local_file.parent.mkdir(parents=True, exist_ok=True)
-    tmp_fh, tmp_filename = tempfile.mkstemp(
-        dir=local_file.parent, prefix=f"{local_file.name}."
-    )
-    tmp_file = Path(tmp_filename)
-    hasher = _setup_hasher(hash, hash_algorithm)
-    host = url[: url.index("/", 10)].replace("http://", "").replace("https://", "")
-    quiet = True if (task_id < 0 or master_id < 0) else quiet
+    part_file = _partial_file(local_file)
+    show_progress = not (quiet or task_id < 0 or master_id < 0)
 
-    # Download, verify and log transfer
-    CHUNKSIZE = 2**20  # 1 [Mb]
-    SMOOTHING = 0.3  # must be in [0,1]
-    SLOW_DOWNLOAD_SAFETY = 2.0  # [s]
-    resp = requests.get(url, stream=True, timeout=10)
-    resp.raise_for_status()
-    transfer_time = time.time()
-    chunk_time_prev = time.perf_counter()
-    smoothed_rate = intake_esgf.conf["slow_download_threshold"]
-    if not quiet:
-        PROGRESS.update(task_id, total=content_length)
-    with open(tmp_fh, "wb") as fdl:
-        if not quiet:
-            PROGRESS.start_task(task_id)
-        for chunk in resp.iter_content(chunk_size=CHUNKSIZE):
-            if chunk:
-                # Check slow downloads by using exponential smoothing
-                chunk_time = time.perf_counter()
-                rate = CHUNKSIZE * 1e-6 / (chunk_time - chunk_time_prev)
-                smoothed_rate = SMOOTHING * rate + (1 - SMOOTHING) * smoothed_rate
-                chunk_time_prev = chunk_time
-                if (
-                    break_slow_downloads
-                    and (time.time() - transfer_time) > SLOW_DOWNLOAD_SAFETY
-                    and smoothed_rate < intake_esgf.conf["slow_download_threshold"]
-                ):
-                    logger.info(
-                        f"\x1b[38;5;209mbreaking slow download\033[0m {smoothed_rate:.2f} < {intake_esgf.conf['slow_download_threshold']:.2f} [Mb s-1] {url}"
-                    )
-                    transfer_time = time.time() - transfer_time
-                    log_download_information(
-                        download_db,
-                        host,
-                        transfer_time,
-                        smoothed_rate * transfer_time,
-                    )
-                    resp.close()
-                    raise StalledDownload()
-
-                # Write and updates
-                fdl.write(chunk)
-                if not quiet:
-                    PROGRESS.update(task_id, advance=len(chunk))
-                if done_event.is_set():
-                    return
-
-    if hasher is None:
-        logger.info(
-            f"\x1b[91;20m{local_file=} could not be verified with given {hash_algorithm=} and {hash=}, skipping.\033[0m"
+    # Append mode never truncates existing data and always writes at the end.
+    with open(part_file, "ab") as fdl:
+        if not _lock_partial(fdl):
+            return  # interrupted while waiting
+        if local_file.is_file():
+            # Another process finished the download while we waited for the lock.
+            # Nobody writes the partial file anymore, an empty one is safe to remove.
+            _remove_if_empty(part_file)
+            return
+        offset = _resume_offset(fdl, content_length)
+        transfer_time = time.time()
+        if content_length <= 0 or offset < content_length:
+            resp, offset = _request_from(url, fdl, offset)
+            if offset:
+                logger.info(f"resuming download at {offset} [bytes] {url}")
+            if show_progress:
+                PROGRESS.update(task_id, total=content_length, completed=offset)
+                PROGRESS.start_task(task_id)
+            if not _stream_to_file(
+                resp,
+                fdl,
+                url,
+                download_db,
+                logger,
+                break_slow_downloads,
+                task_id if show_progress else None,
+            ):
+                return  # interrupted, keep the partial file to pick up later
+        size = os.fstat(fdl.fileno()).st_size
+        _verify_partial(
+            fdl, part_file, content_length, hash, hash_algorithm, url, logger
         )
-    else:
-        if not hasher.verify(open(str(tmp_file), "rb").read()):
-            logger.info(f"\x1b[91;20mHash error\033[0m {url}")
-            tmp_file.unlink()
-            raise ValueError("Hash does not match")
-    # mkstemp creates files with mode 0o600, apply the default umask instead
-    tmp_file.chmod(0o666 & ~UMASK)
-    tmp_file.rename(local_file)
+        if os.name == "nt":
+            fdl.close()  # Windows cannot rename an open file (and has no lock)
+        # rename while still holding the lock so no other process can interfere
+        _finalize(part_file, local_file)
 
-    # If sizes not given, read it from the file for logging purposes
-    if content_length < 1e-6:
-        content_length = local_file.stat().st_size
-
-    # Log transfer information
+    # Log transfer information, only counting what we transferred in this call
     transfer_time = time.time() - transfer_time
+    transferred = size - offset
     MIN_TRANSFER_TIME = 1e-3  # 1 [ms]
-    rate = content_length * 1e-6 / max(transfer_time, MIN_TRANSFER_TIME)
-    host = url[: url.index("/", 10)].replace("http://", "").replace("https://", "")
+    rate = transferred * 1e-6 / max(transfer_time, MIN_TRANSFER_TIME)
     logger.info(f"{transfer_time=:.2f} [s] at {rate:.2f} [Mb s-1] {url}")
-    log_download_information(download_db, host, transfer_time, content_length * 1e-6)
-    if not quiet:
+    if transferred > 0:
+        log_download_information(
+            download_db, _url_host(url), transfer_time, transferred * 1e-6
+        )
+    if show_progress:
         PROGRESS.update(master_id, advance=1)
+
+
+def _is_permanent_failure(exc: Exception) -> bool:
+    """Is this an error for which retrying the same link is pointless?"""
+    if isinstance(exc, requests.HTTPError) and exc.response is not None:
+        status = exc.response.status_code
+        return 400 <= status < 500 and status not in (408, 429)
+    # a hash mismatch means this host serves a corrupt copy
+    return isinstance(exc, ValueError)
 
 
 def parallel_download(
@@ -461,7 +646,15 @@ def parallel_download(
     task_id: TaskID,
     master_id: TaskID,
 ):
-    """."""
+    """
+    Download a single file, trying all of its links and retrying on failure.
+
+    Each round tries every link in order of expected transfer speed. Links which
+    failed permanently (HTTP 4xx, hash mismatch) are dropped, and we wait with an
+    exponential backoff between rounds. Partial downloads are kept between attempts
+    so that a later attempt, possibly from another host, resumes where the previous
+    one stopped.
+    """
     # does this exist on a copy we have access to?
     try:
         local_file = get_local_file(info["path"], esg_dataroot + local_cache)
@@ -477,34 +670,52 @@ def parallel_download(
 
     # else we try to download it, first we sort links by the fastest host to you
     df_rate = get_download_rate_dataframe(download_db)
-    info["HTTPServer"] = sorted(
+    urls = sorted(
         info["HTTPServer"],
         key=partial(sort_download_links, df_rate=df_rate),
         reverse=True,
     )
-    # keep trying to download until one works out
     local_file = local_cache[0] / info["path"]
-    for url in info["HTTPServer"]:
-        try:
-            download_and_verify(
-                url,
-                local_file,
-                info["checksum"],
-                info["checksum_type"],
-                info["size"],
-                download_db=download_db,
-                logger=logger,
-                break_slow_downloads=(url != info["HTTPServer"][-1]),
-                task_id=task_id,
-                master_id=master_id,
+    retries = max(int(intake_esgf.conf["download_retries"]), 0)
+    MAX_BACKOFF = 60.0  # [s]
+    for attempt in range(retries + 1):
+        if attempt:
+            wait = min(2.0**attempt, MAX_BACKOFF)
+            logger.info(
+                f"retrying download in {wait:.0f} [s] (attempt {attempt + 1}/{retries + 1}) {info['path']}"
             )
-        except (StalledDownload, ValueError):
-            continue
-        except Exception as e:
-            logger.info(f"\x1b[91;20mdownload failed\033[0m {type(e).__name__} {url}")
-            continue
-        if local_file.exists():
-            return info["key"], local_file
+            if done_event.wait(wait):
+                break
+        for url in list(urls):
+            if done_event.is_set():
+                break
+            try:
+                download_and_verify(
+                    url,
+                    local_file,
+                    info["checksum"],
+                    info["checksum_type"],
+                    info["size"],
+                    download_db=download_db,
+                    logger=logger,
+                    break_slow_downloads=(url != urls[-1]),
+                    task_id=task_id,
+                    master_id=master_id,
+                )
+            except StalledDownload:
+                continue
+            except Exception as e:
+                logger.info(
+                    f"\x1b[91;20mdownload failed\033[0m {type(e).__name__}: {e} {url}"
+                )
+                if _is_permanent_failure(e):
+                    urls.remove(url)
+                continue
+            if local_file.is_file():
+                return info["key"], local_file
+        if not urls or done_event.is_set():
+            break
+    _remove_if_empty(_partial_file(local_file))
     logger.info(f"\x1b[91;20mall download links failed\033[0m {info['path']}")
     return None, None
 
