@@ -25,6 +25,7 @@ import intake_esgf.core.globus as globus
 import intake_esgf.logging
 from intake_esgf.database import (
     get_download_rate_dataframe,
+    get_url_host,
     log_download_information,
     sort_download_links,
 )
@@ -35,6 +36,11 @@ from intake_esgf.exceptions import (
     StalledDownload,
 )
 from intake_esgf.projects import projects
+
+try:
+    import fcntl
+except ImportError:  # Windows has no file locking we can use
+    fcntl = None  # type: ignore[assignment]
 
 
 def _get_umask() -> int:
@@ -321,7 +327,7 @@ def _setup_hasher(hash: str | None, hash_algorithm: str | None) -> Multihash | N
     Given hash information, return a multihasher compatible with hashlib if needed.
     """
     # We may have been passed no hashing information at all, so just return
-    if hash is None:
+    if not hash:
         return None
 
     # Some indices are publishing hashes with a `hash_algorithm:hash` convention.
@@ -361,16 +367,7 @@ def _partial_file(local_file: Path) -> Path:
     return local_file.with_name(f"{local_file.name}.part")
 
 
-def _remove_if_empty(path: Path) -> None:
-    """Remove a file if it exists and has no content."""
-    try:
-        if path.stat().st_size == 0:
-            path.unlink()
-    except OSError:
-        pass
-
-
-def _lock_partial(fh: Any) -> bool:
+def _lock_partial(fh: Any, wait: bool = True) -> bool:
     """
     Take an exclusive lock on an open partial download file.
 
@@ -379,14 +376,20 @@ def _lock_partial(fh: Any) -> bool:
     process dies. Where locking is not available (Windows, some network
     filesystems) we proceed without it.
 
+    Parameters
+    ----------
+    fh
+        The open partial file.
+    wait : bool
+        Enable to wait for another process to release the lock.
+
     Returns
     -------
     bool
-        False if we were interrupted while waiting for the lock.
+        False if we did not get the lock, because we were interrupted while waiting
+        or because `wait` is disabled and another process holds it.
     """
-    try:
-        import fcntl
-    except ImportError:
+    if fcntl is None:
         return True
     while True:
         try:
@@ -394,46 +397,92 @@ def _lock_partial(fh: Any) -> bool:
             return True
         except BlockingIOError:
             # another process is downloading this file, wait for it to finish
-            if done_event.wait(1.0):
+            if not wait or done_event.wait(1.0):
                 return False
         except OSError:
             return True
 
 
-def _url_host(url: str) -> str:
-    """Return the host part of a url."""
-    return url[: url.index("/", 10)].replace("http://", "").replace("https://", "")
+def _is_same_file(fh: Any, path: Path) -> bool:
+    """Is the open file still the one found at `path`?"""
+    try:
+        st = os.stat(path)
+    except OSError:
+        return False
+    fst = os.fstat(fh.fileno())
+    return (st.st_dev, st.st_ino) == (fst.st_dev, fst.st_ino)
 
 
-def _resume_offset(fdl: Any, content_length: int) -> int:
+def _open_partial(part_file: Path) -> Any | None:
     """
-    Return the byte offset from which to continue a partial download.
+    Open the partial file for appending and lock it.
 
-    A partial file larger than the expected size cannot be right and is discarded.
+    While we wait for the lock, the process holding it may remove the partial file
+    or rename it into place. We would then hold the lock on a file which is no
+    longer found at `part_file` and so we open it again. Only a process holding the
+    lock on the file at `part_file` may remove or rename it.
+
+    Returns
+    -------
+    file or None
+        The open and locked partial file, None if interrupted while waiting.
     """
-    offset = os.fstat(fdl.fileno()).st_size
-    if content_length > 0 and offset > content_length:
-        fdl.truncate(0)
-        return 0
-    return offset
+    while True:
+        fdl = open(part_file, "ab")  # append mode never truncates existing data
+        try:
+            if not _lock_partial(fdl):
+                fdl.close()
+                return None
+            if fcntl is None or _is_same_file(fdl, part_file):
+                return fdl
+        except BaseException:
+            fdl.close()
+            raise
+        fdl.close()
 
 
-def _request_from(url: str, fdl: Any, offset: int) -> tuple[requests.Response, int]:
+def _unlink_if_empty(fh: Any, part_file: Path) -> None:
+    """Remove the partial file if empty, the caller must hold its lock."""
+    if os.fstat(fh.fileno()).st_size == 0:
+        with contextlib.suppress(OSError):
+            part_file.unlink()
+
+
+def _discard_empty_partial(part_file: Path) -> None:
+    """Remove an empty partial file left behind, unless another process uses it."""
+    try:
+        fd = os.open(part_file, os.O_WRONLY | os.O_APPEND)  # do not create it
+    except OSError:
+        return
+    with open(fd, "ab") as fh:
+        if not _lock_partial(fh, wait=False):
+            return  # another process is downloading into it
+        if fcntl is None or _is_same_file(fh, part_file):
+            _unlink_if_empty(fh, part_file)
+
+
+def _request_from(
+    url: str, fdl: Any, offset: int
+) -> tuple[requests.Response | None, int]:
     """
     Request the url starting at the byte `offset` of a partial file.
 
     Returns the response and the offset at which its content starts. If the server
     ignores the range request we get the whole file and restart the partial file.
+    If the server has nothing past `offset` (HTTP 416), the response is None and the
+    partial file may already be complete, which the checksum will decide.
     """
     headers = {"Accept-Encoding": "identity"}  # byte offsets must be of raw data
     if offset:
         headers["Range"] = f"bytes={offset}-"
     resp = requests.get(url, stream=True, timeout=10, headers=headers)
+    if offset and resp.status_code == 416:
+        resp.close()
+        return None, offset
     if offset and resp.status_code == 206:
         match = re.match(r"bytes\s+(\d+)-", resp.headers.get("Content-Range", ""))
         if match and int(match.group(1)) == offset:
             return resp, offset
-    if offset and resp.status_code in (206, 416):
         # the server cannot continue where we left off, start over next attempt
         resp.close()
         fdl.truncate(0)
@@ -504,7 +553,7 @@ def _stream_to_file(
                 )
                 elapsed = time.perf_counter() - detector.start
                 log_download_information(
-                    download_db, _url_host(url), elapsed, detector.rate * elapsed
+                    download_db, get_url_host(url), elapsed, detector.rate * elapsed
                 )
                 raise StalledDownload()
             fdl.write(chunk)
@@ -520,22 +569,23 @@ def _verify_partial(
     fdl: Any,
     part_file: Path,
     content_length: int,
-    hash: str,
-    hash_algorithm: str,
+    hasher: Multihash | None,
     url: str,
     logger: intake_esgf.logging.Logger,
 ) -> None:
-    """Check size and hash of a finished partial file, emptying it if corrupt."""
+    """
+    Check the hash of a finished partial file, emptying it if corrupt.
+
+    The size listed in the index is not always right, so the checksum decides if
+    the file is good. A differing size is only logged.
+    """
     size = os.fstat(fdl.fileno()).st_size
     if content_length > 0 and size != content_length:
-        raise DownloadIncomplete(
-            f"received {size} of {content_length} [bytes] from {url}"
-        )
-    hasher = _setup_hasher(hash, hash_algorithm)
-    if hasher is None:
         logger.info(
-            f"\x1b[91;20m{part_file=} could not be verified with given {hash_algorithm=} and {hash=}, skipping.\033[0m"
+            f"{part_file=} has {size} [bytes] but the index lists {content_length} [bytes]"
         )
+    if hasher is None:
+        logger.info(f"\x1b[91;20m{part_file=} could not be verified, skipping.\033[0m")
         return
     with open(part_file, "rb") as fin:
         verified = hasher.verify(fin.read())
@@ -570,26 +620,36 @@ def download_and_verify(
     Data is written to a partial file (`<name>.part`) next to the local file which
     is renamed once verified. If a partial file is already present, for example
     from an interrupted or stalled earlier attempt, we resume from where it left
-    off using an HTTP range request.
+    off using an HTTP range request. As the earlier attempt may have used another
+    host, we only resume if we can verify the result with a checksum.
     """
     local_file = Path(local_file)
     local_file.parent.mkdir(parents=True, exist_ok=True)
     part_file = _partial_file(local_file)
     show_progress = not (quiet or task_id < 0 or master_id < 0)
+    hasher = _setup_hasher(hash, hash_algorithm)
 
-    # Append mode never truncates existing data and always writes at the end.
-    with open(part_file, "ab") as fdl:
-        if not _lock_partial(fdl):
-            return  # interrupted while waiting
+    fdl = _open_partial(part_file)
+    if fdl is None:
+        return  # interrupted while waiting
+    with fdl:
         if local_file.is_file():
             # Another process finished the download while we waited for the lock.
-            # Nobody writes the partial file anymore, an empty one is safe to remove.
-            _remove_if_empty(part_file)
+            _unlink_if_empty(fdl, part_file)
             return
-        offset = _resume_offset(fdl, content_length)
+        offset = os.fstat(fdl.fileno()).st_size
+        if offset and hasher is None:
+            # Without a checksum we cannot tell if the data from an earlier attempt
+            # belongs with what this host sends, so start over.
+            logger.info(f"cannot verify, discarding partial download {part_file}")
+            fdl.truncate(0)
+            offset = 0
         transfer_time = time.time()
-        if content_length <= 0 or offset < content_length:
+        resp = None
+        if not (hasher is not None and offset > 0 and offset == content_length):
+            # unless it looks complete already, then we only verify it
             resp, offset = _request_from(url, fdl, offset)
+        if resp is not None:
             if offset:
                 logger.info(f"resuming download at {offset} [bytes] {url}")
             if show_progress:
@@ -606,9 +666,7 @@ def download_and_verify(
             ):
                 return  # interrupted, keep the partial file to pick up later
         size = os.fstat(fdl.fileno()).st_size
-        _verify_partial(
-            fdl, part_file, content_length, hash, hash_algorithm, url, logger
-        )
+        _verify_partial(fdl, part_file, content_length, hasher, url, logger)
         if os.name == "nt":
             fdl.close()  # Windows cannot rename an open file (and has no lock)
         # rename while still holding the lock so no other process can interfere
@@ -622,19 +680,23 @@ def download_and_verify(
     logger.info(f"{transfer_time=:.2f} [s] at {rate:.2f} [Mb s-1] {url}")
     if transferred > 0:
         log_download_information(
-            download_db, _url_host(url), transfer_time, transferred * 1e-6
+            download_db, get_url_host(url), transfer_time, transferred * 1e-6
         )
     if show_progress:
         PROGRESS.update(master_id, advance=1)
 
 
 def _is_permanent_failure(exc: Exception) -> bool:
-    """Is this an error for which retrying the same link is pointless?"""
+    """
+    Is this an error for which retrying the same link is pointless?
+
+    A hash mismatch is not, the corrupt data may come from an earlier attempt or a
+    broken transfer rather than from this link.
+    """
     if isinstance(exc, requests.HTTPError) and exc.response is not None:
         status = exc.response.status_code
         return 400 <= status < 500 and status not in (408, 429)
-    # a hash mismatch means this host serves a corrupt copy
-    return isinstance(exc, ValueError)
+    return False
 
 
 def parallel_download(
@@ -650,10 +712,10 @@ def parallel_download(
     Download a single file, trying all of its links and retrying on failure.
 
     Each round tries every link in order of expected transfer speed. Links which
-    failed permanently (HTTP 4xx, hash mismatch) are dropped, and we wait with an
-    exponential backoff between rounds. Partial downloads are kept between attempts
-    so that a later attempt, possibly from another host, resumes where the previous
-    one stopped.
+    failed permanently (HTTP 4xx) are dropped, and we wait with an exponential
+    backoff between rounds. Partial downloads are kept between attempts so that a
+    later attempt, possibly from another host, resumes where the previous one
+    stopped.
     """
     # does this exist on a copy we have access to?
     try:
@@ -715,7 +777,7 @@ def parallel_download(
                 return info["key"], local_file
         if not urls or done_event.is_set():
             break
-    _remove_if_empty(_partial_file(local_file))
+    _discard_empty_partial(_partial_file(local_file))
     logger.info(f"\x1b[91;20mall download links failed\033[0m {info['path']}")
     return None, None
 
@@ -727,12 +789,14 @@ def download_urls(
     logger: intake_esgf.logging.Logger,
     esg_dataroot: None | list[Path],
     quiet: bool = False,
-) -> list[dict[str, Any]]:
+) -> tuple[list[tuple[dict[str, Any], Path]], list[dict[str, Any]]]:
     """
     Download URLs in parallel using a thread pool.
 
     Returns
     -------
+    list[tuple[dict, Path]]
+        The file infos which we downloaded (or found locally) with their local path.
     list[dict]
         The file infos which we failed to download.
     """
@@ -765,6 +829,7 @@ def download_urls(
 
     # The pool has shut down, so every future is complete. Any exception raised in
     # a worker thread is stored on its future and would be lost if not retrieved.
+    downloaded = []
     failed = []
     for future, info in futures.items():
         exc = future.exception()
@@ -774,10 +839,12 @@ def download_urls(
             )
             failed.append(info)
             continue
-        key, _ = future.result()
+        key, local_file = future.result()
         if key is None:
             failed.append(info)
-    return failed
+        else:
+            downloaded.append((info, local_file))
+    return downloaded, failed
 
 
 def get_search_criteria(

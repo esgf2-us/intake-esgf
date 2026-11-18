@@ -3,6 +3,7 @@
 import sqlite3
 from pathlib import Path
 from typing import Literal, cast
+from urllib.parse import urlparse
 
 import numpy as np
 import pandas as pd
@@ -83,6 +84,11 @@ def get_download_rate_dataframe(
     return df
 
 
+def get_url_host(url: str) -> str:
+    """Return the host (and port) of a url, used to key download rates by host."""
+    return urlparse(url).netloc or url
+
+
 def sort_download_links(link: str, df_rate: pd.DataFrame) -> float:
     """Return the average download rate for the given link.
 
@@ -101,7 +107,7 @@ def sort_download_links(link: str, df_rate: pd.DataFrame) -> float:
     """
     if not len(df_rate):
         return np.random.rand(1)[0]
-    host = link[: link.index("/", 10)].replace("http://", "").replace("https://", "")
+    host = get_url_host(link)
     if host not in df_rate.index:
         return df_rate["rate"].max() + np.random.rand(1)[0]
     return cast(float, df_rate.loc[host, "rate"])

@@ -14,7 +14,7 @@ from rich.progress import TaskID
 import intake_esgf
 import intake_esgf.base as base
 from intake_esgf import ESGFCatalog
-from intake_esgf.database import create_download_database
+from intake_esgf.database import create_download_database, get_url_host
 from intake_esgf.exceptions import NoSearchResults, ProjectNotSupported
 
 
@@ -175,6 +175,10 @@ class FakeServer:
         def __init__(self, server: "FakeServer", start: int):
             self.server = server
             self.start = start
+            if start >= len(DATA):
+                self.status_code = 416
+                self.headers = {"Content-Range": f"bytes */{len(DATA)}"}
+                return
             self.status_code = 206 if start else 200
             self.headers = (
                 {"Content-Range": f"bytes {start}-{len(DATA) - 1}/{len(DATA)}"}
@@ -195,7 +199,9 @@ class FakeServer:
                 yield DATA[i : i + 1]
 
 
-def _download(local_file: Path, checksum: str = DATA_SHA256) -> None:
+def _download(
+    local_file: Path, checksum: str = DATA_SHA256, size: int = len(DATA)
+) -> None:
     download_db = local_file.parent / "download.db"
     create_download_database(download_db)
     base.download_and_verify(
@@ -203,7 +209,7 @@ def _download(local_file: Path, checksum: str = DATA_SHA256) -> None:
         local_file,
         checksum,
         "sha256",
-        len(DATA),
+        size,
         download_db,
         intake_esgf.conf.get_logger(),
         task_id=TaskID(-1),
@@ -272,6 +278,85 @@ def test_download_hash_mismatch_discards_partial(
         _download(local_file, checksum="0" * 64)
     assert not local_file.exists()
     assert base._partial_file(local_file).stat().st_size == 0
+
+
+@pytest.mark.parametrize("size", [len(DATA) - 1, len(DATA) + 1])
+def test_download_trusts_hash_over_index_size(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, size: int
+) -> None:
+    # the size in the index is wrong, but the hash matches
+    monkeypatch.setattr("requests.get", FakeServer().get)
+    local_file = tmp_path / "data.nc"
+    _download(local_file, size=size)
+    assert local_file.read_bytes() == DATA
+
+
+@pytest.mark.parametrize("size", [0, len(DATA) + 1])
+def test_download_verifies_complete_partial_beyond_range(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, size: int
+) -> None:
+    # the size is unknown or wrong, a complete partial file gets HTTP 416 and is kept
+    server = FakeServer()
+    monkeypatch.setattr("requests.get", server.get)
+    local_file = tmp_path / "data.nc"
+    base._partial_file(local_file).write_bytes(DATA)
+    _download(local_file, size=size)
+    assert server.requests[0]["Range"] == f"bytes={len(DATA)}-"
+    assert local_file.read_bytes() == DATA
+
+
+def test_download_without_hash_does_not_resume(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # a partial file which may stem from another host cannot be verified, restart
+    server = FakeServer()
+    monkeypatch.setattr("requests.get", server.get)
+    local_file = tmp_path / "data.nc"
+    base._partial_file(local_file).write_bytes(b"xx")
+    _download(local_file, checksum="")
+    assert "Range" not in server.requests[0]
+    assert local_file.read_bytes() == DATA
+
+
+@pytest.mark.skipif(base.fcntl is None, reason="no file locking available")
+def test_discard_empty_partial_respects_lock(tmp_path: Path) -> None:
+    part_file = base._partial_file(tmp_path / "data.nc")
+    fh = base._open_partial(part_file)
+    assert fh is not None
+    with fh:
+        base._discard_empty_partial(part_file)
+        assert part_file.exists()  # in use, keep it
+    base._discard_empty_partial(part_file)
+    assert not part_file.exists()
+
+
+def test_open_partial_reopens_removed_file(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # the partial file is removed by another process while we wait for the lock
+    part_file = base._partial_file(tmp_path / "data.nc")
+    lock_partial = base._lock_partial
+    calls = []
+
+    def lock_after_removal(fh: Any, wait: bool = True) -> bool:
+        if not calls:
+            part_file.unlink()
+        calls.append(fh)
+        return lock_partial(fh, wait)
+
+    monkeypatch.setattr(base, "_lock_partial", lock_after_removal)
+    monkeypatch.setattr(base, "fcntl", base.fcntl or object())
+    fh = base._open_partial(part_file)
+    assert fh is not None
+    with fh:
+        assert len(calls) == 2
+        assert base._is_same_file(fh, part_file)
+
+
+def test_get_url_host() -> None:
+    assert get_url_host("https://esgf.ceda.ac.uk/thredds/x.nc") == "esgf.ceda.ac.uk"
+    assert get_url_host("http://host:8080/x.nc") == "host:8080"
+    assert get_url_host("https://ab") == "ab"
 
 
 class NoWaitEvent:
@@ -353,6 +438,24 @@ def test_parallel_download_drops_permanent_failures(
         key, _ = _parallel_download(tmp_path, urls)
     assert key is None
     assert sorted(calls) == sorted(urls)  # each link tried once, never retried
+
+
+def test_parallel_download_retries_hash_mismatch(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # corrupt data may stem from an earlier attempt, so the link is not dropped
+    calls = []
+
+    def corrupt(url: str, local_file: Path, *args: Any, **kwargs: Any) -> None:
+        calls.append(url)
+        raise ValueError("Hash does not match")
+
+    monkeypatch.setattr(base, "download_and_verify", corrupt)
+    monkeypatch.setattr(base, "done_event", NoWaitEvent())
+    with intake_esgf.conf.set(download_retries=2):
+        key, _ = _parallel_download(tmp_path, ["https://a.org/data.nc"])
+    assert key is None
+    assert len(calls) == 3
 
 
 def test_get_search_criteria(dataset):
