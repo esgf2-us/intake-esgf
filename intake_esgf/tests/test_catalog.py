@@ -1,3 +1,6 @@
+import os
+import signal
+import sys
 import warnings
 from pathlib import Path
 from typing import Any
@@ -256,6 +259,47 @@ def test_download_urls_reports_failures(tmp_path, monkeypatch):
     )
     assert downloaded == []
     assert [info["path"].name for info in failed] == ["good.nc"]
+
+
+def test_import_leaves_sigint_alone():
+    assert signal.getsignal(signal.SIGINT) is not base.handle_sigint
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="POSIX signals")
+def test_download_urls_ctrl_c(tmp_path, monkeypatch):
+    def interrupted_download(url: str, local_file: Path, *args, **kwargs):
+        # Ctrl-C arrives while downloading, wait for the main thread to handle it
+        os.kill(os.getpid(), signal.SIGINT)
+        assert base.done_event.wait(5)
+
+    def fake_download_and_verify(url: str, local_file: Path, *args, **kwargs):
+        local_file.write_bytes(b"data")
+
+    info = {
+        "key": "a",
+        "path": Path("data.nc"),
+        "size": 0,
+        "checksum": "",
+        "checksum_type": "",
+        "HTTPServer": ["https://example.org/data.nc"],
+    }
+    download_db = Path(intake_esgf.conf["download_db"])
+    logger = intake_esgf.conf.get_logger()
+    previous = signal.getsignal(signal.SIGINT)
+    monkeypatch.setattr(base, "download_and_verify", interrupted_download)
+    with intake_esgf.conf.set(download_retries=3):
+        with pytest.raises(KeyboardInterrupt):
+            base.download_urls([info], [tmp_path], download_db, logger, None, True)
+    assert signal.getsignal(signal.SIGINT) is previous
+    assert "download interrupted" in logger.read()
+
+    # an earlier Ctrl-C does not stop later downloads
+    monkeypatch.setattr(base, "download_and_verify", fake_download_and_verify)
+    downloaded, failed = base.download_urls(
+        [info], [tmp_path], download_db, logger, None, True
+    )
+    assert failed == []
+    assert [path for _, path in downloaded] == [tmp_path / "data.nc"]
 
 
 KWARGS = dict(

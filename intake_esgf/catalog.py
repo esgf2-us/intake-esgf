@@ -1041,9 +1041,7 @@ def _simplify_stream_links(
         links = sort_by_transer_speed(links)
         if all([link.endswith(".nc") for link in links]):  # OPENDAP links
             links = [
-                link
-                for link in links
-                if get_url_host(link) == get_url_host(links[0])
+                link for link in links if get_url_host(link) == get_url_host(links[0])
             ]
         if any(
             [

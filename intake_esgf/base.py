@@ -5,11 +5,11 @@ import os
 import re
 import signal
 import time
-from collections.abc import Iterable
+from collections.abc import Generator, Iterable
 from concurrent.futures import ThreadPoolExecutor
 from functools import partial
 from pathlib import Path
-from threading import Event
+from threading import Event, current_thread, main_thread
 from typing import Any
 
 import multihash  # type: ignore
@@ -352,14 +352,41 @@ def _setup_hasher(hash: str | None, hash_algorithm: str | None) -> Multihash | N
 
 PROGRESS = Progress()
 MASTER_ID = 0
-done_event = Event()
+done_event = Event()  # set to ask the download threads to stop
 
 
 def handle_sigint(signum, frame):
+    """Ask the download threads to stop, a second Ctrl-C does not wait for them."""
+    if done_event.is_set():
+        raise KeyboardInterrupt
     done_event.set()
 
 
-signal.signal(signal.SIGINT, handle_sigint)
+@contextlib.contextmanager
+def _stop_downloads_on_sigint() -> Generator[None]:
+    """
+    Make Ctrl-C stop the download threads gracefully while in this context.
+
+    Ctrl-C raises KeyboardInterrupt only in the main thread, which is blocked
+    waiting for the thread pool to finish. So instead we set `done_event`, which the
+    download threads check regularly, keeping their partial files to resume later.
+    Once they have all stopped, we raise KeyboardInterrupt as usual. Outside of this
+    context the handling of Ctrl-C is left untouched.
+    """
+    if current_thread() is not main_thread():
+        # signal handlers can only be set from the main thread
+        yield
+        return
+    done_event.clear()
+    previous = signal.signal(signal.SIGINT, handle_sigint)
+    try:
+        yield
+    finally:
+        signal.signal(
+            signal.SIGINT, signal.default_int_handler if previous is None else previous
+        )
+    if done_event.is_set():
+        raise KeyboardInterrupt
 
 
 def _partial_file(local_file: Path) -> Path:
@@ -778,7 +805,10 @@ def parallel_download(
         if not urls or done_event.is_set():
             break
     _discard_empty_partial(_partial_file(local_file))
-    logger.info(f"\x1b[91;20mall download links failed\033[0m {info['path']}")
+    if done_event.is_set():
+        logger.info(f"\x1b[91;20mdownload interrupted\033[0m {info['path']}")
+    else:
+        logger.info(f"\x1b[91;20mall download links failed\033[0m {info['path']}")
     return None, None
 
 
@@ -793,6 +823,10 @@ def download_urls(
     """
     Download URLs in parallel using a thread pool.
 
+    Pressing Ctrl-C stops all downloads, keeping partial files so that they resume
+    on the next call, and then raises KeyboardInterrupt. Pressing it again raises
+    KeyboardInterrupt right away without waiting for the threads to stop.
+
     Returns
     -------
     list[tuple[dict, Path]]
@@ -800,51 +834,52 @@ def download_urls(
     list[dict]
         The file infos which we failed to download.
     """
-    download = partial(
-        parallel_download,
-        local_cache=local_cache,
-        download_db=download_db,
-        logger=logger,
-        esg_dataroot=esg_dataroot if esg_dataroot is not None else [],
-    )
-    PROGRESS.disable = quiet
-    with PROGRESS:
-        download_size, download_unit = get_total_size(infos)
-        master_id = PROGRESS.add_task(
-            f"Downloading {len(infos)} file(s) totalling {download_size:.1f} [{download_unit}]",
-            total=len(infos),
+    with _stop_downloads_on_sigint():
+        download = partial(
+            parallel_download,
+            local_cache=local_cache,
+            download_db=download_db,
+            logger=logger,
+            esg_dataroot=esg_dataroot if esg_dataroot is not None else [],
         )
-        with ThreadPoolExecutor(intake_esgf.conf["num_threads"]) as pool:
-            futures = {}
-            for info in infos:
-                task_id = PROGRESS.add_task(
-                    info["path"].name,
-                    filename=info["path"].name,
-                    start=False,
-                )
-                future = pool.submit(
-                    download, info=info, task_id=task_id, master_id=master_id
-                )
-                futures[future] = info
-
-    # The pool has shut down, so every future is complete. Any exception raised in
-    # a worker thread is stored on its future and would be lost if not retrieved.
-    downloaded = []
-    failed = []
-    for future, info in futures.items():
-        exc = future.exception()
-        if exc is not None:
-            logger.info(
-                f"\x1b[91;20mdownload failed\033[0m {type(exc).__name__}: {exc} {info['path']}"
+        PROGRESS.disable = quiet
+        with PROGRESS:
+            download_size, download_unit = get_total_size(infos)
+            master_id = PROGRESS.add_task(
+                f"Downloading {len(infos)} file(s) totalling {download_size:.1f} [{download_unit}]",
+                total=len(infos),
             )
-            failed.append(info)
-            continue
-        key, local_file = future.result()
-        if key is None:
-            failed.append(info)
-        else:
-            downloaded.append((info, local_file))
-    return downloaded, failed
+            with ThreadPoolExecutor(intake_esgf.conf["num_threads"]) as pool:
+                futures = {}
+                for info in infos:
+                    task_id = PROGRESS.add_task(
+                        info["path"].name,
+                        filename=info["path"].name,
+                        start=False,
+                    )
+                    future = pool.submit(
+                        download, info=info, task_id=task_id, master_id=master_id
+                    )
+                    futures[future] = info
+
+        # The pool has shut down, so every future is complete. Any exception raised in
+        # a worker thread is stored on its future and would be lost if not retrieved.
+        downloaded = []
+        failed = []
+        for future, info in futures.items():
+            exc = future.exception()
+            if exc is not None:
+                logger.info(
+                    f"\x1b[91;20mdownload failed\033[0m {type(exc).__name__}: {exc} {info['path']}"
+                )
+                failed.append(info)
+                continue
+            key, local_file = future.result()
+            if key is None:
+                failed.append(info)
+            else:
+                downloaded.append((info, local_file))
+        return downloaded, failed
 
 
 def get_search_criteria(

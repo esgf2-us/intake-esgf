@@ -336,7 +336,7 @@ def test_open_partial_reopens_removed_file(
     # the partial file is removed by another process while we wait for the lock
     part_file = base._partial_file(tmp_path / "data.nc")
     lock_partial = base._lock_partial
-    calls = []
+    calls: list[Any] = []
 
     def lock_after_removal(fh: Any, wait: bool = True) -> bool:
         if not calls:
