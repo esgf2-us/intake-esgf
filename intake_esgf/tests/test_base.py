@@ -347,7 +347,7 @@ def test_download_without_hash_does_not_resume(
     assert local_file.read_bytes() == DATA
 
 
-@pytest.mark.skipif(base.fcntl is None, reason="no file locking available")
+@pytest.mark.skipif(not base.HAS_FLOCK, reason="no file locking available")
 def test_discard_empty_partial_respects_lock(tmp_path: Path) -> None:
     part_file = base._partial_file(tmp_path / "data.nc")
     fh = base._open_partial(part_file)
@@ -359,6 +359,7 @@ def test_discard_empty_partial_respects_lock(tmp_path: Path) -> None:
     assert not part_file.exists()
 
 
+@pytest.mark.skipif(not base.HAS_FLOCK, reason="no file locking available")
 def test_open_partial_reopens_removed_file(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -374,7 +375,6 @@ def test_open_partial_reopens_removed_file(
         return lock_partial(fh, wait)
 
     monkeypatch.setattr(base, "_lock_partial", lock_after_removal)
-    monkeypatch.setattr(base, "fcntl", base.fcntl or object())
     fh = base._open_partial(part_file)
     assert fh is not None
     with fh:

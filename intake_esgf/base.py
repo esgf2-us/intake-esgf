@@ -4,6 +4,7 @@ import contextlib
 import os
 import re
 import signal
+import sys
 import time
 from collections.abc import Generator, Iterable
 from concurrent.futures import ThreadPoolExecutor
@@ -37,10 +38,11 @@ from intake_esgf.exceptions import (
 )
 from intake_esgf.projects import projects
 
-try:
+# Windows has no flock, there we download without locking partial files. We check
+# `sys.platform` directly (rather than catching ImportError) so mypy understands it.
+HAS_FLOCK = sys.platform != "win32"
+if sys.platform != "win32":
     import fcntl
-except ImportError:  # Windows has no file locking we can use
-    fcntl = None  # type: ignore[assignment]
 
 
 def _get_umask() -> int:
@@ -416,18 +418,18 @@ def _lock_partial(fh: Any, wait: bool = True) -> bool:
         False if we did not get the lock, because we were interrupted while waiting
         or because `wait` is disabled and another process holds it.
     """
-    if fcntl is None:
-        return True
-    while True:
-        try:
-            fcntl.flock(fh.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
-            return True
-        except BlockingIOError:
-            # another process is downloading this file, wait for it to finish
-            if not wait or done_event.wait(1.0):
-                return False
-        except OSError:
-            return True
+    if sys.platform != "win32":
+        while True:
+            try:
+                fcntl.flock(fh.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+                return True
+            except BlockingIOError:
+                # another process is downloading this file, wait for it to finish
+                if not wait or done_event.wait(1.0):
+                    return False
+            except OSError:
+                return True
+    return True  # no locking available
 
 
 def _is_same_file(fh: Any, path: Path) -> bool:
@@ -460,7 +462,7 @@ def _open_partial(part_file: Path) -> Any | None:
             if not _lock_partial(fdl):
                 fdl.close()
                 return None
-            if fcntl is None or _is_same_file(fdl, part_file):
+            if not HAS_FLOCK or _is_same_file(fdl, part_file):
                 return fdl
         except BaseException:
             fdl.close()
@@ -484,7 +486,7 @@ def _discard_empty_partial(part_file: Path) -> None:
     with open(fd, "ab") as fh:
         if not _lock_partial(fh, wait=False):
             return  # another process is downloading into it
-        if fcntl is None or _is_same_file(fh, part_file):
+        if not HAS_FLOCK or _is_same_file(fh, part_file):
             _unlink_if_empty(fh, part_file)
 
 
