@@ -14,8 +14,12 @@ from rich.progress import TaskID
 import intake_esgf
 import intake_esgf.base as base
 from intake_esgf import ESGFCatalog
-from intake_esgf.database import create_download_database
-from intake_esgf.exceptions import NoSearchResults, ProjectNotSupported
+from intake_esgf.database import create_download_database, get_url_host
+from intake_esgf.exceptions import (
+    NoSearchResults,
+    ProjectNotSupported,
+    StalledDownload,
+)
 
 
 def test_get_local_file():
@@ -148,43 +152,339 @@ def test_combine_results(df_ornl, df_ceda):
     assert len(df["id"].iloc[0]) == 8
 
 
-def test_download_and_verify_permissions(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    class FakeResponse:
+DATA = b"data"
+DATA_SHA256 = "3a6eb0790f39ac87c94f3856b2dd2c5d110e6811602261a9a923d3bb23adc8b7"
+
+
+class FakeServer:
+    """
+    Mocks `requests.get` serving `DATA`, optionally honoring range requests and
+    optionally dropping the connection after `fail_after` bytes.
+    """
+
+    def __init__(self, support_range: bool = True, fail_after: int | None = None):
+        self.support_range = support_range
+        self.fail_after = fail_after
+        self.requests: list[dict[str, str]] = []
+
+    def get(self, url: str, **kwargs: Any) -> "FakeServer.Response":
+        headers = kwargs.get("headers", {})
+        self.requests.append(headers)
+        start = 0
+        if self.support_range and "Range" in headers:
+            start = int(headers["Range"].removeprefix("bytes=").rstrip("-"))
+        return FakeServer.Response(self, start)
+
+    class Response:
+        def __init__(self, server: "FakeServer", start: int):
+            self.server = server
+            self.start = start
+            if start >= len(DATA):
+                self.status_code = 416
+                self.headers = {"Content-Range": f"bytes */{len(DATA)}"}
+                return
+            self.status_code = 206 if start else 200
+            self.headers = (
+                {"Content-Range": f"bytes {start}-{len(DATA) - 1}/{len(DATA)}"}
+                if start
+                else {}
+            )
+
         def raise_for_status(self) -> None:
             pass
 
+        def close(self) -> None:
+            pass
+
         def iter_content(self, chunk_size: int) -> Iterator[bytes]:
-            yield b"data"
+            for i in range(self.start, len(DATA)):
+                if self.server.fail_after is not None and i >= self.server.fail_after:
+                    raise requests.exceptions.ConnectionError("connection reset")
+                yield DATA[i : i + 1]
 
-    def fake_get(*args: Any, **kwargs: Any) -> FakeResponse:
-        return FakeResponse()
 
-    monkeypatch.setattr("requests.get", fake_get)
-    monkeypatch.setattr(base, "UMASK", 0o022)
-    download_db = tmp_path / "download.db"
+def _download(
+    local_file: Path, checksum: str = DATA_SHA256, size: int = len(DATA)
+) -> None:
+    download_db = local_file.parent / "download.db"
     create_download_database(download_db)
-    local_file = tmp_path / "data.nc"
     base.download_and_verify(
         "https://example.org/data.nc",
         local_file,
-        "3a6eb0790f39ac87c94f3856b2dd2c5d110e6811602261a9a923d3bb23adc8b7",
+        checksum,
         "sha256",
-        4,
+        size,
         download_db,
         intake_esgf.conf.get_logger(),
         task_id=TaskID(-1),
         master_id=TaskID(-1),
     )
-    assert local_file.read_bytes() == b"data"
+
+
+def test_download_and_verify_permissions(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr("requests.get", FakeServer().get)
+    monkeypatch.setattr(base, "UMASK", 0o022)
+    local_file = tmp_path / "data.nc"
+    _download(local_file)
+    assert local_file.read_bytes() == DATA
+    assert not base._partial_file(local_file).exists()
     if sys.platform != "win32":
         # Skip on Windows, as it does not support POSIX file permissions.
         assert local_file.stat().st_mode & 0o777 == 0o644
 
 
-# def test_parallel_download():
-#    pass
+def test_download_keeps_partial_on_error(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr("requests.get", FakeServer(fail_after=2).get)
+    local_file = tmp_path / "data.nc"
+    with pytest.raises(requests.exceptions.ConnectionError):
+        _download(local_file)
+    assert not local_file.exists()
+    assert base._partial_file(local_file).read_bytes() == DATA[:2]
+
+
+@pytest.mark.parametrize("support_range", [True, False])
+def test_download_resumes_partial(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, support_range: bool
+) -> None:
+    server = FakeServer(support_range=support_range)
+    monkeypatch.setattr("requests.get", server.get)
+    local_file = tmp_path / "data.nc"
+    base._partial_file(local_file).write_bytes(DATA[:2])
+    _download(local_file)
+    # whether or not the server honors the range, the result must be intact
+    assert server.requests[0]["Range"] == "bytes=2-"
+    assert local_file.read_bytes() == DATA
+    assert not base._partial_file(local_file).exists()
+
+
+def test_download_complete_partial_skips_request(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    server = FakeServer()
+    monkeypatch.setattr("requests.get", server.get)
+    local_file = tmp_path / "data.nc"
+    base._partial_file(local_file).write_bytes(DATA)
+    _download(local_file)
+    assert server.requests == []
+    assert local_file.read_bytes() == DATA
+
+
+def test_download_hash_mismatch_discards_partial(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr("requests.get", FakeServer().get)
+    local_file = tmp_path / "data.nc"
+    with pytest.raises(ValueError):
+        _download(local_file, checksum="0" * 64)
+    assert not local_file.exists()
+    assert base._partial_file(local_file).stat().st_size == 0
+
+
+@pytest.mark.parametrize("size", [len(DATA) - 1, len(DATA) + 1])
+def test_download_trusts_hash_over_index_size(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, size: int
+) -> None:
+    # the size in the index is wrong, but the hash matches
+    monkeypatch.setattr("requests.get", FakeServer().get)
+    local_file = tmp_path / "data.nc"
+    _download(local_file, size=size)
+    assert local_file.read_bytes() == DATA
+
+
+@pytest.mark.parametrize("size", [0, len(DATA) + 1])
+def test_download_verifies_complete_partial_beyond_range(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, size: int
+) -> None:
+    # the size is unknown or wrong, a complete partial file gets HTTP 416 and is kept
+    server = FakeServer()
+    monkeypatch.setattr("requests.get", server.get)
+    local_file = tmp_path / "data.nc"
+    base._partial_file(local_file).write_bytes(DATA)
+    _download(local_file, size=size)
+    assert server.requests[0]["Range"] == f"bytes={len(DATA)}-"
+    assert local_file.read_bytes() == DATA
+
+
+def test_slow_download_keeps_received_data(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # the chunk which shows the transfer is too slow is kept to resume from
+    monkeypatch.setattr("requests.get", FakeServer().get)
+    monkeypatch.setattr(base._SlowDownloadDetector, "is_slow", lambda self, n: True)
+    local_file = tmp_path / "data.nc"
+    download_db = tmp_path / "download.db"
+    create_download_database(download_db)
+    with pytest.raises(StalledDownload):
+        base.download_and_verify(
+            "https://example.org/data.nc",
+            local_file,
+            DATA_SHA256,
+            "sha256",
+            len(DATA),
+            download_db,
+            intake_esgf.conf.get_logger(),
+            task_id=TaskID(-1),
+            master_id=TaskID(-1),
+            break_slow_downloads=True,
+        )
+    assert base._partial_file(local_file).read_bytes() == DATA[:1]
+
+
+def test_download_without_hash_does_not_resume(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # a partial file which may stem from another host cannot be verified, restart
+    server = FakeServer()
+    monkeypatch.setattr("requests.get", server.get)
+    local_file = tmp_path / "data.nc"
+    base._partial_file(local_file).write_bytes(b"xx")
+    _download(local_file, checksum="")
+    assert "Range" not in server.requests[0]
+    assert local_file.read_bytes() == DATA
+
+
+@pytest.mark.skipif(not base.HAS_FLOCK, reason="no file locking available")
+def test_discard_empty_partial_respects_lock(tmp_path: Path) -> None:
+    part_file = base._partial_file(tmp_path / "data.nc")
+    fh = base._open_partial(part_file)
+    assert fh is not None
+    with fh:
+        base._discard_empty_partial(part_file)
+        assert part_file.exists()  # in use, keep it
+    base._discard_empty_partial(part_file)
+    assert not part_file.exists()
+
+
+@pytest.mark.skipif(not base.HAS_FLOCK, reason="no file locking available")
+def test_open_partial_reopens_removed_file(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # the partial file is removed by another process while we wait for the lock
+    part_file = base._partial_file(tmp_path / "data.nc")
+    lock_partial = base._lock_partial
+    calls: list[Any] = []
+
+    def lock_after_removal(fh: Any, wait: bool = True) -> bool:
+        if not calls:
+            part_file.unlink()
+        calls.append(fh)
+        return lock_partial(fh, wait)
+
+    monkeypatch.setattr(base, "_lock_partial", lock_after_removal)
+    fh = base._open_partial(part_file)
+    assert fh is not None
+    with fh:
+        assert len(calls) == 2
+        assert base._is_same_file(fh, part_file)
+
+
+def test_get_url_host() -> None:
+    assert get_url_host("https://esgf.ceda.ac.uk/thredds/x.nc") == "esgf.ceda.ac.uk"
+    assert get_url_host("http://host:8080/x.nc") == "host:8080"
+    assert get_url_host("https://ab") == "ab"
+
+
+class NoWaitEvent:
+    """Stands in for `base.done_event` so retries do not sleep."""
+
+    def is_set(self) -> bool:
+        return False
+
+    def wait(self, timeout: float | None = None) -> bool:
+        return False
+
+
+def _parallel_download(tmp_path: Path, urls: list[str]) -> tuple[Any, Any]:
+    download_db = tmp_path / "download.db"
+    create_download_database(download_db)
+    info = {
+        "key": "key",
+        "path": Path("data.nc"),
+        "HTTPServer": urls,
+        "checksum": DATA_SHA256,
+        "checksum_type": "sha256",
+        "size": len(DATA),
+    }
+    return base.parallel_download(
+        info,
+        [tmp_path],
+        download_db,
+        intake_esgf.conf.get_logger(),
+        [],
+        task_id=TaskID(-1),
+        master_id=TaskID(-1),
+    )
+
+
+def test_parallel_download_retries(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # the connection drops after every byte, each attempt resumes one byte further
+    server = FakeServer()
+    calls = []
+
+    def flaky_get(url: str, **kwargs: Any) -> FakeServer.Response:
+        calls.append(url)
+        resp = server.get(url, **kwargs)
+        server.fail_after = resp.start + 1
+        return resp
+
+    monkeypatch.setattr("requests.get", flaky_get)
+    monkeypatch.setattr(base, "done_event", NoWaitEvent())
+    with intake_esgf.conf.set(download_retries=len(DATA)):
+        key, local_file = _parallel_download(tmp_path, ["https://a.org/data.nc"])
+    assert key == "key"
+    assert local_file.read_bytes() == DATA
+    assert len(calls) == len(DATA)
+
+    # without retries a single failed attempt is final
+    (tmp_path / "data.nc").unlink()
+    server.fail_after = 0
+    with intake_esgf.conf.set(download_retries=0):
+        key, _ = _parallel_download(tmp_path, ["https://a.org/data.nc"])
+    assert key is None
+
+
+def test_parallel_download_drops_permanent_failures(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    calls = []
+
+    def not_found(url: str, local_file: Path, *args: Any, **kwargs: Any) -> None:
+        calls.append(url)
+        response = requests.Response()
+        response.status_code = 404
+        raise requests.HTTPError(response=response)
+
+    monkeypatch.setattr(base, "download_and_verify", not_found)
+    monkeypatch.setattr(base, "done_event", NoWaitEvent())
+    urls = ["https://a.org/data.nc", "https://b.org/data.nc"]
+    with intake_esgf.conf.set(download_retries=3):
+        key, _ = _parallel_download(tmp_path, urls)
+    assert key is None
+    assert sorted(calls) == sorted(urls)  # each link tried once, never retried
+
+
+def test_parallel_download_retries_hash_mismatch(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # corrupt data may stem from an earlier attempt, so the link is not dropped
+    calls = []
+
+    def corrupt(url: str, local_file: Path, *args: Any, **kwargs: Any) -> None:
+        calls.append(url)
+        raise ValueError("Hash does not match")
+
+    monkeypatch.setattr(base, "download_and_verify", corrupt)
+    monkeypatch.setattr(base, "done_event", NoWaitEvent())
+    with intake_esgf.conf.set(download_retries=2):
+        key, _ = _parallel_download(tmp_path, ["https://a.org/data.nc"])
+    assert key is None
+    assert len(calls) == 3
 
 
 def test_get_search_criteria(dataset):

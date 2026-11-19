@@ -1,3 +1,6 @@
+import os
+import signal
+import sys
 import warnings
 from pathlib import Path
 from typing import Any
@@ -109,7 +112,7 @@ def _partial_download_catalog(
     The tas dataset has 3 files, of which one will fail to download. The gpp dataset
     has a single file which downloads fine.
     """
-    intake_esgf.conf.set(local_cache=[str(tmp_path)])
+    intake_esgf.conf.set(local_cache=[str(tmp_path)], download_retries=0)
     cat = intake_esgf.ESGFCatalog()
     cat.df = df_catalog
     cat._set_project()
@@ -174,6 +177,33 @@ def test_partial_download_break_on_error(df_catalog, tmp_path, monkeypatch):
     assert "tas_190001-194912.nc" in str(exc.value)
 
 
+def test_globus_files_outside_cache_not_incomplete(df_catalog, tmp_path, monkeypatch):
+    # one tas file is sent by Globus to an endpoint outside the local cache
+    cat = _partial_download_catalog(df_catalog, tmp_path, monkeypatch)
+    import intake_esgf.catalog as catalog
+
+    partition_infos = base.partition_infos
+
+    def partition_with_globus(infos, prefer_streaming, prefer_globus):
+        infos = [i for i in infos if "190001-194912" not in str(i["path"])] + [
+            i for i in infos if "190001-194912" in str(i["path"])
+        ]
+        partitioned, dsd = partition_infos(infos, prefer_streaming, False)
+        partitioned["globus"] = [partitioned["https"].pop()]
+        return partitioned, dsd
+
+    monkeypatch.setattr(base, "partition_infos", partition_with_globus)
+    monkeypatch.setattr(catalog, "create_globus_transfer", lambda *args: ["task"])
+    monkeypatch.setattr(catalog, "monitor_globus_transfer", lambda tasks: None)
+    with intake_esgf.conf.set(break_on_error=True):
+        with pytest.warns(UserWarning, match="transferred to the Globus endpoint"):
+            dsd = cat.to_path_dict(
+                globus_endpoint="remote", minimal_keys=False, quiet=True
+            )
+    tas_key, _ = cat.df["key"]
+    assert len(dsd[tas_key]) == 2
+
+
 def test_download_urls_reports_failures(tmp_path, monkeypatch):
     def fake_download_and_verify(url: str, local_file: Path, *args, **kwargs):
         if "bad" in url:
@@ -211,15 +241,65 @@ def test_download_urls_reports_failures(tmp_path, monkeypatch):
     ]
     download_db = Path(intake_esgf.conf["download_db"])
     logger = intake_esgf.conf.get_logger()
-    failed = base.download_urls(infos, [tmp_path], download_db, logger, None, True)
+    intake_esgf.conf.set(download_retries=0)
+    downloaded, failed = base.download_urls(
+        infos, [tmp_path], download_db, logger, None, True
+    )
     assert sorted(info["path"].name for info in failed) == ["bad.nc", "nolinks.nc"]
+    assert [(info["path"].name, path) for info, path in downloaded] == [
+        ("good.nc", tmp_path / "good.nc")
+    ]
     assert (tmp_path / "good.nc").is_file()
 
     # exceptions raised inside the worker threads must not be swallowed
     (tmp_path / "good.nc").unlink()
     monkeypatch.setattr(base, "get_download_rate_dataframe", broken_rate_dataframe)
-    failed = base.download_urls(infos[:1], [tmp_path], download_db, logger, None, True)
+    downloaded, failed = base.download_urls(
+        infos[:1], [tmp_path], download_db, logger, None, True
+    )
+    assert downloaded == []
     assert [info["path"].name for info in failed] == ["good.nc"]
+
+
+def test_import_leaves_sigint_alone():
+    assert signal.getsignal(signal.SIGINT) is not base.handle_sigint
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="POSIX signals")
+def test_download_urls_ctrl_c(tmp_path, monkeypatch):
+    def interrupted_download(url: str, local_file: Path, *args, **kwargs):
+        # Ctrl-C arrives while downloading, wait for the main thread to handle it
+        os.kill(os.getpid(), signal.SIGINT)
+        assert base.done_event.wait(5)
+
+    def fake_download_and_verify(url: str, local_file: Path, *args, **kwargs):
+        local_file.write_bytes(b"data")
+
+    info = {
+        "key": "a",
+        "path": Path("data.nc"),
+        "size": 0,
+        "checksum": "",
+        "checksum_type": "",
+        "HTTPServer": ["https://example.org/data.nc"],
+    }
+    download_db = Path(intake_esgf.conf["download_db"])
+    logger = intake_esgf.conf.get_logger()
+    previous = signal.getsignal(signal.SIGINT)
+    monkeypatch.setattr(base, "download_and_verify", interrupted_download)
+    with intake_esgf.conf.set(download_retries=3):
+        with pytest.raises(KeyboardInterrupt):
+            base.download_urls([info], [tmp_path], download_db, logger, None, True)
+    assert signal.getsignal(signal.SIGINT) is previous
+    assert "download interrupted" in logger.read()
+
+    # an earlier Ctrl-C does not stop later downloads
+    monkeypatch.setattr(base, "download_and_verify", fake_download_and_verify)
+    downloaded, failed = base.download_urls(
+        [info], [tmp_path], download_db, logger, None, True
+    )
+    assert failed == []
+    assert [path for _, path in downloaded] == [tmp_path / "data.nc"]
 
 
 KWARGS = dict(

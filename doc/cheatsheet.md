@@ -57,6 +57,7 @@ intake_esgf.conf.set(                                             # change the o
     confirm_download = False,      # enable to require user confirmation for transfers
     print_log_on_error = False,                  # enable to see more details on error
     slow_download_threshold = 0.5,      # transfer rate [Mb s-1] which triggers cancel
+    download_retries = 3,         # extra rounds over all links when a download fails
 )
 
 intake_esgf.conf.save()               # make the current configure options the default
