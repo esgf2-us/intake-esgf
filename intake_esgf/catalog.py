@@ -27,6 +27,7 @@ from intake_esgf.core.globus import (
 from intake_esgf.database import (
     create_download_database,
     get_download_rate_dataframe,
+    get_url_host,
     sort_download_links,
 )
 from intake_esgf.exceptions import (
@@ -557,10 +558,9 @@ class ESGFCatalog:
                 merged_info[path] = {"key": dataset_ids[info["dataset_id"]]}
             for key, val in info.items():
                 if isinstance(val, list):
-                    if key not in merged_info[path]:
-                        merged_info[path][key] = val
-                    else:
-                        merged_info[path][key] += val
+                    # several indices may list the same links, keep each once
+                    merged = merged_info[path].setdefault(key, [])
+                    merged += [v for v in val if v not in merged]
                 else:
                     if key not in merged_info[path]:
                         merged_info[path][key] = val
@@ -646,7 +646,7 @@ class ESGFCatalog:
                 if response not in ("y", "yes"):
                     print("Download cancelled.")
                     return {}
-            base.download_urls(
+            downloaded, missing_files = base.download_urls(
                 infos["https"],
                 self.local_cache,
                 self.download_db,
@@ -654,16 +654,26 @@ class ESGFCatalog:
                 self.esg_dataroot,
                 quiet,
             )
-
-        # unpack the https files which should now exist in local cache
-        dsd, missing_files = _load_into_dsd(dsd, infos["https"])
+            for info, path in downloaded:
+                dsd.setdefault(info["key"], []).append(path)
+        else:
+            missing_files = []
 
         if prefer_globus and infos["globus"]:
-            monitor_globus_transfer(tasks)  # blocks while transfer continues
+            # blocks while transfer continues, raises unless all tasks succeeded
+            monitor_globus_transfer(tasks)
 
-            # unpack the globus files which should now exist in local cache
-            dsd, missing_globus = _load_into_dsd(dsd, infos["globus"])
-            missing_files += missing_globus
+            # unpack the globus files which exist in local cache if the destination
+            # endpoint maps onto it
+            dsd, not_local = _load_into_dsd(dsd, infos["globus"], self.local_cache)
+            if not_local:
+                # these were delivered, only not to a place we can see
+                warnings.warn(
+                    f"These files were transferred to the Globus endpoint "
+                    f"{globus_endpoint} but are not found in your local cache, so "
+                    "they are not part of the returned paths:\n"
+                    f"{_format_missing_files(_group_missing_files(not_local))}"
+                )
 
         # did we get everything that was in the catalog?
         missed = set(self.df["key"]) - set(dsd)
@@ -927,7 +937,7 @@ class ESGFCatalog:
 
 
 def _load_into_dsd(
-    dsd: dict[str, list[str | Path]], infos: list[dict]
+    dsd: dict[str, list[str | Path]], infos: list[dict], roots: list[Path]
 ) -> tuple[dict[str, list[str | Path]], list[dict]]:
     """
     Insert the local path into the dictinoary if the file exists.
@@ -938,6 +948,8 @@ def _load_into_dsd(
         A dictionary of a list of paths whose keys are datasets.
     infos: list[dict]
         A list of file info to parse.
+    roots: list[Path]
+        The directories in which to look for the files.
 
     Returns
     -------
@@ -949,8 +961,8 @@ def _load_into_dsd(
     missing = []
     for info in infos:
         try:
-            path = base.get_local_file(info["path"], intake_esgf.conf["local_cache"])
-        except Exception:
+            path = base.get_local_file(info["path"], roots)
+        except FileNotFoundError:
             missing.append(info)
             continue
         key = info["key"]
@@ -1022,17 +1034,14 @@ def _simplify_stream_links(
     This is part of a hack that I hope to improve later.
     """
 
-    def _host(link: str) -> str:
-        return (
-            link[: link.index("/", 10)].replace("http://", "").replace("https://", "")
-        )
-
     streamed_keys = [info["key"] for info in infos]
     for key in streamed_keys:
         links = [str(link) for link in set(dsd[key])]
         links = sort_by_transer_speed(links)
         if all([link.endswith(".nc") for link in links]):  # OPENDAP links
-            links = [link for link in links if _host(link) == _host(links[0])]
+            links = [
+                link for link in links if get_url_host(link) == get_url_host(links[0])
+            ]
         if any(
             [
                 link
