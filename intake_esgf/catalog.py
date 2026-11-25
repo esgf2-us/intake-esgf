@@ -1038,22 +1038,35 @@ def _simplify_stream_links(
     for key in streamed_keys:
         links = [str(link) for link in set(dsd[key])]
         links = sort_by_transer_speed(links)
-        if all([link.endswith(".nc") for link in links]):  # OPENDAP links
+        if not links:
+            warnings.warn(
+                f"Dataset {key} has streaming information but no links were found."
+            )
+            continue
+        # OPENDAP
+        opendap_links = [link.endswith(".nc") for link in links]
+        if opendap_links and all(opendap_links):
             links = [
                 link for link in links if get_url_host(link) == get_url_host(links[0])
             ]
-        if any(
-            [
-                link
-                for link in links
-                if "kerchunk" in link.lower()
-                or link.endswith("json")
-                or link.endswith("parq")
-            ]
-        ):  # Kerchunk
-            links = [links[0]]
-        if all([link for link in links if link.endswith("nca")]):  # CFA
-            dsd[key] = [links[0]]
+            dsd[key] = links  # type: ignore
+            continue
+        # Kerchunk
+        kerchunk_links = [
+            link
+            for link in links
+            if "kerchunk" in link.lower()
+            or link.endswith("json")
+            or link.endswith("parq")
+        ]
+        if any(kerchunk_links):
+            dsd[key] = [kerchunk_links[0]]
+            continue
+        # CFA
+        nca_links = [link for link in links if link.endswith("nca")]
+        if nca_links and all(nca_links):
+            dsd[key] = [nca_links[0]]
+            continue
     return dsd
 
 
@@ -1066,8 +1079,10 @@ def _init_dataset(files: list[str | Path], **open_kwargs: Any) -> xr.Dataset:
     This is part 2 of a hack that will be factored out.
     """
     # files or OPENDAP
-    if all([str(link).endswith("nc") for link in files]):
-        return xr.open_mfdataset(sorted(files), **open_kwargs)
+    opendap_or_files = [str(link).endswith("nc") for link in files]
+    if opendap_or_files and all(opendap_or_files):
+        ds = xr.open_mfdataset(sorted(files), **open_kwargs)
+        return ds
     # CFA
     link = str(files[0])
     if len(files) == 1 and str(link).endswith("nca"):
