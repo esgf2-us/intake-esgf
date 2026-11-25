@@ -18,3 +18,4 @@ build:
     post_build:
       - mkdir --parents $READTHEDOCS_OUTPUT/html/
       - cp --recursive doc/_build/html/* $READTHEDOCS_OUTPUT/html/
+      - pandoc doc/cheatsheet.md -o $READTHEDOCS_OUTPUT/html/cheatsheet.pdf
