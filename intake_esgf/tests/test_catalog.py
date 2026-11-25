@@ -367,3 +367,34 @@ def test_init_dataset(method: str):
     }
     ds = _init_dataset(methods[method])
     assert isinstance(ds, xr.Dataset)
+
+
+def test_simplify_stream_links_multifile_opendap(monkeypatch):
+    """All files of a multi-file dataset are kept, but only from the fastest host."""
+    import intake_esgf.catalog as catalog_module
+
+    monkeypatch.setattr(
+        catalog_module, "sort_by_transer_speed", lambda links: sorted(links)
+    )
+    files = [f"/thredds/dodsC/x/tas_{i:02d}.nc" for i in range(11)]
+    host_a = [f"https://a.example.org{f}" for f in files]
+    host_b = [f"https://b.example.org{f}" for f in files]
+
+    # one host, many files
+    dsd = _simplify_stream_links([{"key": "k"}], {"k": list(host_a)})
+    assert sorted(dsd["k"]) == host_a
+
+    # the same files replicated on two hosts, keep the files from one host
+    dsd = _simplify_stream_links([{"key": "k"}], {"k": host_a + host_b})
+    assert sorted(dsd["k"]) == host_a
+
+
+def test_simplify_stream_links_single_link_types():
+    kerchunk = [
+        "https://example.org/kerchunk/a.json",
+        "https://example.org/kerchunk/b.json",
+    ]
+    cfa = ["https://example.org/cfa/a.nca", "https://example.org/cfa/b.nca"]
+    for links in [kerchunk, cfa]:
+        dsd = _simplify_stream_links([{"key": "k"}], {"k": list(links)})
+        assert len(dsd["k"]) == 1
